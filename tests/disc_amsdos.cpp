@@ -11,6 +11,7 @@
 #include "check.h"
 #include "core/autotype.h"
 #include "core/cpc.h"
+#include "core/discfiles.h"
 #include "core/screen_text.h"
 #include "core/setup.h"
 
@@ -111,6 +112,37 @@ void saveAndLoad(bool fast)
 
     m.command("RUN");
     CHECK(contains(readScreenText(m.cpc), "\nsaved on disc\n"));
+
+    // The same disc seen without the machine: the file AMSDOS wrote is
+    // found, with its header; and a file put there from outside is one
+    // AMSDOS lists, loads and runs.
+    {
+        DiscFiles files(disc);
+        CHECK(files.valid());
+        const std::vector<DiscFile> list = files.list();
+        CHECK_EQ(list.size(), 1);
+        CHECK(list.size() == 1 && list[0].name == "HELLO.BAS" && list[0].user == 0 && list[0].size == 256);
+        CHECK_EQ(files.freeBytes(), 177 * 1024);
+        const auto saved = list.empty() ? std::nullopt : files.read(list[0]);
+        const auto header = saved ? amsdosHeader(*saved) : std::nullopt;
+        CHECK(header.has_value());
+        CHECK(header && header->type == 0 && header->loadAddress == 0x0170);
+        // A tokenised line: its length, its number, PRINT, the text.
+        CHECK(header && header->length > 20 && header->length < 40);
+        CHECK(saved && (*saved)[128 + 2] == 10 && (*saved)[128 + 3] == 0 && (*saved)[128 + 4] == 0xBF);
+
+        const std::string listing = "10 PRINT \"from outside\"\r\n20 PRINT 6*7\r\n";
+        CHECK(files.write("host.bas", {reinterpret_cast<const uint8_t*>(listing.data()), listing.size()}));
+    }
+    m.command("CLS:CAT");
+    screen = readScreenText(m.cpc);
+    CHECK(contains(screen, "HELLO   .BAS"));
+    CHECK(contains(screen, "HOST    .BAS"));
+    CHECK(contains(screen, "176K free"));
+    m.command("CLS:RUN\"HOST\"");
+    screen = readScreenText(m.cpc);
+    CHECK(contains(screen, "from outside"));
+    CHECK(contains(screen, "\n 42"));
 
     // The image survives being written out and read back.
     const std::vector<uint8_t> file = disc.toDsk();

@@ -8,6 +8,7 @@ add_library(tuxape_core STATIC
     csl.cpp
     disasm.cpp
     disc.cpp
+    discfiles.cpp
     fdc.cpp
     files.cpp
     gate_array.cpp

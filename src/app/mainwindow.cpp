@@ -21,6 +21,7 @@
 
 #include "debuggerdialog.h"
 #include "discdialogs.h"
+#include "disceditordialog.h"
 #include "discmanager.h"
 #include "emulator.h"
 #include "icons.h"
@@ -196,7 +197,8 @@ void MainWindow::createMenus()
         addItem(menu, tr("&New Blank Disc..."), {}, [this, drive] { newBlankDisc(drive); });
         driveActions_[drive].format =
             addItem(menu, tr("&Format Disc Image..."), {}, [this, drive] { formatDisc(drive); });
-        addItem(menu, tr("&Edit Disc..."), SHIFT | CTRL | key);
+        driveActions_[drive].edit =
+            addItem(menu, tr("&Edit Disc..."), SHIFT | CTRL | key, [this, drive] { editDisc(drive); });
         driveActions_[drive].flip = addItem(menu, tr("F&lip Disc"), SHIFT | key, [this, drive] { flipDisc(drive); });
         driveActions_[drive].remove = addItem(menu, tr("&Remove Disc"), {}, [this, drive] { removeDisc(drive); });
     }
@@ -613,6 +615,14 @@ void MainWindow::toggleSessionPlayback()
         return;
     recordingFolder_ = QFileInfo(path).absolutePath();
     playSessionFile(path);
+}
+
+// The disc editor: the files and the sectors of the disc in a drive.
+void MainWindow::editDisc(int drive)
+{
+    DiscEditorDialog dialog(emulator_, drive, this);
+    dialog.exec();
+    updateDiscActions();
 }
 
 // ---- recording -------------------------------------------------------------------
@@ -1053,6 +1063,7 @@ void MainWindow::updateDiscActions()
 {
     for (int drive = 0; drive < DiscManager::kDrives; ++drive) {
         const DiscManager::Info info = discs_->info(drive);
+        driveActions_[drive].edit->setEnabled(info.present);
         driveActions_[drive].format->setEnabled(info.present);
         driveActions_[drive].remove->setEnabled(info.present);
         driveLed_[drive]->setToolTip(info.present ? QDir::toNativeSeparators(info.path) : tr("No disc"));

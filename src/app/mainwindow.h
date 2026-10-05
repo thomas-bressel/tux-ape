@@ -111,6 +111,7 @@ private:
     QString cartridgeFolder_;
     QString librarySearch_;  // what the Library window was last searching for
     struct DriveActions {
+        QAction* edit = nullptr;
         QAction* format = nullptr;
         QAction* flip = nullptr;
         QAction* remove = nullptr;
@@ -160,6 +161,7 @@ private:
     void autoType();
     void showLibrary();
     void chooseCartridge();
+    void editDisc(int drive);
     // File > Record WAV and Record YM: a file is asked for and the
     // recording starts; chosen again, the entry ends it.
     void toggleWavRecording();

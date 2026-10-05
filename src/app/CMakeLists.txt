@@ -12,6 +12,8 @@ add_library(tuxape_app STATIC
     avirecorder.h
     debuggerdialog.cpp
     debuggerdialog.h
+    disceditordialog.cpp
+    disceditordialog.h
     discdialogs.cpp
     discdialogs.h
     discmanager.cpp

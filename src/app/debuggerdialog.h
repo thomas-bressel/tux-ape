@@ -81,6 +81,9 @@ public:
     explicit MemoryDumpView(QWidget* parent = nullptr);
 
     void setMemory(const DebugMemory* memory) { memory_ = memory; }
+    // How much of the memory there is to show: all 64K, or the first bytes
+    // only (a sector of a disc, say).
+    void setLimit(int bytes);
     uint16_t cursor() const { return cursor_; }
     void setCursor(uint16_t address);
     QString lineText(int row) const;
@@ -103,6 +106,7 @@ private:
     uint16_t top_ = 0;     // a multiple of 16
     uint16_t cursor_ = 0;
     bool lowNibble_ = false;
+    int limit_ = 0x10000;
 
     int lineHeight() const;
 };

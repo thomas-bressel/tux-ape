@@ -1,5 +1,7 @@
 #include "debuggerdialog.h"
 
+#include <algorithm>
+
 #include <QCheckBox>
 #include <QFontDatabase>
 #include <QGridLayout>
@@ -261,8 +263,28 @@ int MemoryDumpView::visibleLines() const
     return std::max(1, viewport()->height() / lineHeight());
 }
 
+void MemoryDumpView::setLimit(int bytes)
+{
+    bytes = std::clamp(bytes, 16, 0x10000);
+    if (bytes == limit_)
+        return;
+    limit_ = bytes;
+    verticalScrollBar()->setRange(0, std::max(0, (limit_ + 15) / 16 - 1));
+    // The cursor stays where it is if that is still within.
+    if (cursor_ >= limit_) {
+        verticalScrollBar()->setValue(0);
+        top_ = 0;
+        cursor_ = 0;
+        lowNibble_ = false;
+    }
+    viewport()->update();
+}
+
 void MemoryDumpView::setCursor(uint16_t address)
 {
+    // Round the end of a short piece, back to its start.
+    if (address >= limit_)
+        address = static_cast<uint16_t>(limit_ == 0x10000 ? address : address % limit_);
     cursor_ = address;
     lowNibble_ = false;
     // Kept in view.
@@ -275,11 +297,15 @@ void MemoryDumpView::setCursor(uint16_t address)
 
 QString MemoryDumpView::lineText(int row) const
 {
-    if (!memory_)
+    if (!memory_ || top_ + row * 16 >= limit_)
         return {};
     const uint16_t address = static_cast<uint16_t>(top_ + row * 16);
     QString text = hex(address, 4), characters;
     for (int i = 0; i < 16; ++i) {
+        if (address + i >= limit_) {
+            text += "   ";
+            continue;
+        }
         const uint8_t byte = (*memory_)[static_cast<uint16_t>(address + i)];
         text += ' ' + hex(byte, 2);
         characters += shown(byte);
@@ -332,7 +358,7 @@ void MemoryDumpView::mousePressEvent(QMouseEvent* event)
         index = (column - 5) / 3;
     else if (column >= 53 && column < 69)
         index = column - 53;
-    if (index >= 0)
+    if (index >= 0 && top_ + row * 16 + index < limit_)
         setCursor(static_cast<uint16_t>(top_ + row * 16 + index));
 }
 
