@@ -6,6 +6,8 @@
 // The chip is driven directly here: a write made after the tick that brings
 // character N is a write "during character N".
 
+#include <string>
+
 #include "check.h"
 #include "crtc_rig.h"
 
@@ -396,8 +398,130 @@ void oneCharacterLines()
 
 }  // namespace
 
+// What the display enable output does on the characters 62, 63, 0, 1 and 2
+// around the end of a line: 'D' for picture, 'B' for border, 'h' for a
+// character that is picture then border. R8 is written during the two
+// characters given, if any.
+std::string aroundLineEnd(Rig& rig, int first = -1, int firstValue = 0, int second = -1, int secondValue = 0)
+{
+    rig.seek(1, 0, 30);
+    std::string seen;
+    bool firstDone = first < 0;
+    bool secondDone = second < 0;
+    for (int i = 0; i < 64 && seen.size() < 5; ++i) {
+        const int c0 = rig.crtc.hcc();
+        if (!firstDone && c0 == first) {
+            rig.set(8, firstValue);
+            firstDone = true;
+        } else if (firstDone && !secondDone && c0 == second) {
+            rig.set(8, secondValue);
+            secondDone = true;
+        }
+        if (c0 >= 62 || (c0 <= 2 && !seen.empty())) {
+            const bool a = rig.crtc.displayEnable(0), b = rig.crtc.displayEnable(1);
+            seen += a && b ? 'D' : !a && !b ? 'B' : a ? 'h' : '?';
+        }
+        rig.crtc.tick();
+    }
+    return seen;
+}
+
+// Bits 4 and 5 of R8 delay the display enable output by one or two
+// characters, or turn it off (19.2).
+void displaySkew()
+{
+    {
+        Rig rig;
+        rig.set(1, 59);
+        const int expected[4][2] = {{0, 59}, {1, 60}, {2, 61}, {64, 64}};  // first character shown, first not
+        for (int skew = 0; skew < 4; ++skew) {
+            rig.set(8, skew << 4);
+            rig.seek(1, 0);
+            rig.seek(2, 0);
+            for (int c0 = 0; c0 < 64; ++c0) {
+                CHECK_EQ(rig.crtc.hcc(), c0);
+                CHECK_EQ(rig.crtc.displayEnable(0), c0 >= expected[skew][0] && c0 < expected[skew][1]);
+                CHECK_EQ(rig.crtc.displayEnable(1), rig.crtc.displayEnable(0));
+                rig.crtc.tick();
+            }
+        }
+    }
+    {
+        // A line that never meets R1 still gets half a character of border
+        // at its very end (17.6.2); delayed, it is a whole character
+        // (19.2.4).
+        Rig rig;
+        rig.set(1, 64);
+        CHECK(aroundLineEnd(rig) == "DhDDD");
+        rig.set(8, 0x10);
+        CHECK(aroundLineEnd(rig) == "DDBDD");
+        rig.set(8, 0x20);
+        CHECK(aroundLineEnd(rig) == "DDDBD");
+    }
+    {
+        // With R1 = R0 the last character is border. Setting the delay and
+        // taking it away again around that place moves this border, doubles
+        // it or makes it vanish: what the eight lines of "R8 stories 1" of
+        // Shaker A2 show on a real CRTC 0, where the first write is made
+        // during character 57, 58... and the second four characters later.
+        static const char* const stories[8] = {
+            "DBDDD", "DBDDD", "DBDDD",  // back to no delay in time: nothing changes
+            "DDDDD",                    // no border at all
+            "DDBDD", "DDBDD", "DDBDD",  // the border comes a character late
+            "DBBDD",                    // the border, then the delayed one as well
+        };
+        for (int story = 0; story < 8; ++story) {
+            Rig rig;
+            rig.set(1, 63);
+            const std::string seen = aroundLineEnd(rig, (57 + story) & 63, 0x10, (61 + story) & 63, 0x00);
+            if (seen != stories[story]) {
+                std::printf("R8 story %d: %s, want %s\n", story, seen.c_str(), stories[story]);
+                ++g_failures;
+            }
+        }
+    }
+    {
+        // With lines of one character, picture and border alternate, half a
+        // character each. A line made longer during what was to be its last
+        // character loses that border (Shaker A7).
+        Rig rig;
+        rig.set(1, 4);
+        rig.seek(1, 0, 63);
+        rig.crtc.tick();
+        rig.set(0, 0);  // during character 0: the line ends with it
+        for (int i = 0; i < 5; ++i) {
+            CHECK_EQ(rig.crtc.hcc(), 0);
+            CHECK(rig.crtc.displayEnable(0));
+            CHECK(!rig.crtc.displayEnable(1));
+            rig.crtc.tick();
+        }
+        rig.set(0, 39);
+        for (int c0 = 0; c0 < 6; ++c0) {
+            CHECK_EQ(rig.crtc.hcc(), c0);
+            CHECK_EQ(rig.crtc.displayEnable(0), c0 < 4);
+            CHECK_EQ(rig.crtc.displayEnable(1), c0 < 4);
+            rig.crtc.tick();
+        }
+    }
+    {
+        // The other chips: no border for a line that never meets R1 on types
+        // 1, 3 and 4; no delay on types 1 and 2.
+        for (const CrtcType type : {CrtcType::UM6845R, CrtcType::MC6845, CrtcType::AsicPlus, CrtcType::PreAsic}) {
+            Rig rig(type);
+            rig.set(1, 64);
+            const bool lateBorder = type == CrtcType::MC6845;
+            CHECK(aroundLineEnd(rig) == (lateBorder ? "DhDDD" : "DDDDD"));
+            rig.set(1, 63);
+            rig.set(8, 0x10);
+            const bool skew = type == CrtcType::AsicPlus || type == CrtcType::PreAsic;
+            CHECK(aroundLineEnd(rig) == (skew ? "DDBDD" : "DBDDD"));
+        }
+    }
+}
+
 int main()
 {
+    displaySkew();
     plainFrame();
     verticalAdjustment();
     lastLineIsDecidedEarly();

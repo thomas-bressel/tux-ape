@@ -56,7 +56,9 @@ public:
     };
     HsyncCut hsyncCut() const { return hsyncCut_; }
     HsyncCut previousHsyncCut() const { return previousHsyncCut_; }
-    bool displayEnable() const;
+    // Display enable (DISPTMG) for the first (0) and second (1) half of
+    // the character: the Gate Array takes it in once per byte.
+    bool displayEnable(int half = 0) const;
     uint16_t ma() const { return ma_; }  // 14-bit refresh address
     // Raster line within the character row. It is C9 itself, except in
     // "interlace sync & video" mode, where each frame shows every other line.
@@ -94,6 +96,10 @@ private:
     bool vsync_ = false;
     bool hDisp_ = false;
     bool vDisp_ = false;
+    // DISPTMG before R8's skew, for the character before the one in
+    // progress (bits 0 and 1: its two halves) and the one before that (bits
+    // 2 and 3).
+    uint8_t dispHistory_ = 0;
     bool inAdjust_ = false;
 
     // ---- CRTC 0 (HD6845S / UM6845) ---------------------------------------
@@ -134,6 +140,7 @@ private:
     void startFrame();
     void startVsync();
 
+    uint8_t dispNow() const;
     bool interlace() const { return (reg_[8] & 1) != 0; }
     bool interlaceVideo() const { return (reg_[8] & 3) == 3; }
     bool c9Parity0() const { return parityFrame_ != ((reg_[9] & 1) != 0 && (vcc_ & 1) != 0); }

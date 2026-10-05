@@ -22,6 +22,7 @@ void Crtc::reset()
     hsync_ = vsync_ = false;
     hsyncCut_ = previousHsyncCut_ = HsyncCut::None;
     hDisp_ = vDisp_ = false;
+    dispHistory_ = 0;
     inAdjust_ = false;
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
     c9Enabled_ = c4CountArmed_ = c9MatchAtEnd_ = false;
@@ -133,6 +134,7 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     // would have at this place.
     hDisp_ = hcc_ < reg_[1];
     vDisp_ = vcc_ < reg_[6];
+    dispHistory_ = hDisp_ && vDisp_ ? 0x0F : 0;
     maRow_ = static_cast<uint16_t>((startAddress() + vcc_ * reg_[1]) & 0x3FFF);
     ma_ = static_cast<uint16_t>((maRow_ + hcc_) & 0x3FFF);
     inAdjust_ = false;
@@ -183,26 +185,54 @@ uint8_t Crtc::readData() const
     }
 }
 
-bool Crtc::displayEnable() const
+// DISPTMG for the two halves of the character in progress (bit 0, bit 1),
+// before R8's skew. On types 0 and 2 a line that ends without C0 having met
+// R1 still turns the display off, for the second half of its last character
+// (17.6.2). This follows R0 to the end of the character: a line made longer
+// in time loses that half character of border (Shaker A7).
+uint8_t Crtc::dispNow() const
 {
     if (!hDisp_ || !vDisp_)
-        return false;
-    // R6 = 0 blanks the picture at once on the UM6845R.
-    if (type_ == CrtcType::UM6845R)
-        return reg_[6] != 0;
-    // Where R8 has skew bits, setting both turns the display off.
-    if (type_ != CrtcType::MC6845 && (reg_[8] & 0x30) == 0x30)
-        return false;
-    return true;
+        return 0;
+    const bool lateBorder = hcc_ == reg_[0] && (type_ == CrtcType::HD6845S || type_ == CrtcType::MC6845);
+    return lateBorder ? 1 : 3;
+}
+
+bool Crtc::displayEnable(int half) const
+{
+    const bool now = (dispNow() >> (half ? 1 : 0)) & 1;
+    switch (type_) {
+    case CrtcType::UM6845R:
+        // R6 = 0 blanks the picture at once.
+        return now && reg_[6] != 0;
+    case CrtcType::MC6845:
+        return now;
+    default:
+        break;
+    }
+    // Where R8 has skew bits (19.2), they send the signal out through one
+    // or two latches clocked once per character, or not at all. Changing
+    // them changes at once which of the three is sent, so that the border
+    // between two lines can be moved, doubled or made to vanish; a write
+    // counts for the whole of the character it is made during (Shaker A2,
+    // "R8 stories").
+    switch (reg_[8] & 0x30) {
+    case 0x00: return now;
+    case 0x10: return (dispHistory_ >> 1) & 1;
+    case 0x20: return (dispHistory_ >> 3) & 1;
+    default: return false;
+    }
 }
 
 void Crtc::tick()
 {
     previousHsyncCut_ = hsyncCut_;
     hsyncCut_ = HsyncCut::None;
+    dispHistory_ = static_cast<uint8_t>((dispHistory_ << 2 | dispNow()) & 0x0F);
 
     const bool type0 = type_ == CrtcType::HD6845S;
-    if (hcc_ == reg_[0]) {
+    const bool newLine = hcc_ == reg_[0];
+    if (newLine) {
         hcc_ = 0;
         if (type0)
             lineStart0();
@@ -258,7 +288,10 @@ void Crtc::tick()
     }
 
     if (hcc_ == 0) {
-        hDisp_ = true;
+        // C0 back at 0 for having run past 255, not for having met R0, does
+        // not turn the display back on (17.1, seen on CRTC 0).
+        if (newLine || !type0)
+            hDisp_ = true;
         // While on the first row the UM6845R follows R12/R13 live.
         if (type_ == CrtcType::UM6845R && vcc_ == 0)
             maRow_ = startAddress();

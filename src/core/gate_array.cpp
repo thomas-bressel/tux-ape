@@ -77,7 +77,7 @@ void GateArray::reset()
     }
     inkChanged_ = false;
     fetched_[0] = fetched_[1] = 0;
-    fetchedDisplay_ = false;
+    fetchedDisplay_[0] = fetchedDisplay_[1] = false;
     r52_ = 0;
     hsyncAge_ = 0;
     vsyncLines_ = 0;
@@ -281,18 +281,12 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
             // the character on a Gate Array, from a quarter of the way in
             // on the Plus ASIC.
             const int split = inkChanged_ ? (plusAsic ? 4 : 8) : 0;
-            if (!fetchedDisplay_) {
-                for (int i = 0; i < split; ++i)
-                    out[i] = rgbBefore_[kBorder];
-                for (int i = split; i < Monitor::kCellWidth; ++i)
-                    out[i] = rgb_[kBorder];
-            } else {
-                const uint8_t* left = kPenTable.pens[mode_][fetched_[0]];
-                const uint8_t* right = kPenTable.pens[mode_][fetched_[1]];
-                for (int i = 0; i < 8; ++i) {
-                    out[i] = (i < split ? rgbBefore_ : rgb_)[left[i]];
-                    out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[right[i]];
-                }
+            // Each byte is either picture or border.
+            const uint8_t* left = kPenTable.pens[mode_][fetched_[0]];
+            const uint8_t* right = kPenTable.pens[mode_][fetched_[1]];
+            for (int i = 0; i < 8; ++i) {
+                out[i] = (i < split ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[i] : kBorder];
+                out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
             }
             for (int i = blackFrom; i < blackTo; ++i)
                 out[i] = kBlack;
@@ -303,7 +297,8 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
     // Fetch the character the CRTC is pointing at; it is drawn next time.
     // The refresh address and the raster line together address 64K:
     // MA13-12 pick the 16K block, RA2-0 the line within the row.
-    fetchedDisplay_ = crtc.displayEnable();
+    fetchedDisplay_[0] = crtc.displayEnable(0);
+    fetchedDisplay_[1] = crtc.displayEnable(1);
     const uint16_t ma = crtc.ma();
     const unsigned addr = (ma & 0x3000u) << 2 | (crtc.ra() & 7u) << 11 | (ma & 0x3FFu) << 1;
     fetched_[0] = videoRam[addr];

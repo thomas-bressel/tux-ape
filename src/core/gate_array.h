@@ -77,7 +77,7 @@ private:
     // The character fetched from video memory is displayed one microsecond
     // later.
     uint8_t fetched_[2] = {};
-    bool fetchedDisplay_ = false;
+    bool fetchedDisplay_[2] = {};  // display enable for each of the two bytes
 
     uint8_t r52_ = 0;
     uint8_t hsyncAge_ = 0;      // microseconds since HSYNC rose
