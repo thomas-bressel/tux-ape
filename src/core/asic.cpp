@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "core/crtc.h"
 #include "core/gate_array.h"
 
 namespace tuxape {
@@ -55,6 +56,41 @@ void Asic::reset()
     if (gateArray_)
         for (int index = 0; index < 32; ++index)
             gateArray_->setPlusColour(index, 0);
+    if (crtc_)
+        crtc_->setSplit(0, 0);
+}
+
+void Asic::raiseRasterInterrupt()
+{
+    dcsr_ |= 0x80;
+    showDcsr();
+}
+
+void Asic::raiseChannelInterrupt(int channel)
+{
+    dcsr_ |= static_cast<uint8_t>(0x40 >> channel);
+    showDcsr();
+}
+
+uint8_t Asic::acknowledgeInterrupt(bool raster)
+{
+    // The raster's interrupt comes first, then the channels' from 0 to 2;
+    // which one it is shows in bits 2 and 1 of the vector, bit 0 being
+    // always 0.
+    uint8_t vector = ivr_ & 0xF8;
+    if (raster) {
+        vector |= 0x06;
+        dcsr_ &= 0x7F;
+    } else if (dcsr_ & 0x70) {
+        const int channel = dcsr_ & 0x40 ? 0 : dcsr_ & 0x20 ? 1 : 2;
+        vector |= static_cast<uint8_t>((2 - channel) << 1);
+        // A channel's interrupt stays until its flag is written to, unless
+        // the vector register asks for it to go by itself.
+        if (ivr_ & 1)
+            dcsr_ &= static_cast<uint8_t>(~(0x40 >> channel));
+    }
+    showDcsr();
+    return vector;
 }
 
 void Asic::sequence(uint8_t value)
@@ -143,9 +179,18 @@ void Asic::write(uint16_t address, uint8_t value)
     }
     switch (at) {
     case kRaster: pri_ = value; return;
-    case kRaster + 1: splt_ = value; return;
-    case kRaster + 2: ssa_ = static_cast<uint16_t>((ssa_ & 0x00FF) | (value & 0x3F) << 8); return;
-    case kRaster + 3: ssa_ = static_cast<uint16_t>((ssa_ & 0xFF00) | value); return;
+    case kRaster + 1:
+    case kRaster + 2:
+    case kRaster + 3:
+        if (at == kRaster + 1)
+            splt_ = value;
+        else if (at == kRaster + 2)
+            ssa_ = static_cast<uint16_t>((ssa_ & 0x00FF) | (value & 0x3F) << 8);
+        else
+            ssa_ = static_cast<uint16_t>((ssa_ & 0xFF00) | value);
+        if (crtc_)
+            crtc_->setSplit(splt_, ssa_);
+        return;
     case kRaster + 4: sscr_ = value; return;
     case kRaster + 5: ivr_ = value; return;
     case kDma + 15:

@@ -80,6 +80,8 @@ const Program kPrograms[] = {
     // keyboard workspace: the keys this runner presses to turn the pages
     // spoil a few of them.
     {"asictest", "plus/asic1.dsk", "TEST", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 80000, 22, {"sprite ram mask"}},
+    // What the ASIC does in place of an 8255.
+    {"asicppi", "plus/asic1.dsk", "PPI", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 40000, 21, {}},
 };
 
 struct Verdict {

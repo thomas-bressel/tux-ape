@@ -6,6 +6,7 @@
 
 namespace tuxape {
 
+class Crtc;
 class GateArray;
 
 // The ASIC of the Plus machines (464 Plus, 6128 Plus, GX4000), which holds
@@ -19,8 +20,12 @@ class Asic {
 public:
     Asic();
 
-    // Where the palette's colours go.
-    void attach(GateArray* gateArray) { gateArray_ = gateArray; }
+    // Where the palette's colours and the split screen go.
+    void attach(GateArray* gateArray, Crtc* crtc)
+    {
+        gateArray_ = gateArray;
+        crtc_ = crtc;
+    }
 
     void reset();
 
@@ -69,8 +74,22 @@ public:
     uint8_t scroll() const { return sscr_; }              // bit 7 border, bits 6-4 lines, bits 3-0 pixels
     uint8_t interruptVector() const { return ivr_; }
 
+    // ---- Interrupts ----
+    // The raster's interrupt, raised by the Gate Array on the line asked
+    // for, and those of the three sound channels. The status register
+    // shows them (bit 7, and bits 6 to 4 for channels 0 to 2).
+    void raiseRasterInterrupt();
+    void raiseChannelInterrupt(int channel);
+    // A sound channel is asking for an interrupt.
+    bool interruptPending() const { return (dcsr_ & 0x70) != 0; }
+    // The Z80 has taken an interrupt, the raster's if `raster`: the byte it
+    // reads in mode 2 (the vector register, with which interrupt it is in
+    // bits 2-1), and what the taking clears.
+    uint8_t acknowledgeInterrupt(bool raster);
+
 private:
     GateArray* gateArray_ = nullptr;
+    Crtc* crtc_ = nullptr;
 
     bool unlocked_ = false;
     int sequenceAt_ = 0;

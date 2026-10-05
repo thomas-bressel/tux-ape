@@ -5,7 +5,8 @@ namespace tuxape {
 Cpc::Cpc()
     : cpu_(*this)
 {
-    asic_.attach(&gateArray_);
+    asic_.attach(&gateArray_, &crtc_);
+    gateArray_.attach(&asic_);
     memory_.setAsic(&asic_);
     reset();
 }
@@ -15,6 +16,7 @@ void Cpc::setCartridge(const Cartridge* cartridge, bool discRom)
     plus_ = cartridge != nullptr && cartridge->pages() > 0;
     memory_.setCartridge(plus_ ? std::span<const uint8_t>(cartridge->data) : std::span<const uint8_t>(), discRom);
     gateArray_.setPlus(plus_);
+    ppi_.setPlus(plus_);
     asic_.reset();
 }
 
@@ -155,6 +157,11 @@ uint8_t Cpc::ioRead(uint16_t port)
     if (!(port & 0x0800)) {
         uint8_t pins = 0xFF;
         switch (high & 3) {
+        case 3:
+            // A Plus reads port A here too.
+            if (!plus_)
+                break;
+            [[fallthrough]];
         case 0:
             // The PSG drives the bus only while BC1 is high and BDIR low.
             if ((ppi_.outputC() >> 6) == 1)

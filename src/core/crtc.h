@@ -72,6 +72,18 @@ public:
     uint8_t hcc() const { return hcc_; }    // horizontal character counter
     uint8_t vcc() const { return vcc_; }    // vertical character counter
     uint8_t vlc() const { return vlc_; }    // vertical line counter
+
+    // The Plus ASIC's additions. The split: when the line that starts is
+    // number `line` (C4 in bits 7-3, C9 in bits 2-0; 0 for no split), the
+    // picture goes on from `address`. And the number of the line since the
+    // frame began, which is where its sprites are counted from.
+    void setSplit(uint8_t line, uint16_t address)
+    {
+        splitLine_ = line;
+        splitAddress_ = address & 0x3FFF;
+    }
+    uint8_t asicLine() const { return static_cast<uint8_t>(vcc_ << 3 | (vlc_ & 7)); }
+    int frameLine() const { return asic() ? frameLine_ : vcc_ * (reg_[9] + 1) + vlc_; }
     uint8_t vtac() const { return vtac_; }  // vertical total adjust counter
     uint8_t hsc() const { return hsc_; }    // horizontal sync counter
     uint8_t vsc() const { return vsc_; }    // vertical sync counter
@@ -90,6 +102,9 @@ private:
     uint8_t vsc_ = 0;
     uint16_t ma_ = 0;
     uint16_t maRow_ = 0;  // refresh address at the start of the current row
+    uint8_t splitLine_ = 0;
+    uint16_t splitAddress_ = 0;
+    int frameLine_ = 0;
     bool hsync_ = false;
     HsyncCut hsyncCut_ = HsyncCut::None;
     HsyncCut previousHsyncCut_ = HsyncCut::None;

@@ -3,6 +3,7 @@
 // outside, port by port, on a cartridge made up here: no ROM image is
 // needed. What real machines do is in Kevin Thacker's tests (acid_plus).
 
+#include <algorithm>
 #include <vector>
 
 #include "check.h"
@@ -294,6 +295,264 @@ void testAsic()
     CHECK_EQ(plain.memory().read(0x4000), 0x55);
 }
 
+// The ASIC's stand-in for the 8255: port B always an input, port C always
+// an output, and port A read through the control register's address.
+void testPpi()
+{
+    Cpc cpc;
+    const Cartridge cartridge = numbered(8);
+    cpc.setCartridge(&cartridge);
+    cpc.reset();
+    cpc.out(0xF700, 0x80);  // all three ports asked to be outputs
+    cpc.out(0xF500, 0x00);
+    CHECK_EQ(cpc.in(0xF500) & 0x5E, 0x5E);  // port B still reads its links
+    cpc.out(0xF700, 0x9B);  // all three asked to be inputs
+    cpc.out(0xF600, 0x25);
+    CHECK_EQ(cpc.in(0xF600), 0x25);  // port C still gives back what was written
+    CHECK_EQ(cpc.in(0xF700), 0xFF);  // port A's pins, with nothing driving them
+    cpc.out(0xF700, 0x82);
+    cpc.out(0xF400, 0x38);
+    CHECK_EQ(cpc.in(0xF700), 0x00);  // port A an output
+
+    // A CPC's 8255 does as it is told.
+    Cpc plain;
+    plain.out(0xF700, 0x80);
+    plain.out(0xF500, 0x00);
+    CHECK_EQ(plain.in(0xF500), 0x00);
+    plain.out(0xF700, 0x9B);
+    plain.out(0xF600, 0x25);
+    CHECK_EQ(plain.in(0xF600), 0xFF);
+    CHECK_EQ(plain.in(0xF700), 0xFF);
+}
+
+// A Plus with a cartridge that does nothing (DI, and a jump to itself), the
+// ASIC unlocked with its registers shown, and the firmware's screen.
+struct PlusMachine {
+    Cpc cpc;
+    PlusMachine()
+    {
+        Cartridge cartridge = numbered(8);
+        cartridge.data[0] = 0xF3;
+        cartridge.data[1] = 0x18;
+        cartridge.data[2] = 0xFE;
+        cpc.setCartridge(&cartridge);
+        cpc.crtc().setType(CrtcType::AsicPlus);
+        cpc.reset();
+        static const uint8_t screen[] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7, 0, 0, 0x30, 0};
+        for (int r = 0; r < 14; ++r) {
+            cpc.out(0xBC00, static_cast<uint8_t>(r));
+            cpc.out(0xBD00, screen[r]);
+        }
+        unlock(cpc);
+        cpc.out(0x7F00, 0xB8);
+        // A few frames for the picture to settle on its new registers.
+        for (int frame = 0; frame < 6; ++frame)
+            cpc.runFrame();
+    }
+    void write(uint16_t address, uint8_t value) { cpc.memory().write(address, value); }
+    // The box around the picture's pixels of one colour: left, top, width,
+    // height; all zero if there is none.
+    struct Box {
+        int x = 0, y = 0, width = 0, height = 0;
+    };
+    // The last whole picture, drawn after everything asked for so far.
+    const uint32_t* picture()
+    {
+        for (int frame = 0; frame < 3; ++frame)
+            cpc.runFrame();
+        return cpc.monitor().frame();
+    }
+    Box find(uint32_t colour)
+    {
+        const uint32_t* frame = picture();
+        int left = Monitor::kWidth, right = -1, top = Monitor::kHeight, bottom = -1;
+        for (int y = 0; y < Monitor::kHeight; ++y)
+            for (int x = 0; x < Monitor::kWidth; ++x)
+                if (frame[y * Monitor::kWidth + x] == colour) {
+                    left = std::min(left, x);
+                    right = std::max(right, x);
+                    top = std::min(top, y);
+                    bottom = std::max(bottom, y);
+                }
+        if (right < 0)
+            return {};
+        return {left, top, right - left + 1, bottom - top + 1};
+    }
+};
+
+constexpr uint32_t kRed = 0xFFFF0000, kGreen = 0xFF00FF00, kBlue = 0xFF0000FF, kWhite = 0xFFFFFFFF;
+
+void testSprites()
+{
+    PlusMachine m;
+    // A blue screen in a green border, and the sprites' first two colours
+    // red and white.
+    m.write(0x6400, 0x0F);
+    m.write(0x6420, 0x00);
+    m.write(0x6421, 0x0F);
+    m.write(0x6422, 0xF0);
+    m.write(0x6424, 0xFF);
+    m.write(0x6425, 0x0F);
+    const PlusMachine::Box screen = m.find(kBlue);
+    CHECK_EQ(screen.width, 640);
+    CHECK_EQ(screen.height, 200);
+    CHECK_EQ(m.find(kRed).width, 0);
+    CHECK(m.find(kGreen).width > 640);
+
+    // Sprite 0, all of colour 1, at its natural size: 16 pixels by 16
+    // lines, counted from the screen's top left.
+    for (int i = 0; i < 256; ++i)
+        m.write(static_cast<uint16_t>(0x4000 + i), 1);
+    m.write(0x6000, 32);
+    m.write(0x6002, 16);
+    m.write(0x6004, 0x05);
+    PlusMachine::Box red = m.find(kRed);
+    CHECK_EQ(red.x, screen.x + 32);
+    CHECK_EQ(red.y, screen.y + 16);
+    CHECK_EQ(red.width, 16);
+    CHECK_EQ(red.height, 16);
+    // Twice as wide, four times as high.
+    m.write(0x6004, 0x0B);
+    red = m.find(kRed);
+    CHECK_EQ(red.x, screen.x + 32);
+    CHECK_EQ(red.width, 32);
+    CHECK_EQ(red.height, 64);
+    // Colour 0 lets the screen show: a hole in the middle.
+    m.write(0x6004, 0x05);
+    for (int y = 4; y < 12; ++y)
+        for (int x = 4; x < 12; ++x)
+            m.write(static_cast<uint16_t>(0x4000 + y * 16 + x), 0);
+    const uint32_t* frame = m.picture();
+    CHECK_EQ(frame[(screen.y + 16 + 8) * Monitor::kWidth + screen.x + 32 + 8], kBlue);
+    CHECK_EQ(frame[(screen.y + 16 + 2) * Monitor::kWidth + screen.x + 32 + 8], kRed);
+
+    // A sprite of a lower number goes over one of a higher number.
+    for (int i = 0; i < 256; ++i)
+        m.write(static_cast<uint16_t>(0x4100 + i), 2);
+    m.write(0x6008, 40);
+    m.write(0x600A, 24);
+    m.write(0x600C, 0x05);
+    const PlusMachine::Box white = m.find(kWhite);
+    CHECK_EQ(white.x, screen.x + 40);
+    CHECK_EQ(white.width, 16);
+    frame = m.cpc.monitor().frame();
+    CHECK_EQ(frame[(screen.y + 30) * Monitor::kWidth + screen.x + 42], kRed);    // sprite 0, below its hole
+    CHECK_EQ(frame[(screen.y + 30) * Monitor::kWidth + screen.x + 50], kWhite);  // sprite 1, beyond it
+    CHECK_EQ(frame[(screen.y + 26) * Monitor::kWidth + screen.x + 42], kWhite);  // through sprite 0's hole
+    m.write(0x600C, 0);
+
+    // Off the screen's edge, a sprite is cut: it does not show on the
+    // border.
+    m.write(0x6000, 0xF8);  // X = -8
+    m.write(0x6001, 0x03);
+    m.write(0x6002, 0xFC);  // Y = -4
+    m.write(0x6003, 0x01);
+    red = m.find(kRed);
+    CHECK_EQ(red.x, screen.x);
+    CHECK_EQ(red.y, screen.y);
+    CHECK_EQ(red.width, 8);
+    CHECK_EQ(red.height, 12);
+    // Hidden.
+    m.write(0x6004, 0);
+    CHECK_EQ(m.find(kRed).width, 0);
+}
+
+// The screen split in two, and scrolled by the pixel.
+void testSplitAndScroll()
+{
+    PlusMachine m;
+    // Mode 2 would do; mode 1 is what the machine starts in: pen 0 blue,
+    // pen 1 white, border black. The screen at &C000 is blank but for a
+    // white byte at the start of its first row; the one at &4000 (its RAM
+    // lies under the registers) is all white.
+    m.write(0x6400, 0x0F);
+    m.write(0x6402, 0xFF);
+    m.write(0x6403, 0x0F);
+    m.cpc.out(0x7F00, 0x8D);  // mode 1, ROMs out of the way
+    for (int line = 0; line < 8; ++line)
+        m.cpc.memory().baseRam()[0xC000 + line * 0x800] = 0xF0;
+    for (int i = 0; i < 0x4000; ++i)
+        m.cpc.memory().baseRam()[0x4000 + i] = 0xF0;
+    const PlusMachine::Box screen = m.find(kBlue);
+    PlusMachine::Box white = m.find(kWhite);
+    CHECK_EQ(white.x, screen.x);
+    CHECK_EQ(white.y, screen.y);
+    CHECK_EQ(white.width, 8);
+    CHECK_EQ(white.height, 8);
+
+    // From line 100 on the picture comes from &4000.
+    m.write(0x6801, 100);
+    m.write(0x6802, 0x10);
+    m.write(0x6803, 0x00);
+    const uint32_t* frame = m.picture();
+    CHECK_EQ(frame[(screen.y + 99) * Monitor::kWidth + screen.x + 100], kBlue);
+    CHECK_EQ(frame[(screen.y + 100) * Monitor::kWidth + screen.x + 100], kWhite);
+    CHECK_EQ(frame[(screen.y + 199) * Monitor::kWidth + screen.x + 100], kWhite);
+    m.write(0x6801, 0);
+
+    // The scroll: five pixels to the right, then three lines up.
+    m.write(0x6804, 0x05);
+    white = m.find(kWhite);
+    CHECK_EQ(white.x, screen.x + 5);
+    CHECK_EQ(white.width, 8);
+    CHECK_EQ(white.y, screen.y);
+    // Each row then ends on the first lines of the row below it.
+    m.write(0x6804, 0x30);
+    frame = m.picture();
+    CHECK_EQ(frame[screen.y * Monitor::kWidth + screen.x + 2], kWhite);
+    CHECK_EQ(frame[(screen.y + 4) * Monitor::kWidth + screen.x + 2], kWhite);
+    CHECK_EQ(frame[(screen.y + 5) * Monitor::kWidth + screen.x + 2], kBlue);
+    CHECK_EQ(frame[(screen.y + 8) * Monitor::kWidth + screen.x + 2], kBlue);
+    // The border over the first character hides where the picture comes in.
+    m.write(0x6804, 0x80);
+    CHECK_EQ(m.find(kWhite).width, 0);
+    CHECK_EQ(m.find(kBlue).x, screen.x + 16);
+}
+
+// The interrupt on a line of the program's choice, and the vector the ASIC
+// gives for it.
+void testRasterInterrupt()
+{
+    PlusMachine m;
+    Cpc& cpc = m.cpc;
+    auto nextInterrupt = [&] {
+        // Interrupts are off (DI): one that is asked for stays asked for.
+        for (int i = 0; i < 2 * 312 * 64; ++i) {
+            cpc.run(1);
+            if (cpc.gateArray().interruptRequested())
+                return static_cast<int>(cpc.crtc().asicLine());
+        }
+        return -1;
+    };
+    // A CPC's interrupts come every 52 lines.
+    const int first = nextInterrupt();
+    CHECK(first >= 0);
+    cpc.irqAck();
+    const int second = nextInterrupt();
+    cpc.irqAck();
+    CHECK(second >= 0 && second != first);
+
+    // With a line set, there is the one interrupt a frame, on that line,
+    // as its HSYNC starts.
+    m.write(0x6800, 77);
+    m.write(0x6805, 0x51);
+    for (int frame = 0; frame < 3; ++frame) {
+        CHECK_EQ(nextInterrupt(), 77);
+        // R2 is 46, and the Gate Array sees the HSYNC a character late; the
+        // instruction under way (three microseconds) then has to end.
+        CHECK(cpc.crtc().hcc() >= 47 && cpc.crtc().hcc() <= 49);
+        CHECK_EQ(cpc.memory().read(0x6C0F) & 0x80, 0x80);
+        // The vector: the register's upper bits, with 11 for the raster.
+        CHECK_EQ(cpc.irqAck(), 0x56);
+        CHECK(!cpc.gateArray().interruptRequested());
+        CHECK_EQ(cpc.memory().read(0x6C0F) & 0x80, 0x00);
+    }
+    // Back to the CPC's.
+    m.write(0x6800, 0);
+    const int back = nextInterrupt();
+    CHECK(back >= 0 && back != 77);
+}
+
 }  // namespace
 
 int main()
@@ -301,5 +560,9 @@ int main()
     testCprFiles();
     testCartridgePages();
     testAsic();
+    testPpi();
+    testSprites();
+    testSplitAndScroll();
+    testRasterInterrupt();
     return checkSummary("plus");
 }

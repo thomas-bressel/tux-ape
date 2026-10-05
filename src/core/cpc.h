@@ -164,7 +164,7 @@ public:
     bool irq()
     {
         runVideo(clk_ + 1);
-        return gateArray_.interruptRequested();
+        return gateArray_.interruptRequested() || (plus_ && asic_.interruptPending());
     }
 
     void unusedEd(uint8_t op)
@@ -184,9 +184,12 @@ public:
         // first is what the Shaker's "killer" test measures, instruction by
         // instruction).
         runVideo(clk_ + 2);
+        const bool raster = gateArray_.interruptRequested();
         gateArray_.acknowledgeInterrupt();
         advance(2);
-        return 0xFF;  // nothing drives the data bus
+        // On a Plus the ASIC puts its vector on the bus; on a CPC nothing
+        // drives it.
+        return plus_ ? asic_.acknowledgeInterrupt(raster) : 0xFF;
     }
 
 private:

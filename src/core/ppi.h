@@ -42,18 +42,29 @@ public:
     {
         switch (port) {
         case 0: return aIsInput() ? pins : latch_[0];
-        case 1: return bIsInput() ? pins : latch_[1];
+        case 1: return bIsInput() || plus_ ? pins : latch_[1];
         case 2: {
             uint8_t v = latch_[2];
+            if (plus_)
+                return v;
             if (control_ & 0x08)
                 v = static_cast<uint8_t>((v & 0x0F) | (pins & 0xF0));
             if (control_ & 0x01)
                 v = static_cast<uint8_t>((v & 0xF0) | (pins & 0x0F));
             return v;
         }
-        default: return 0xFF;  // the control register cannot be read back
+        // The control register cannot be read back. On the Plus what is
+        // read there is port A's pins while port A is an input (`pins` are
+        // then port A's), and zero while it is an output.
+        default: return !plus_ ? 0xFF : aIsInput() ? pins : 0x00;
         }
     }
+
+    // The Plus has no 8255: its ASIC stands in for one, and not in every
+    // respect. Whatever the control register says, port B is an input and
+    // port C an output; and the control register reads port A's pins.
+    // (Kevin Thacker's "asicppi" test, run on real machines.)
+    void setPlus(bool plus) { plus_ = plus; }
 
     bool aIsInput() const { return control_ & 0x10; }
     bool bIsInput() const { return control_ & 0x02; }
@@ -64,6 +75,8 @@ public:
     uint8_t outputC() const
     {
         uint8_t v = latch_[2];
+        if (plus_)
+            return v;
         if (control_ & 0x08)
             v |= 0xF0;
         if (control_ & 0x01)
@@ -77,6 +90,7 @@ public:
 private:
     uint8_t control_ = 0x9B;
     uint8_t latch_[3] = {};
+    bool plus_ = false;
 };
 
 }  // namespace tuxape

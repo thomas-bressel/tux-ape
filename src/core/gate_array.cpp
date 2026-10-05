@@ -3,6 +3,7 @@
 #include <array>
 #include <cstring>
 
+#include "core/asic.h"
 #include "core/crtc.h"
 #include "core/monitor.h"
 
@@ -248,6 +249,13 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         // screen mode takes effect: a mode asked for during the first six
         // microseconds of a long HSYNC is still in time (Compendium 9.3.2,
         // Shaker "Gate Array moderisation").
+        // The Plus's raster interrupt comes as the HSYNC of its line
+        // starts.
+        if (hsyncAge_ == 0 && plus_ && asic_->rasterInterruptLine() != 0
+            && crtc.asicLine() == asic_->rasterInterruptLine()) {
+            asic_->raiseRasterInterrupt();
+            interrupt_ = true;
+        }
         if (hsyncAge_ == 2)
             monitor.hsync();
         if (hsyncAge_ == kHsyncPulse)
@@ -267,9 +275,13 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         hsyncAge_ = 0;
         // The end of every HSYNC, however short, advances the interrupt
         // counter.
+        // With a line set for the Plus's raster interrupt, the counter
+        // goes on counting but interrupts no more.
+        const bool ownInterrupts = !(plus_ && asic_->rasterInterruptLine() != 0);
         if (++r52_ == 52) {
             r52_ = 0;
-            interrupt_ = true;
+            if (ownInterrupts)
+                interrupt_ = true;
         }
         if (vsyncSequence_) {
             ++vsyncLines_;
@@ -278,7 +290,7 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
                 // counter is brought into step with the frame, with an
                 // interrupt if the previous one is far enough away.
                 monitor.vsync();
-                if (r52_ >= 32)
+                if (r52_ >= 32 && ownInterrupts)
                     interrupt_ = true;
                 r52_ = 0;
             } else if (vsyncLines_ == 26) {
@@ -362,9 +374,13 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
             // Each byte is either picture or border.
             const uint8_t* left = kPenTable.pens[mode_][fetched_[0]];
             const uint8_t* right = kPenTable.pens[mode_][fetched_[1]];
-            for (int i = 0; i < 8; ++i) {
-                out[i] = (i < split ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[i] : kBorder];
-                out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
+            if (!plus_) {
+                for (int i = 0; i < 8; ++i) {
+                    out[i] = (i < split ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[i] : kBorder];
+                    out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
+                }
+            } else {
+                drawPlus(out, left, right, split);
             }
             for (int i = blackFrom; i < blackTo; ++i)
                 out[i] = kBlack;
@@ -377,12 +393,70 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
     // MA13-12 pick the 16K block, RA2-0 the line within the row.
     fetchedDisplay_[0] = crtc.displayEnable(0);
     fetchedDisplay_[1] = crtc.displayEnable(1);
-    const uint16_t ma = crtc.ma();
-    const unsigned addr = (ma & 0x3000u) << 2 | (crtc.ra() & 7u) << 11 | (ma & 0x3FFu) << 1;
+    uint16_t ma = crtc.ma();
+    unsigned ra = crtc.ra() & 7u;
+    if (plus_) {
+        // The Plus's vertical scroll shows each row from a line further
+        // down, the lines missing at its foot being the first of the row
+        // below.
+        ra += asic_->scroll() >> 4 & 7u;
+        if (ra > 7) {
+            ra &= 7;
+            ma = static_cast<uint16_t>(ma + crtc.reg(1));
+        }
+        fetchedFirst_ = crtc.hcc() == 0;
+        fetchedX_ = crtc.hcc() * Monitor::kCellWidth;
+        fetchedY_ = crtc.frameLine();
+    }
+    const unsigned addr = (ma & 0x3000u) << 2 | ra << 11 | (ma & 0x3FFu) << 1;
     fetched_[0] = videoRam[addr];
     fetched_[1] = videoRam[addr | 1];
 
     monitor.advance();
+}
+
+// A character of a Plus's picture: the screen, moved to the right by the
+// soft scroll, then the sprites on top of it.
+void GateArray::drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split)
+{
+    uint8_t pens[16];
+    for (int i = 0; i < 8; ++i) {
+        pens[i] = fetchedDisplay_[0] ? left[i] : static_cast<uint8_t>(kBorder);
+        pens[i + 8] = fetchedDisplay_[1] ? right[i] : static_cast<uint8_t>(kBorder);
+    }
+    const uint8_t scroll = asic_->scroll();
+    const int shift = scroll & 0x0F;
+    // The border can be drawn over the first character of each line, to
+    // hide where the scrolled picture comes in.
+    const bool masked = (scroll & 0x80) && fetchedFirst_;
+    for (int i = 0; i < 16; ++i) {
+        const uint8_t pen = masked ? static_cast<uint8_t>(kBorder) : i < shift ? pensBefore_[16 - shift + i] : pens[i - shift];
+        out[i] = (i < split ? rgbBefore_ : rgb_)[pen];
+    }
+    std::memcpy(pensBefore_, pens, sizeof pens);
+
+    if (!asic_->spritesShown() || !(fetchedDisplay_[0] || fetchedDisplay_[1]))
+        return;
+    unsigned covered = 0;
+    for (int number = 0; number < 16 && covered != 0xFFFF; ++number) {
+        const Asic::Sprite& sprite = asic_->sprite(number);
+        if (sprite.magX == 0 || sprite.magY == 0)
+            continue;
+        const int dy = fetchedY_ - sprite.y;
+        const int dx = fetchedX_ - sprite.x;
+        if (dy < 0 || dy >= 16 * sprite.magY || dx + 15 < 0 || dx >= 16 * sprite.magX)
+            continue;
+        const int row = dy / sprite.magY;
+        for (int i = 0; i < 16; ++i) {
+            const int x = dx + i;
+            if (x < 0 || x >= 16 * sprite.magX || (covered >> i & 1) || !fetchedDisplay_[i >> 3])
+                continue;
+            if (const uint8_t pixel = asic_->spritePixel(number, x / sprite.magX, row)) {
+                out[i] = spriteRgb_[pixel];
+                covered |= 1u << i;
+            }
+        }
+    }
 }
 
 }  // namespace tuxape

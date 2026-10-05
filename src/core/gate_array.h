@@ -4,6 +4,7 @@
 
 namespace tuxape {
 
+class Asic;
 class Crtc;
 class Monitor;
 
@@ -58,6 +59,8 @@ public:
     // Nothing of it applies to a machine that is not a Plus.
     void setPlus(bool plus);
     bool plus() const { return plus_; }
+    // The ASIC, for its sprites, its scrolling and its raster interrupt.
+    void attach(Asic* asic) { asic_ = asic; }
     void setPlusColour(int index, uint16_t grb);
     uint32_t spriteColour(int number) const { return spriteRgb_[number & 15]; }
     // The 12-bit colour the ASIC keeps for one of the CPC's.
@@ -89,6 +92,11 @@ private:
     bool plus_ = false;
     uint16_t plus12_[32] = {};
     uint32_t spriteRgb_[16] = {};
+    Asic* asic_ = nullptr;
+    uint8_t pensBefore_[16] = {};  // the character drawn last, for soft scrolling
+    bool fetchedFirst_ = false;    // the character fetched is the line's first
+    int fetchedX_ = 0;             // where it is for the sprites
+    int fetchedY_ = 0;
 
     // Colours as they were before an ink change made during the current
     // microsecond; the change only shows part-way through the character.
@@ -112,6 +120,8 @@ private:
     bool hsync_ = false;         // HSYNC as the Gate Array sees it now
     bool blankedBefore_ = false;  // the previous character was blanked to its end
     bool lateBlanking_ = false;   // this HSYNC was started by an R2 write that came late
+
+    void drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split);
 };
 
 }  // namespace tuxape

@@ -303,6 +303,10 @@ void Crtc::tick()
         // it only moves when C0 meets R1 on a row's last line, so a frame
         // that never does shows R12/R13 on its first row and whatever was
         // kept last on all the others (17.4.2, Shaker "R1 stories").
+        // The Plus's split screen: from this line on the picture comes
+        // from another address.
+        if (splitLine_ != 0 && asic() && asicLine() == splitLine_)
+            maRow_ = splitAddress_;
         ma_ = type_ == CrtcType::UM6845R && vcc_ == 0 ? startAddress() : maRow_;
     } else {
         ma_ = (ma_ + 1) & 0x3FFF;
@@ -412,6 +416,7 @@ void Crtc::startVsync()
 // looked at as a row begins.
 void Crtc::endOfLineAsic()
 {
+    ++frameLine_;
     if (vsync_) {
         if (vsyncFresh_) {
             // Started in the middle of the line: the count begins here.
@@ -479,6 +484,7 @@ void Crtc::newFrameAsic()
 {
     inAdjust_ = interlaceLine_ = false;
     vcc_ = 0;
+    frameLine_ = 0;
     // The parity changes with every frame, whatever R8 holds. A VSYNC on
     // row 0 is dealt with before it does (19.7.3).
     const bool before = parityFrame_;
