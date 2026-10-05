@@ -15,6 +15,7 @@
 
 #include "core/autotype.h"
 #include "core/cpc.h"
+#include "core/recording.h"
 #include "core/keymap.h"
 #include "core/setup.h"
 
@@ -116,6 +117,18 @@ public:
     // The latest finished picture: 768 x 270, to be shown twice as tall.
     QImage frame();
 
+    // ---- Recording ----
+    // The sound, as a WAV file, and the sound chip's registers, as a YM
+    // file, from now until stopped. What is recorded is the machine's
+    // sound in the machine's time, whatever the speed it is run at. Each
+    // start returns false if the file cannot be written.
+    bool startWavRecording(const QString& path);
+    void stopWavRecording();
+    bool recordingWav() const { return recordingWav_; }
+    bool startYmRecording(const QString& path);
+    bool stopYmRecording();
+    bool recordingYm() const { return recordingYm_; }
+
     // ---- For the debugger ----
     // Breakpoints: the machine pauses just before the instruction at one of
     // these addresses, and stopped() is sent. They can all be switched off
@@ -199,6 +212,13 @@ private:
     QImage frame_;
     std::atomic<bool> framePending_{false};
     uint64_t lastFrameNumber_ = 0;
+
+    tuxape::WavRecorder wav_;
+    tuxape::YmRecorder ym_;
+    std::atomic<bool> recordingWav_{false};
+    std::atomic<bool> recordingYm_{false};
+    bool wavOwnsMixer_ = false;  // the mixer runs for the recording alone
+    QString ymPath_;
 
     AudioOutput* device_ = nullptr;  // the sound device, if the host has one
     AudioOutput* audio_ = nullptr;   // ... when sound is wanted

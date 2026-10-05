@@ -16,6 +16,7 @@ add_library(tuxape_core STATIC
     memory.cpp
     monitor.cpp
     psg.cpp
+    recording.cpp
     screen_text.cpp
     setup.cpp
     snapshot.cpp

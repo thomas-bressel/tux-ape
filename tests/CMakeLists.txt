@@ -80,6 +80,10 @@ add_executable(zip zip.cpp)
 target_link_libraries(zip PRIVATE tuxape_core)
 add_test(NAME zip COMMAND zip)
 
+add_executable(recording recording.cpp)
+target_link_libraries(recording PRIVATE tuxape_core)
+add_test(NAME recording COMMAND recording)
+
 add_executable(disasm disasm.cpp)
 target_link_libraries(disasm PRIVATE tuxape_core)
 add_test(NAME disasm COMMAND disasm)

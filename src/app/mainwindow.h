@@ -88,6 +88,9 @@ private:
     QAction* setupAction_ = nullptr;
     QAction* libraryAction_ = nullptr;
     QAction* cartridgeAction_ = nullptr;
+    QAction* recordWavAction_ = nullptr;
+    QAction* recordYmAction_ = nullptr;
+    QString recordingFolder_;
     QAction* tapeControlAction_ = nullptr;
     QAction* rewindTapeAction_ = nullptr;
     QAction* removeTapeAction_ = nullptr;
@@ -147,6 +150,10 @@ private:
     void autoType();
     void showLibrary();
     void chooseCartridge();
+    // File > Record WAV and Record YM: a file is asked for and the
+    // recording starts; chosen again, the entry ends it.
+    void toggleWavRecording();
+    void toggleYmRecording();
     // The cassette deck.
     void chooseTape();
     void removeTape();

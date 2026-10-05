@@ -1,6 +1,9 @@
 #include "emulator.h"
 
+#include <QFileInfo>
+
 #include "core/disasm.h"
+#include "core/files.h"
 
 #include "audiooutput.h"
 
@@ -124,9 +127,13 @@ void Emulator::setSound(bool on, int sampleRate, bool sixteenBit, bool stereo, i
 // locked.
 void Emulator::playSound()
 {
-    if (!audio_)
-        return;
     std::vector<int16_t>& samples = cpc_.audio().samples();
+    if (wav_.active())
+        wav_.write(samples);
+    if (!audio_) {
+        samples.clear();
+        return;
+    }
     // Speeded up or slowed down, the sound would only be noise.
     if (speedPercent_ != 100 || displayEvery_ != 0) {
         if (!audioSilenced_)
@@ -167,6 +174,62 @@ void Emulator::setPaused(bool paused)
         paused_ = paused;
     }
     wake_.notify_all();
+}
+
+// ---- recording -------------------------------------------------------------------
+
+bool Emulator::startWavRecording(const QString& path)
+{
+    return withMachine([&](Cpc& cpc) {
+        // With the sound off the mixer is at rest: it runs for the file.
+        wavOwnsMixer_ = !cpc.audio().enabled();
+        const int rate = audio_ ? audio_->sampleRate() : 44100;
+        if (!wav_.start(path.toStdString(), rate))
+            return false;
+        if (wavOwnsMixer_)
+            cpc.audio().setSampleRate(rate);
+        recordingWav_ = true;
+        return true;
+    });
+}
+
+void Emulator::stopWavRecording()
+{
+    withMachine([&](Cpc& cpc) {
+        if (!wav_.active())
+            return;
+        wav_.write(cpc.audio().samples());
+        wav_.stop();
+        if (wavOwnsMixer_) {
+            cpc.audio().setSampleRate(0);
+            cpc.audio().samples().clear();
+        }
+        recordingWav_ = false;
+    });
+}
+
+bool Emulator::startYmRecording(const QString& path)
+{
+    // The file is written at the end; better to know now that it can be.
+    if (!tuxape::writeFile(path.toStdString(), {}))
+        return false;
+    withMachine([&](Cpc&) {
+        ymPath_ = path;
+        ym_.start();
+        recordingYm_ = true;
+    });
+    return true;
+}
+
+bool Emulator::stopYmRecording()
+{
+    return withMachine([&](Cpc&) {
+        if (!ym_.active())
+            return false;
+        recordingYm_ = false;
+        const std::vector<uint8_t> file = ym_.finish(QFileInfo(ymPath_).completeBaseName().toStdString());
+        return tuxape::writeFile(ymPath_.toStdString(), file);
+    });
 }
 
 // ---- debugging -------------------------------------------------------------------
@@ -451,6 +514,7 @@ void Emulator::threadMain()
             applyJoystick(joystick_.poll());
         autoType_.frame();
         cpc_.runFrame();
+        ym_.frame(cpc_.psg());
         // A breakpoint, the end of a step, or a break instruction: the
         // machine has stopped short of the frame's end, and stays there.
         const bool stop = stopRequested_ || cpc_.breakInstructionHit();

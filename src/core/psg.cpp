@@ -56,16 +56,20 @@ void Psg::write(uint8_t value)
     reg_[selected_] = value & kMask[selected_];
     // Writing the shape register starts the envelope again, even with the
     // same shape.
-    if (selected_ == 13)
+    if (selected_ == 13) {
         restartEnvelope();
+        envelopeWritten_ = true;
+    }
 }
 
 void Psg::setRegister(int number, uint8_t value)
 {
     number &= 15;
     reg_[number] = value & kMask[number];
-    if (number == 13)
+    if (number == 13) {
         restartEnvelope();
+        envelopeWritten_ = true;
+    }
 }
 
 uint8_t Psg::read(uint8_t portA) const

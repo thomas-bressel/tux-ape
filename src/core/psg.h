@@ -40,12 +40,21 @@ public:
     static float amplitude(uint8_t level);
 
     uint8_t reg(int n) const { return reg_[n & 15]; }
+    // Whether the envelope's shape has been written since this was last
+    // asked: a recording of the registers has to know.
+    bool takeEnvelopeWritten()
+    {
+        const bool written = envelopeWritten_;
+        envelopeWritten_ = false;
+        return written;
+    }
     uint8_t selected() const { return selected_; }
 
 private:
     uint8_t reg_[16] = {};
     uint8_t selected_ = 0;
     bool selectValid_ = true;  // the chip ignores register numbers above 15
+    bool envelopeWritten_ = false;
 
     uint16_t toneCounter_[3] = {};
     bool toneOutput_[3] = {};

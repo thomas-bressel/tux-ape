@@ -228,8 +228,11 @@ void MainWindow::createMenus()
     file->addSeparator();
     addItem(file, tr("Save Screens&hot..."), CTRL | Qt::Key_F7, [this] { saveScreenshot(); });
     addItem(file, tr("R&ecord AVI..."));
-    addItem(file, tr("Record &WAV..."));
-    addItem(file, tr("Record &YM..."));
+    recordWavAction_ = addItem(file, tr("Record &WAV..."), {}, [this] { toggleWavRecording(); });
+    recordYmAction_ = addItem(file, tr("Record &YM..."), {}, [this] { toggleYmRecording(); });
+    // Ticked while the recording runs.
+    recordWavAction_->setCheckable(true);
+    recordYmAction_->setCheckable(true);
     file->addSeparator();
     addItem(file, tr("Aut&o Type..."), CTRL | Qt::Key_F5, [this] { autoType(); });
     pasteAction_ = addItem(file, tr("&Paste"), CTRL | Qt::Key_F11, [this] { paste(); });
@@ -528,6 +531,43 @@ void MainWindow::saveScreenshot()
         settings_.screenshotFolder = QFileInfo(path).absolutePath();
     }
     settings_.save();
+}
+
+// ---- recording -------------------------------------------------------------------
+
+void MainWindow::toggleWavRecording()
+{
+    if (emulator_->recordingWav()) {
+        emulator_->stopWavRecording();
+    } else {
+        QString path = QFileDialog::getSaveFileName(this, tr("Record WAV"), recordingFolder_, tr("WAV Files (*.wav)"));
+        if (!path.isEmpty()) {
+            if (QFileInfo(path).suffix().isEmpty())
+                path += QLatin1String(".wav");
+            recordingFolder_ = QFileInfo(path).absolutePath();
+            if (!emulator_->startWavRecording(path))
+                report(tr("Cannot write %1.").arg(QDir::toNativeSeparators(path)));
+        }
+    }
+    recordWavAction_->setChecked(emulator_->recordingWav());
+}
+
+void MainWindow::toggleYmRecording()
+{
+    if (emulator_->recordingYm()) {
+        if (!emulator_->stopYmRecording())
+            report(tr("The YM file could not be written."));
+    } else {
+        QString path = QFileDialog::getSaveFileName(this, tr("Record YM"), recordingFolder_, tr("YM Files (*.ym)"));
+        if (!path.isEmpty()) {
+            if (QFileInfo(path).suffix().isEmpty())
+                path += QLatin1String(".ym");
+            recordingFolder_ = QFileInfo(path).absolutePath();
+            if (!emulator_->startYmRecording(path))
+                report(tr("Cannot write %1.").arg(QDir::toNativeSeparators(path)));
+        }
+    }
+    recordYmAction_->setChecked(emulator_->recordingYm());
 }
 
 // ---- cartridges ------------------------------------------------------------------

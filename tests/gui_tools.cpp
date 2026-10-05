@@ -266,6 +266,46 @@ int main(int argc, char* argv[])
             blue += qBlue(shot.pixel(x, y)) > 0x40 && qRed(shot.pixel(x, y)) < 0x40 ? 1 : 0;
     CHECK(blue > 200);  // mostly the blue paper
 
+    // Recordings of the sound: a WAV file and a YM file, each started and
+    // ended from its entry of the File menu (here without the file box).
+    QAction* recordWav = actionNamed(window, "Record WAV...");
+    QAction* recordYm = actionNamed(window, "Record YM...");
+    CHECK(recordWav && recordWav->isEnabled() && recordWav->isCheckable() && !recordWav->isChecked());
+    CHECK(recordYm && recordYm->isEnabled() && recordYm->isCheckable());
+    const QString wavPath = folder.filePath("sound.wav"), ymPath = folder.filePath("tune.ym");
+    CHECK(!emulator.recordingWav() && !emulator.recordingYm());
+    CHECK(emulator.startWavRecording(wavPath));
+    CHECK(emulator.startYmRecording(ymPath));
+    CHECK(emulator.recordingWav() && emulator.recordingYm());
+    emulator.autoType(QStringLiteral("SOUND 1,200,20,15~RETURN~"));
+    QTest::qWait(400);  // some four seconds of the machine's time
+    // The entries end what is running.
+    recordWav->trigger();
+    recordYm->trigger();
+    CHECK(!emulator.recordingWav() && !emulator.recordingYm());
+    CHECK(!recordWav->isChecked() && !recordYm->isChecked());
+    {
+        QFile wav(wavPath);
+        CHECK(wav.open(QIODevice::ReadOnly));
+        const QByteArray data = wav.readAll();
+        CHECK(data.startsWith("RIFF") && data.mid(8, 4) == "WAVE");
+        // At least a second of sound, and not all of it silence.
+        CHECK(data.size() > 44 + 44100 * 4);
+        bool heard = false;
+        for (qsizetype i = 44; i + 1 < data.size() && !heard; i += 2)
+            heard = data[i] != 0 || data[i + 1] != 0;
+        CHECK(heard);
+        QFile ym(ymPath);
+        CHECK(ym.open(QIODevice::ReadOnly));
+        const QByteArray tune = ym.readAll();
+        CHECK(tune.startsWith("YM5!LeOnArD!") && tune.endsWith("End!"));
+        const int frames = static_cast<uint8_t>(tune[14]) << 8 | static_cast<uint8_t>(tune[15]);
+        CHECK(frames > 50);
+        CHECK(tune.size() > 34 + frames * 16);
+    }
+    CHECK(!emulator.startWavRecording(folder.filePath("missing/sound.wav")));
+    CHECK(!emulator.startYmRecording(folder.filePath("missing/tune.ym")));
+
     emulator.stop();
     return checkSummary("gui_tools");
 }
