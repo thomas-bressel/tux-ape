@@ -744,9 +744,11 @@ bool MainWindow::saveSnapshotFile(const QString& path)
     using tuxape::CpcModel;
     using tuxape::SnapshotMachine;
     const CpcModel model = emulator_->model();
-    const SnapshotMachine machine = model == CpcModel::Cpc464   ? SnapshotMachine::Cpc464
-                                    : model == CpcModel::Cpc664 ? SnapshotMachine::Cpc664
-                                                                : SnapshotMachine::Cpc6128;
+    const SnapshotMachine machine = model == CpcModel::Cpc464     ? SnapshotMachine::Cpc464
+                                    : model == CpcModel::Cpc664   ? SnapshotMachine::Cpc664
+                                    : model == CpcModel::Plus464  ? SnapshotMachine::Plus464
+                                    : model == CpcModel::Plus6128 ? SnapshotMachine::Plus6128
+                                                                  : SnapshotMachine::Cpc6128;
     const std::vector<uint8_t> bytes =
         emulator_->withMachine([&](tuxape::Cpc& cpc) { return tuxape::saveSnapshot(cpc, machine); });
     QFile file(path);

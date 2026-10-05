@@ -4,11 +4,13 @@
 // needed. What real machines do is in Kevin Thacker's tests (acid_plus).
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 #include "check.h"
 #include "core/cartridge.h"
 #include "core/cpc.h"
+#include "core/snapshot.h"
 
 namespace {
 
@@ -652,6 +654,82 @@ void testSoundChannels()
     CHECK_EQ(cpc.psg().reg(2), 0x03);
 }
 
+// A snapshot of a Plus holds what its ASIC held.
+void testSnapshot()
+{
+    PlusMachine m;
+    m.write(0x6400, 0x0F);
+    m.write(0x6420, 0x00);
+    m.write(0x6421, 0x0F);
+    m.write(0x6422, 0xF0);
+    for (int i = 0; i < 256; ++i)
+        m.write(static_cast<uint16_t>(0x4300 + i), static_cast<uint8_t>(i % 5 == 0 ? 0 : 1));
+    m.write(0x6018, 100);
+    m.write(0x6019, 0x03);
+    m.write(0x601A, 60);
+    m.write(0x601C, 0x0E);
+    m.write(0x6800, 90);
+    m.write(0x6801, 150);
+    m.write(0x6802, 0x10);
+    m.write(0x6803, 0x22);
+    m.write(0x6804, 0x93);
+    m.write(0x6805, 0x59);
+    m.cpc.memory().baseRam()[0x8000] = 0x34;  // a pause of &234 units of 5 lines, under way
+    m.cpc.memory().baseRam()[0x8001] = 0x12;
+    m.write(0x6C04, 0x00);
+    m.write(0x6C05, 0x80);
+    m.write(0x6C06, 0x04);
+    m.write(0x6C0F, 0x02);
+    m.cpc.run(3 * 64);
+    m.cpc.out(0x7F00, 0xA0 + 0x08 + 5);  // the lower ROM at &4000, page 5
+    const std::vector<uint8_t> snapshot = saveSnapshot(m.cpc, SnapshotMachine::Plus6128);
+    SnapshotInfo info;
+    CHECK(snapshotInfo(snapshot, info));
+    CHECK(info.machine == SnapshotMachine::Plus6128);
+    const std::vector<uint8_t> chunk = m.cpc.asic().snapshot();
+    CHECK_EQ(chunk.size(), 0x8F8);
+
+    PlusMachine other;
+    std::string error;
+    CHECK(loadSnapshot(other.cpc, snapshot, &error));
+    Asic& asic = other.cpc.asic();
+    CHECK(asic.unlocked());
+    CHECK_EQ(asic.rmr2(), 0x0D);
+    CHECK_EQ(other.cpc.memory().read(0x4000), 0xC5);
+    CHECK_EQ(asic.colour(0), 0x00F);
+    CHECK_EQ(asic.colour(16), 0xF00);
+    CHECK_EQ(asic.colour(17), 0x0F0);
+    CHECK_EQ(asic.spritePixel(3, 1, 0), 1);
+    CHECK_EQ(asic.spritePixel(3, 0, 0), 0);
+    CHECK_EQ(asic.sprite(3).x, 100 - 256);
+    CHECK_EQ(asic.sprite(3).y, 60);
+    CHECK_EQ(asic.sprite(3).magX, 4);
+    CHECK_EQ(asic.sprite(3).magY, 2);
+    CHECK(asic.spritesShown());
+    CHECK_EQ(asic.rasterInterruptLine(), 90);
+    CHECK_EQ(asic.splitLine(), 150);
+    CHECK_EQ(asic.splitAddress(), 0x1022);
+    CHECK_EQ(asic.scroll(), 0x93);
+    CHECK_EQ(asic.interruptVector(), 0x59);
+    CHECK(asic.soundChannelsOn());
+    // To the byte: the sound channel is where it was in its pause.
+    CHECK(asic.snapshot() == chunk);
+    CHECK_EQ(other.cpc.gateArray().spriteColour(1), kRed);
+
+    // A snapshot from a CPC, or from a program that knows nothing of the
+    // Plus, leaves the ASIC as a reset does.
+    std::vector<uint8_t> plain(snapshot.begin(), snapshot.end() - (8 + 0x8F8));
+    CHECK(loadSnapshot(other.cpc, plain, &error));
+    CHECK(!asic.unlocked());
+    CHECK_EQ(asic.rmr2(), 0);
+    CHECK_EQ(asic.rasterInterruptLine(), 0);
+    CHECK(!asic.spritesShown());
+    // On a CPC the chunk is passed over.
+    Cpc cpc;
+    CHECK(loadSnapshot(cpc, snapshot, &error));
+    CHECK(!cpc.asic().unlocked());
+}
+
 }  // namespace
 
 int main()
@@ -664,5 +742,6 @@ int main()
     testSplitAndScroll();
     testRasterInterrupt();
     testSoundChannels();
+    testSnapshot();
     return checkSummary("plus");
 }

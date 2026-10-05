@@ -5,6 +5,7 @@
 #include <cstring>
 #include <memory>
 
+#include "core/asic.h"
 #include "core/cpc.h"
 
 namespace tuxape {
@@ -147,6 +148,7 @@ bool loadSnapshot(Cpc& cpc, std::span<const uint8_t> data, std::string* error)
         return pages[n].get();
     };
     const size_t dumpSize = static_cast<size_t>(data[kDumpSize] | data[kDumpSize + 1] << 8) * 1024;
+    std::span<const uint8_t> plusChunk;
     size_t pos = kHeaderSize;
     for (int n = 0; n < kMaxPages && static_cast<size_t>(n) * kPageSize < dumpSize; ++n) {
         // Short files exist; what is missing reads as 0.
@@ -161,6 +163,8 @@ bool loadSnapshot(Cpc& cpc, std::span<const uint8_t> data, std::string* error)
         const size_t available = std::min(length, data.size() - pos - 8);
         if (std::memcmp(&data[pos], "MEM", 3) == 0 && data[pos + 3] >= '0' && data[pos + 3] <= '8')
             unpack(data.subspan(pos + 8, available), page(data[pos + 3] - '0'));
+        else if (std::memcmp(&data[pos], "CPC+", 4) == 0)
+            plusChunk = data.subspan(pos + 8, available);
         pos += 8 + length;
     }
     if (!pages[0])
@@ -253,6 +257,17 @@ bool loadSnapshot(Cpc& cpc, std::span<const uint8_t> data, std::string* error)
 
     if (version >= 3)
         cpc.fdc().writeMotor(data[kMotor] & 1, cpc.microseconds());
+
+    // A Plus: what its ASIC held, over what the Gate Array's registers
+    // have just said. The cartridge is not in the snapshot: it has to be
+    // the one that was in.
+    if (cpc.plus()) {
+        if (plusChunk.size() >= Asic::kSnapshotSize)
+            cpc.asic().restore(plusChunk);
+        else
+            cpc.asic().restore(Asic().snapshot());
+        memory.setRmr2(cpc.asic().rmr2());
+    }
     return true;
 }
 
@@ -351,6 +366,13 @@ std::vector<uint8_t> saveSnapshot(Cpc& cpc, SnapshotMachine machine)
                                    static_cast<uint8_t>(length >> 24)});
             out.insert(out.end(), packed.begin(), packed.end());
         }
+    }
+    if (cpc.plus()) {
+        const std::vector<uint8_t> plus = cpc.asic().snapshot();
+        const uint32_t length = static_cast<uint32_t>(plus.size());
+        out.insert(out.end(), {'C', 'P', 'C', '+', static_cast<uint8_t>(length), static_cast<uint8_t>(length >> 8),
+                               static_cast<uint8_t>(length >> 16), static_cast<uint8_t>(length >> 24)});
+        out.insert(out.end(), plus.begin(), plus.end());
     }
     return out;
 }

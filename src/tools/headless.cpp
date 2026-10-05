@@ -244,9 +244,11 @@ int main(int argc, char* argv[])
         return 1;
     }
     if (!saveSnapshotFile.empty()) {
-        const SnapshotMachine machine = model == CpcModel::Cpc464   ? SnapshotMachine::Cpc464
-                                        : model == CpcModel::Cpc664 ? SnapshotMachine::Cpc664
-                                                                    : SnapshotMachine::Cpc6128;
+        const SnapshotMachine machine = model == CpcModel::Cpc464     ? SnapshotMachine::Cpc464
+                                        : model == CpcModel::Cpc664   ? SnapshotMachine::Cpc664
+                                        : model == CpcModel::Plus464  ? SnapshotMachine::Plus464
+                                        : model == CpcModel::Plus6128 ? SnapshotMachine::Plus6128
+                                                                      : SnapshotMachine::Cpc6128;
         if (!writeFile(saveSnapshotFile, saveSnapshot(cpc, machine))) {
             std::fprintf(stderr, "cannot write %s\n", saveSnapshotFile.c_str());
             return 1;

@@ -198,6 +198,105 @@ void Asic::showDcsr()
     std::fill_n(page_.begin() + kDma, 16, dcsr_);
 }
 
+// The chunk, as the snapshot format (version 3) lays it out:
+//   &000  the sprites' pixels, two to a byte
+//   &800  eight bytes to a sprite: X, Y, magnification
+//   &880  the palette
+//   &8C0  PRI, SPLT, SSA (high, low), SSCR, IVR, a spare byte
+//   &8C7  the eight analogue inputs
+//   &8CF  four bytes to a sound channel: address, prescaler
+//   &8DE  the status register
+//   &8DF  seven bytes to a channel: loop count, loop start, what is left
+//         of a pause, and of its unit
+//   &8F4  RMR2; whether the ASIC is unlocked; where its lock's sequence is
+std::vector<uint8_t> Asic::snapshot() const
+{
+    std::vector<uint8_t> chunk(kSnapshotSize, 0);
+    for (size_t i = 0; i < 0x800; ++i)
+        chunk[i] = static_cast<uint8_t>(page_[i * 2] << 4 | page_[i * 2 + 1]);
+    auto magnification = [](uint8_t width) { return width == 0 ? 0 : width == 1 ? 1 : width == 2 ? 2 : 3; };
+    for (size_t n = 0; n < 16; ++n) {
+        const Sprite& sprite = sprites_[n];
+        uint8_t* at = &chunk[0x800 + n * 8];
+        at[0] = static_cast<uint8_t>(sprite.x);
+        at[1] = static_cast<uint8_t>(sprite.x >> 8);
+        at[2] = static_cast<uint8_t>(sprite.y);
+        at[3] = static_cast<uint8_t>(sprite.y >> 8);
+        at[4] = static_cast<uint8_t>(magnification(sprite.magX) << 2 | magnification(sprite.magY));
+    }
+    for (size_t n = 0; n < 32; ++n) {
+        chunk[0x880 + n * 2] = static_cast<uint8_t>(palette_[n]);
+        chunk[0x881 + n * 2] = static_cast<uint8_t>(palette_[n] >> 8);
+    }
+    chunk[0x8C0] = pri_;
+    chunk[0x8C1] = splt_;
+    chunk[0x8C2] = static_cast<uint8_t>(ssa_ >> 8);
+    chunk[0x8C3] = static_cast<uint8_t>(ssa_);
+    chunk[0x8C4] = sscr_;
+    chunk[0x8C5] = ivr_;
+    std::copy_n(page_.begin() + kAnalogue, 8, chunk.begin() + 0x8C7);
+    for (size_t n = 0; n < 3; ++n) {
+        const Channel& channel = channels_[n];
+        chunk[0x8CF + n * 4] = static_cast<uint8_t>(channel.address);
+        chunk[0x8D0 + n * 4] = static_cast<uint8_t>(channel.address >> 8);
+        chunk[0x8D1 + n * 4] = channel.prescaler;
+        uint8_t* at = &chunk[0x8DF + n * 7];
+        at[0] = static_cast<uint8_t>(channel.repeats);
+        at[1] = static_cast<uint8_t>(channel.repeats >> 8);
+        at[2] = static_cast<uint8_t>(channel.loopStart);
+        at[3] = static_cast<uint8_t>(channel.loopStart >> 8);
+        at[4] = static_cast<uint8_t>(channel.pause);
+        at[5] = static_cast<uint8_t>(channel.pause >> 8);
+        at[6] = channel.pauseLines;
+    }
+    chunk[0x8DE] = dcsr_;
+    chunk[0x8F4] = static_cast<uint8_t>(0xA0 | rmr2_);
+    chunk[0x8F5] = unlocked_ ? 1 : 0;
+    chunk[0x8F6] = static_cast<uint8_t>(sequenceAt_ < 0 ? 0 : sequenceAt_);
+    return chunk;
+}
+
+void Asic::restore(std::span<const uint8_t> chunk)
+{
+    if (chunk.size() < kSnapshotSize)
+        return;
+    for (size_t i = 0; i < 0x800; ++i) {
+        page_[i * 2] = chunk[i] >> 4;
+        page_[i * 2 + 1] = chunk[i] & 0x0F;
+    }
+    for (int n = 0; n < 16; ++n) {
+        const uint16_t at = static_cast<uint16_t>(kAttributes + n * 8);
+        for (int i = 0; i < 4; ++i)
+            write(static_cast<uint16_t>(at + i), chunk[static_cast<size_t>(0x800 + n * 8 + i)]);
+        write(static_cast<uint16_t>(at + 4), chunk[static_cast<size_t>(0x800 + n * 8 + 4)]);
+    }
+    for (int n = 0; n < 32; ++n)
+        setColour(n, static_cast<uint16_t>(chunk[static_cast<size_t>(0x880 + n * 2)]
+                                           | chunk[static_cast<size_t>(0x881 + n * 2)] << 8));
+    write(kRaster, chunk[0x8C0]);
+    write(kRaster + 1, chunk[0x8C1]);
+    write(kRaster + 2, chunk[0x8C2]);
+    write(kRaster + 3, chunk[0x8C3]);
+    write(kRaster + 4, chunk[0x8C4]);
+    write(kRaster + 5, chunk[0x8C5]);
+    for (size_t n = 0; n < 3; ++n) {
+        Channel& channel = channels_[n];
+        channel.address = static_cast<uint16_t>(chunk[0x8CF + n * 4] | chunk[0x8D0 + n * 4] << 8);
+        channel.prescaler = chunk[0x8D1 + n * 4];
+        const uint8_t* at = &chunk[0x8DF + n * 7];
+        channel.repeats = static_cast<uint16_t>((at[0] | at[1] << 8) & 0x0FFF);
+        channel.loopStart = static_cast<uint16_t>(at[2] | at[3] << 8);
+        channel.pause = static_cast<uint16_t>((at[4] | at[5] << 8) & 0x0FFF);
+        channel.pauseLines = at[6];
+    }
+    dcsr_ = chunk[0x8DE];
+    showDcsr();
+    rmr2_ = chunk[0x8F4] & 0x1F;
+    unlocked_ = chunk[0x8F5] & 1;
+    sequenceAt_ = -1;
+    previous_ = 0;
+}
+
 void Asic::write(uint16_t address, uint8_t value)
 {
     const int at = address & (kPageSize - 1);

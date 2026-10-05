@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <span>
+#include <vector>
 
 namespace tuxape {
 
@@ -54,6 +56,13 @@ public:
     // The palette: pens 0-15, the border (16), sprite colours 1-15 (17-31).
     // Twelve bits: green, red, blue from the top.
     uint16_t colour(int index) const { return palette_[index & 31]; }
+
+    // The whole of the ASIC's state as a snapshot's "CPC+" chunk holds it
+    // (&8F8 bytes), and back. Restoring goes through the registers, so the
+    // palette and the split reach the screen.
+    static constexpr size_t kSnapshotSize = 0x8F8;
+    std::vector<uint8_t> snapshot() const;
+    void restore(std::span<const uint8_t> chunk);
 
     // ---- Sprites ----
     struct Sprite {
