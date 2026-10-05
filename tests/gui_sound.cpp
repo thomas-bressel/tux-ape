@@ -47,13 +47,15 @@ int main(int argc, char* argv[])
         // BASIC empties the keyboard buffer as it starts; give it a moment.
         QTest::qWait(500);
 
-        // Two seconds of the A above middle C on channel A.
+        // Two seconds of the A above middle C on channel A. Typing the
+        // command takes a second and a half on top of that.
         emulator.autoType("SOUND 1,142,200,15\n");
-        QTest::qWait(3500);
+        QTest::qWait(4500);
 
-        // The queue of sound waiting to be played stays near its target.
-        const double queued = audio.queue(nullptr, 0);
-        CHECK(queued > 0.02 && queued < 0.15);
+        // The queue of sound waiting to be played does not pile up. (How
+        // low it gets says nothing here: the disk driver empties it faster
+        // than a sound card would.)
+        CHECK(audio.queue(nullptr, 0) < 0.15);
         emulator.stop();
     }
 
@@ -66,7 +68,7 @@ int main(int argc, char* argv[])
     const QByteArray bytes = raw.readAll();
     const auto* samples = reinterpret_cast<const int16_t*>(bytes.constData());
     const size_t frames = static_cast<size_t>(bytes.size()) / 4;
-    CHECK(frames > static_cast<size_t>(rate) * 4);
+    CHECK(frames > static_cast<size_t>(rate) * 5);
 
     // Find the cycles of the tone on the left channel.
     std::vector<size_t> rises;
