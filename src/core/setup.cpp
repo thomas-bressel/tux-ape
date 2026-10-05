@@ -16,6 +16,13 @@ std::filesystem::path defaultRomDir()
     return TUXAPE_DEV_ROM_DIR;
 }
 
+std::filesystem::path defaultProfileDir()
+{
+    if (const char* dir = std::getenv("TUXAPE_PROFILE_DIR"); dir && *dir)
+        return dir;
+    return defaultRomDir().parent_path() / "Profile";
+}
+
 namespace {
 
 std::string lowered(std::string_view text)

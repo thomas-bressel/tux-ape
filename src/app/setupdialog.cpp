@@ -1,5 +1,7 @@
 #include "setupdialog.h"
 
+#include <algorithm>
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -21,6 +23,7 @@
 #include <QTableWidget>
 #include <QTextBrowser>
 #include <QToolButton>
+#include <QTreeWidget>
 #include <QVBoxLayout>
 
 #include "core/setup.h"
@@ -128,20 +131,21 @@ private:
 
 SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     : QDialog(parent)
-    , initial_(settings)
 {
     setWindowTitle(tr("TuxAPE - Setup"));
 
     auto* profileRow = new QHBoxLayout;
     auto* profileLabel = new QLabel(tr("&Profile:"));
-    auto* profile = notYet(new QComboBox);
-    profile->setObjectName("cbProfile");
-    profile->addItem(tr("(Current Settings)"));
-    profileLabel->setBuddy(profile);
-    auto* saveProfile = notYet(new QPushButton(style()->standardIcon(QStyle::SP_DialogSaveButton), tr("Save")));
+    profile_ = new QComboBox;
+    profile_->setObjectName("cbProfile");
+    fillProfiles();
+    profileLabel->setBuddy(profile_);
+    connect(profile_, &QComboBox::activated, this, &SetupDialog::profileChosen);
+    auto* saveProfile = new QPushButton(style()->standardIcon(QStyle::SP_DialogSaveButton), tr("Save"));
     saveProfile->setObjectName("bSaveProfile");
+    connect(saveProfile, &QPushButton::clicked, this, &SetupDialog::saveProfileAs);
     profileRow->addWidget(profileLabel);
-    profileRow->addWidget(profile, 1);
+    profileRow->addWidget(profile_, 1);
     profileRow->addSpacing(40);
     profileRow->addWidget(saveProfile);
 
@@ -170,6 +174,8 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     layout->addWidget(tabs_, 1);
     layout->addWidget(buttons);
     resize(640, 400);
+
+    setSettings(settings);
 }
 
 QWidget* SetupDialog::createGeneralPage()
@@ -192,7 +198,6 @@ QWidget* SetupDialog::createGeneralPage()
     crtcType_->setObjectName("cbCRTCType");
     crtcType_->addItems({tr("0 - HD6845S/UM6845"), tr("1 - UM6845R"), tr("2 - MC6845"), tr("3 - CPC+ ASIC"),
                          tr("4 - Pre ASIC")});
-    crtcType_->setCurrentIndex(initial_.crtcType);
     crtcLabel->setBuddy(crtcType_);
     auto* crtcRow = new QHBoxLayout;
     crtcRow->addWidget(crtcLabel);
@@ -206,7 +211,6 @@ QWidget* SetupDialog::createGeneralPage()
     fourDrives->setObjectName("ckFourDrives");
     fastDisc_ = new QCheckBox(tr("&Fast Disc Emulation"));
     fastDisc_->setObjectName("ckFastDisc");
-    fastDisc_->setChecked(initial_.fastDisc);
     auto* flyback = notYet(new QCheckBox(tr("Save Screenshot on Frame Flyback")));
     flyback->setObjectName("ckFlyback");
     flyback->setChecked(true);
@@ -232,7 +236,6 @@ QWidget* SetupDialog::createGeneralPage()
     speed_->setObjectName("slSpeed");
     speed_->setRange(5, 1000);
     speed_->setPageStep(50);
-    speed_->setValue(initial_.speedPercent);
     speedLabel_ = new QLabel;
     speedLabel_->setObjectName("lbSpeed");
     speedLabel_->setMinimumWidth(fontMetrics().horizontalAdvance("1000%"));
@@ -243,11 +246,9 @@ QWidget* SetupDialog::createGeneralPage()
 
     displayEvery_ = new QCheckBox(tr("&Display Every"));
     displayEvery_->setObjectName("ckUseRate");
-    displayEvery_->setChecked(initial_.displayEvery);
     displayEveryFrames_ = new QSpinBox;
     displayEveryFrames_->setObjectName("edRate");
     displayEveryFrames_->setRange(1, 50);
-    displayEveryFrames_->setValue(initial_.displayEveryFrames);
     auto* everyRow = new QHBoxLayout;
     everyRow->addWidget(displayEvery_);
     everyRow->addWidget(displayEveryFrames_);
@@ -281,7 +282,6 @@ QWidget* SetupDialog::createGeneralPage()
 QWidget* SetupDialog::createMemoryPage()
 {
     auto* page = new QWidget;
-    const tuxape::MachineConfig& machine = initial_.machine;
 
     // ---- RAM ----
     auto* ramBox = new QGroupBox(tr("RAM"));
@@ -292,13 +292,11 @@ QWidget* SetupDialog::createMemoryPage()
     for (int i = 0; i < 4; ++i) {
         ram_[i] = new QRadioButton(ramTexts[i]);
         ram_[i]->setObjectName(ramNames[i]);
-        ram_[i]->setChecked(static_cast<int>(machine.ram) == i);
         connect(ram_[i], &QRadioButton::toggled, this, &SetupDialog::updateTotalRam);
         ramLayout->addWidget(ram_[i]);
     }
     siliconDisc_ = new QCheckBox(tr("256K Silicon Disc"));
     siliconDisc_->setObjectName("ckSiliDisc");
-    siliconDisc_->setChecked(machine.siliconDisc);
     connect(siliconDisc_, &QCheckBox::toggled, this, &SetupDialog::updateTotalRam);
     ramLayout->addWidget(siliconDisc_);
     auto* line = new QFrame;
@@ -342,9 +340,6 @@ QWidget* SetupDialog::createMemoryPage()
 
     // ---- ROMs ----
     auto* romsBox = new QGroupBox(tr("ROMs"));
-    romNames_[0] = QString::fromStdString(machine.lowerRom);
-    for (int slot = 0; slot < tuxape::Memory::kRomSlots; ++slot)
-        romNames_[1 + slot] = QString::fromStdString(machine.upperRoms[static_cast<size_t>(slot)]);
     roms_ = new QTableWidget(0, 2);
     roms_->setObjectName("ogROMs");
     roms_->horizontalHeader()->hide();
@@ -360,13 +355,10 @@ QWidget* SetupDialog::createMemoryPage()
 
     rom32_ = new QCheckBox(tr("Enable 32 ROMs"));
     rom32_->setObjectName("ckEnable32");
-    rom32_->setChecked(machine.rom32);
     disableRoms_ = new QCheckBox(tr("Disable all ROMS"));
     disableRoms_->setObjectName("ckDisableROMs");
-    disableRoms_->setChecked(machine.disableAllRoms);
     onlyLower0And7_ = new QCheckBox(tr("Disable all but Lower, 0 and 7"));
     onlyLower0And7_->setObjectName("ckEnableL07");
-    onlyLower0And7_->setChecked(machine.onlyLower0And7);
     connect(rom32_, &QCheckBox::toggled, this, &SetupDialog::updateRomRows);
     auto* romChecks = new QHBoxLayout;
     romChecks->addWidget(rom32_);
@@ -455,6 +447,175 @@ void SetupDialog::updateTiming()
     displayEveryFrames_->setEnabled(every);
 }
 
+void SetupDialog::setSettings(const Settings& settings)
+{
+    crtcType_->setCurrentIndex(settings.crtcType);
+    fastDisc_->setChecked(settings.fastDisc);
+    speed_->setValue(settings.speedPercent);
+    displayEvery_->setChecked(settings.displayEvery);
+    displayEveryFrames_->setValue(settings.displayEveryFrames);
+    updateTiming();
+
+    const tuxape::MachineConfig& machine = settings.machine;
+    ram_[static_cast<int>(machine.ram)]->setChecked(true);
+    siliconDisc_->setChecked(machine.siliconDisc);
+    romNames_[0] = QString::fromStdString(machine.lowerRom);
+    for (int slot = 0; slot < tuxape::Memory::kRomSlots; ++slot)
+        romNames_[1 + slot] = QString::fromStdString(machine.upperRoms[static_cast<size_t>(slot)]);
+    rom32_->setChecked(machine.rom32);
+    disableRoms_->setChecked(machine.disableAllRoms);
+    onlyLower0And7_->setChecked(machine.onlyLower0And7);
+    updateTotalRam();
+    updateRomRows();
+    roms_->viewport()->update();
+}
+
+// ---- Profiles ---------------------------------------------------------
+
+namespace {
+
+const QString kSelectProfile = QStringLiteral("<select file>");
+
+}  // namespace
+
+ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle(tr("Select Profile Settings"));
+    tree_ = new QTreeWidget;
+    tree_->setObjectName("tvSettings");
+    tree_->setHeaderHidden(true);
+
+    auto group = [this](const QString& name) {
+        auto* item = new QTreeWidgetItem(tree_, {name});
+        // Ticking a group ticks what is in it.
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable | Qt::ItemIsAutoTristate);
+        return item;
+    };
+    auto leaf = [](QTreeWidgetItem* parent, const QString& name, unsigned part, bool ticked) {
+        auto* item = new QTreeWidgetItem(parent, {name});
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setData(0, Qt::UserRole, part);
+        item->setCheckState(0, ticked ? Qt::Checked : Qt::Unchecked);
+    };
+    // A profile is first of all a machine: that is what is ticked to begin
+    // with.
+    auto* general = group(tr("General"));
+    leaf(general, tr("CRTC Type"), Settings::CrtcPart, true);
+    leaf(general, tr("Emulation Speed"), Settings::SpeedPart, false);
+    leaf(general, tr("Fast Disc Emulation"), Settings::FastDiscPart, false);
+    auto* memory = group(tr("Memory"));
+    leaf(memory, tr("RAM"), Settings::RamPart, true);
+    leaf(memory, tr("ROMs"), Settings::RomsPart, true);
+    tree_->expandAll();
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
+    notYet(buttons->button(QDialogButtonBox::Help));
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    auto* layout = new QVBoxLayout(this);
+    layout->addWidget(tree_, 1);
+    layout->addWidget(buttons);
+    resize(300, 290);
+}
+
+unsigned ProfilePartsDialog::parts() const
+{
+    unsigned parts = 0;
+    for (int g = 0; g < tree_->topLevelItemCount(); ++g) {
+        const QTreeWidgetItem* top = tree_->topLevelItem(g);
+        for (int i = 0; i < top->childCount(); ++i)
+            if (top->child(i)->checkState(0) == Qt::Checked)
+                parts |= top->child(i)->data(0, Qt::UserRole).toUInt();
+    }
+    return parts;
+}
+
+// "(Current Settings)", the profiles that come with the program and the
+// user's own, then a file of the user's choosing. Profiles for machines
+// TuxAPE cannot be yet are listed but cannot be chosen.
+void SetupDialog::fillProfiles()
+{
+    profile_->clear();
+    profile_->addItem(tr("(Current Settings)"), QString());
+    // In the order of their names, not of their file names: "464 Plus"
+    // comes before "464 Plus with ParaDOS".
+    QFileInfoList files = QDir(Settings::profileFolder()).entryInfoList({"*.wpf"}, QDir::Files);
+    files += QDir(Settings::userProfileFolder()).entryInfoList({"*.wpf"}, QDir::Files);
+    std::sort(files.begin(), files.end(), [](const QFileInfo& a, const QFileInfo& b) {
+        return a.completeBaseName().compare(b.completeBaseName(), Qt::CaseInsensitive) < 0;
+    });
+    for (const QFileInfo& file : files) {
+        profile_->addItem(file.completeBaseName(), file.absoluteFilePath());
+        if (!Settings::profileUsable(file.absoluteFilePath())) {
+            const int index = profile_->count() - 1;
+            profile_->setItemData(index, 0, Qt::UserRole - 1);  // no flags: greyed out
+            profile_->setItemData(index, tr("Not available yet"), Qt::ToolTipRole);
+        }
+    }
+    profile_->addItem(tr("Select File..."), kSelectProfile);
+}
+
+void SetupDialog::profileChosen(int index)
+{
+    QString path = profile_->itemData(index).toString();
+    if (path == kSelectProfile) {
+        path = QFileDialog::getOpenFileName(this, tr("Select File..."), Settings::profileFolder(),
+                                            tr("Profiles (*.wpf);;All files (*)"));
+        if (path.isEmpty() || !loadProfile(path)) {
+            profile_->setCurrentIndex(0);
+            return;
+        }
+        // Listed from now on, just above "Select File...".
+        const int place = profile_->count() - 1;
+        profile_->insertItem(place, QDir::toNativeSeparators(path), path);
+        profile_->setCurrentIndex(place);
+    } else if (!path.isEmpty() && !loadProfile(path)) {
+        profile_->setCurrentIndex(0);
+    }
+}
+
+bool SetupDialog::loadProfile(const QString& path)
+{
+    Settings changed = settings();
+    if (!changed.loadProfile(path))
+        return false;
+    setSettings(changed);
+    return true;
+}
+
+bool SetupDialog::saveProfile(const QString& path, unsigned parts) const
+{
+    return settings().saveProfile(path, parts);
+}
+
+// The Save button: which settings, then which file.
+void SetupDialog::saveProfileAs()
+{
+    ProfilePartsDialog partsDialog(this);
+    if (partsDialog.exec() != QDialog::Accepted)
+        return;
+    // The user's profiles go beside the settings file: the folder of the
+    // program's own may not be the user's to write in.
+    QDir().mkpath(Settings::userProfileFolder());
+    QString path = QFileDialog::getSaveFileName(this, tr("Save Profile"), Settings::userProfileFolder(),
+                                                tr("Profiles (*.wpf);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    if (QFileInfo(path).suffix().isEmpty())
+        path += ".wpf";
+    if (saveProfile(path, partsDialog.parts())) {
+        const QString chosen = QFileInfo(path).absoluteFilePath();
+        fillProfiles();
+        int index = profile_->findData(chosen);
+        if (index < 0) {
+            index = profile_->count() - 1;
+            profile_->insertItem(index, QDir::toNativeSeparators(chosen), chosen);
+        }
+        profile_->setCurrentIndex(index);
+    }
+}
+
 void SetupDialog::showPage(Page page)
 {
     if (tabs_->isTabEnabled(page))
@@ -463,7 +624,7 @@ void SetupDialog::showPage(Page page)
 
 Settings SetupDialog::settings() const
 {
-    Settings settings = initial_;
+    Settings settings;
     settings.crtcType = crtcType_->currentIndex();
     settings.fastDisc = fastDisc_->isChecked();
     settings.speedPercent = speed_->value();

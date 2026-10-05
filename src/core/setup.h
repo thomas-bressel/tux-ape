@@ -41,6 +41,9 @@ CpcModel modelOf(const MachineConfig& config);
 // Folder holding the ROM images: $TUXAPE_ROM_DIR if set, otherwise the ROM
 // folder of the WinAPE distribution next to the sources.
 std::filesystem::path defaultRomDir();
+// Folder holding the profiles (.wpf): $TUXAPE_PROFILE_DIR if set, otherwise
+// the "Profile" folder beside the ROM folder, as in WinAPE.
+std::filesystem::path defaultProfileDir();
 
 // The ROM images of a folder, as WinAPE lists them: file names without
 // their ".ROM", in alphabetical order.

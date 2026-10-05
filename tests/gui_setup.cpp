@@ -3,22 +3,27 @@
 // Runs without a display (QT_QPA_PLATFORM=offscreen).
 //
 //   gui_setup [prefix]   also saves pictures of the Setup window's pages
-//                        as <prefix>general.png and <prefix>memory.png
+//                        as <prefix>general.png, <prefix>memory.png and
+//                        <prefix>profile.png
 
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLabel>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSlider>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTreeWidget>
 
 #include "check.h"
 #include "core/inifile.h"
@@ -278,6 +283,140 @@ void testMemoryPage(const QString& picture)
     }
 }
 
+// Profiles: WinAPE's own, read as they stand, and ones saved from here.
+void testProfiles(const QString& folder, const QString& picture)
+{
+    using tuxape::CpcModel;
+    const QString profiles = QStringLiteral(TUXAPE_WINAPE_DIR "/Profile");
+    CHECK(Settings::profileFolder() == profiles);
+    CHECK(Settings::profileUsable(profiles + "/CPC6128.wpf"));
+    CHECK(!Settings::profileUsable(profiles + "/6128 Plus.wpf"));  // needs the Plus and a cartridge
+    CHECK(!Settings::profileUsable(profiles + "/no such profile.wpf"));
+
+    Settings settings;
+    settings.crtcType = 2;
+    settings.speedPercent = 200;
+    settings.fastDisc = true;
+    SetupDialog dialog(settings);
+    dialog.show();
+    auto* combo = dialog.findChild<QComboBox*>("cbProfile");
+    auto* save = dialog.findChild<QPushButton*>("bSaveProfile");
+    CHECK(combo && combo->isEnabled());
+    CHECK(save && save->isEnabled());
+    if (!combo)
+        return;
+
+    // The list: the current settings, WinAPE's eight profiles in
+    // alphabetical order, a file to choose.
+    CHECK_EQ(combo->count(), 10);
+    CHECK(combo->itemText(0) == "(Current Settings)");
+    CHECK(combo->itemText(1) == "464 Plus");
+    CHECK(combo->itemText(5) == "CPC464");
+    CHECK(combo->itemText(8) == "CPC6128 with ParaDOS");
+    CHECK(combo->itemText(9) == "Select File...");
+    CHECK_EQ(combo->currentIndex(), 0);
+    const auto* model = qobject_cast<QStandardItemModel*>(combo->model());
+    CHECK(model != nullptr);
+    if (model) {
+        CHECK(!model->item(1)->isEnabled());  // the Plus machines are to come
+        CHECK(!model->item(4)->isEnabled());
+        CHECK(model->item(5)->isEnabled());
+        CHECK(model->item(9)->isEnabled());
+    }
+
+    // Choosing one changes what it holds and nothing else.
+    auto choose = [&](const char* name) {
+        const int index = combo->findText(name);
+        CHECK(index > 0);
+        combo->setCurrentIndex(index);
+        emit combo->activated(index);
+    };
+    choose("CPC464");
+    Settings shown = dialog.settings();
+    CHECK(shown.machine == tuxape::stockMachine(CpcModel::Cpc464));
+    CHECK_EQ(shown.crtcType, 0);       // the profile says type 0
+    CHECK_EQ(shown.speedPercent, 200);  // and nothing of this
+    CHECK(shown.fastDisc);
+    choose("CPC6128 with ParaDOS");
+    shown = dialog.settings();
+    CHECK(shown.machine.ram == tuxape::RamExpansion::Internal);
+    CHECK(shown.machine.lowerRom == "OS6128");
+    CHECK(shown.machine.upperRoms[7] == "ParaDOS 1-2");
+    CHECK(!tuxape::findRom(shown.machine.upperRoms[7], tuxape::defaultRomDir()).empty());
+    // The pages follow.
+    auto* total = dialog.findChild<QLabel*>("lTotalRAM");
+    CHECK(total && total->text() == "128K");
+    CHECK(dialog.rom(8) == "ParaDOS 1-2");
+
+    // A file that is not there changes nothing.
+    CHECK(!dialog.loadProfile(folder + "/missing.wpf"));
+    CHECK(dialog.settings() == shown);
+
+    // Which settings a profile is to hold: the machine, unless told
+    // otherwise.
+    ProfilePartsDialog partsDialog;
+    partsDialog.show();
+    CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::RamPart | Settings::RomsPart);
+    auto* tree = partsDialog.findChild<QTreeWidget*>("tvSettings");
+    CHECK(tree && tree->topLevelItemCount() == 2);
+    if (tree && tree->topLevelItemCount() == 2) {
+        CHECK(tree->topLevelItem(0)->text(0) == "General");
+        CHECK(tree->topLevelItem(1)->text(0) == "Memory");
+        CHECK(tree->topLevelItem(0)->checkState(0) == Qt::PartiallyChecked);
+        CHECK(tree->topLevelItem(1)->checkState(0) == Qt::Checked);
+        // Ticking a group ticks all of it.
+        tree->topLevelItem(0)->setCheckState(0, Qt::Checked);
+        CHECK_EQ(partsDialog.parts(), Settings::AllParts);
+        tree->topLevelItem(1)->setCheckState(0, Qt::Unchecked);
+        CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::SpeedPart | Settings::FastDiscPart);
+        if (!picture.isEmpty()) {
+            QApplication::processEvents();
+            CHECK(partsDialog.grab().save(picture));
+        }
+    }
+
+    // A profile saved with only the machine in it...
+    const QString path = folder + "/My machine.wpf";
+    dialog.setRom(5, "PARADOS");
+    CHECK(dialog.saveProfile(path, Settings::RamPart | Settings::RomsPart));
+    tuxape::IniFile ini;
+    CHECK(ini.load(path.toStdString()));
+    CHECK(ini.get("Configuration", "Extended RAM") == "1");
+    CHECK(ini.get("ROMS", "Lower") == "OS6128");
+    CHECK(ini.get("ROMS", "Upper(4)") == "PARADOS");
+    CHECK(!ini.has("Configuration", "CRTC Type"));
+    CHECK(!ini.has("Configuration", "Emulation Speed"));
+    CHECK(!ini.has("Drives", "Fast Disc"));
+    // ...brings that machine back and leaves the rest.
+    Settings other;
+    other.crtcType = 4;
+    other.machine = tuxape::stockMachine(CpcModel::Cpc464);
+    SetupDialog second(other);
+    CHECK(second.loadProfile(path));
+    CHECK(second.settings().machine == dialog.settings().machine);
+    CHECK_EQ(second.settings().crtcType, 4);
+    CHECK_EQ(second.settings().speedPercent, 100);
+
+    // The user's own profiles are kept beside the settings file and listed
+    // with the others.
+    CHECK(Settings::userProfileFolder() == QFileInfo(Settings::file()).absolutePath() + "/Profile");
+    CHECK(QDir().mkpath(Settings::userProfileFolder()));
+    CHECK(dialog.saveProfile(Settings::userProfileFolder() + "/Big machine.wpf", Settings::AllParts));
+    {
+        SetupDialog later((Settings()));
+        auto* list = later.findChild<QComboBox*>("cbProfile");
+        CHECK(list && list->count() == 11);
+        if (list && list->count() == 11) {
+            CHECK(list->itemText(5) == "Big machine");  // after "6128 Plus with ParaDOS", before "CPC464"
+            CHECK(list->itemText(6) == "CPC464");
+            list->setCurrentIndex(5);
+            emit list->activated(5);
+            CHECK(later.settings() == dialog.settings());
+        }
+    }
+    QFile::remove(Settings::userProfileFolder() + "/Big machine.wpf");
+}
+
 void testDialog(const QString& picture)
 {
     Settings settings;
@@ -323,8 +462,8 @@ void testDialog(const QString& picture)
     CHECK_EQ(tabs->currentIndex(), 0);
 
     // What TuxAPE cannot do yet is greyed out.
-    for (const char* name : {"ckEnablePlus", "ckPlusPPI", "ckFourDrives", "ckFlyback", "ckDisableUpdate", "bUpdate",
-                             "ckTurbo", "cbProfile", "bSaveProfile"}) {
+    for (const char* name :
+         {"ckEnablePlus", "ckPlusPPI", "ckFourDrives", "ckFlyback", "ckDisableUpdate", "bUpdate", "ckTurbo"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
     }
@@ -377,6 +516,7 @@ int main(int argc, char* argv[])
     testMachineInSettingsFile(path);
     testDialog(prefix.isEmpty() ? QString() : prefix + "general.png");
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");
+    testProfiles(folder.path(), prefix.isEmpty() ? QString() : prefix + "profile.png");
 
     Emulator emulator;
     if (!emulator.setupMachine(tuxape::CpcModel::Cpc6128).isEmpty()) {
