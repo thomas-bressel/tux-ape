@@ -36,6 +36,19 @@ void Crtc::write(uint8_t value, bool early)
     reg_[selected_] = value & kWriteMask[selected_];
 
     switch (selected_) {
+    case 2:
+        // R2 set to the character in progress starts the HSYNC there and
+        // then ("R2.JIT", Compendium 14.7): the comparison is not only made
+        // as the character begins.
+        if (!hsync_ && hcc_ == reg_[2] && old != reg_[2]) {
+            const bool none = (reg_[3] & 0x0F) == 0
+                              && (type_ == CrtcType::HD6845S || type_ == CrtcType::UM6845R);
+            if (!none) {
+                hsync_ = true;
+                hsc_ = 0;
+            }
+        }
+        break;
     case 3:
         // The HSYNC ends when its counter meets R3. Bringing R3 down to the
         // counter while the pulse lasts ("R3.JIT") ends it there and then

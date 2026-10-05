@@ -92,7 +92,13 @@ void Cpc::crtcWrite(uint16_t port, uint8_t value, bool early)
         return;
     switch ((port >> 8) & 3) {
     case 0: crtc_.select(value); break;
-    case 1: crtc_.write(value, early); break;
+    case 1: {
+        const bool hsync = crtc_.hsync();
+        crtc_.write(value, early);
+        if (crtc_.hsync() && !hsync)
+            gateArray_.hsyncStartedByWrite(crtc_, !early);
+        break;
+    }
     }
 }
 

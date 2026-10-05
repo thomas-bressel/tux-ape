@@ -35,6 +35,10 @@ public:
     void render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor);
 
     bool interruptRequested() const { return interrupt_; }
+    // An R2 write has just started an HSYNC in the middle of a character.
+    // `late` is for the OUT (C),r kind of write, after which the picture
+    // goes blank a little further on.
+    void hsyncStartedByWrite(const Crtc& crtc, bool late);
     void acknowledgeInterrupt();
 
     bool lowerRomEnabled() const { return !(rmr_ & 0x04); }
@@ -81,6 +85,7 @@ private:
     bool delayedHsync_ = false;  // the CRTC's HSYNC one microsecond ago
     bool hsync_ = false;         // HSYNC as the Gate Array sees it now
     bool blankedBefore_ = false;  // the previous character was blanked to its end
+    bool lateBlanking_ = false;   // this HSYNC was started by an R2 write that came late
 };
 
 }  // namespace tuxape

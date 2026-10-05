@@ -206,6 +206,21 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
     hsync_ = hsync;
 }
 
+void GateArray::hsyncStartedByWrite(const Crtc& crtc, bool late)
+{
+    // For everything but the blanking, the pulse counts from the start of
+    // the character, as one programmed in advance would (Compendium 14.7.1).
+    if (crtc.type() == CrtcType::AsicPlus || crtc.type() == CrtcType::PreAsic) {
+        delayedHsync_ = true;
+        return;
+    }
+    if (hsync_)
+        return;
+    hsync_ = prevHsync_ = true;
+    hsyncAge_ = 1;
+    lateBlanking_ = late;
+}
+
 void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor)
 {
     const bool plusAsic = crtc.type() == CrtcType::AsicPlus;
@@ -214,8 +229,12 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
     // of a character (a little more with the UM6845R), and where R3 cut the
     // pulse short it stops part-way through the character (Compendium
     // 9.3.4.2 and 14.5.4; the Shaker's "R3 JIT" screens show each case).
+    // Started by an R2 write that came after the chip had looked at the
+    // character, the blanking begins three or four pixels further on.
     const bool discrete = crtc.type() != CrtcType::AsicPlus && crtc.type() != CrtcType::PreAsic;
-    const int lag = !discrete ? 0 : crtc.type() == CrtcType::UM6845R ? 5 : 4;
+    const int usualLag = !discrete ? 0 : crtc.type() == CrtcType::UM6845R ? 5 : crtc.type() == CrtcType::MC6845 ? 3 : 4;
+    const int lateLag = crtc.type() == CrtcType::MC6845 ? 7 : 8;
+    const int lag = lateBlanking_ ? lateLag : usualLag;
     const Crtc::HsyncCut cut = hsync_ ? crtc.hsyncCut() : Crtc::HsyncCut::None;
     int blackFrom = 0;
     int blackTo = 0;
@@ -226,13 +245,14 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
         case Crtc::HsyncCut::None: break;
         case Crtc::HsyncCut::AfterQuarter: blackTo = 8; break;
         case Crtc::HsyncCut::SecondHalf: blackTo = 8; break;
-        case Crtc::HsyncCut::AtStart: blackTo = blankedBefore_ ? lag : 0; break;
+        case Crtc::HsyncCut::AtStart: blackTo = blankedBefore_ ? usualLag : 0; break;
         case Crtc::HsyncCut::Never: blackTo = 0; break;
         }
     } else if (blankedBefore_) {
-        blackTo = lag;
+        blackTo = usualLag;
     }
     blankedBefore_ = hsync_ && cut == Crtc::HsyncCut::None;
+    lateBlanking_ = false;
     if (vsyncBlack_) {
         blackFrom = 0;
         blackTo = Monitor::kCellWidth;

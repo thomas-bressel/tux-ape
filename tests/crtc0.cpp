@@ -382,6 +382,43 @@ void hsyncCutByR3()
     CHECK(!rig.crtc.hsync());
 }
 
+void hsyncStartedByR2()
+{
+    // "R2.JIT": R2 set to the character in progress starts the HSYNC there,
+    // for the usual R3 characters (Compendium 14.7; Shaker D, "CSYNC not
+    // related to R2.JIT", keeps a stable picture that way).
+    Rig rig;
+    rig.set(2, 0x7F);  // no HSYNC of its own
+    rig.seek(5, 3, 20);
+    CHECK(!rig.crtc.hsync());
+    rig.set(2, 20);
+    CHECK(rig.crtc.hsync());
+    rig.set(2, 0x7F);  // too late to stop it
+    for (int i = 0; i < 14; ++i) {
+        CHECK(rig.crtc.hsync());
+        rig.crtc.tick();
+    }
+    CHECK(!rig.crtc.hsync());
+
+    // Not a second one while the first lasts, and none with a width of 0.
+    rig.seek(5, 5, 20);
+    rig.set(2, 20);
+    rig.crtc.tick();
+    rig.crtc.tick();
+    rig.set(2, 0x7F);
+    rig.set(2, 22);
+    for (int i = 2; i < 14; ++i) {
+        CHECK(rig.crtc.hsync());
+        rig.crtc.tick();
+    }
+    CHECK(!rig.crtc.hsync());
+    rig.set(2, 0x7F);
+    rig.set(3, 0x80);
+    rig.seek(5, 7, 20);
+    rig.set(2, 20);
+    CHECK(!rig.crtc.hsync());
+}
+
 void oneCharacterLines()
 {
     // R0 = 0 freezes C9; C4 steps once if C9 was at R9 (Compendium 13.2.6,
@@ -440,6 +477,7 @@ int main()
     twoCharacterFrames();
     adjustmentLeftArmed();
     hsyncCutByR3();
+    hsyncStartedByR2();
     oneCharacterLines();
     return checkSummary("crtc0");
 }
