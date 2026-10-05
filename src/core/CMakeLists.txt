@@ -2,6 +2,8 @@ add_library(tuxape_core STATIC
     autotype.cpp
     cpc.cpp
     crtc.cpp
+    disc.cpp
+    fdc.cpp
     files.cpp
     gate_array.cpp
     keymap.cpp

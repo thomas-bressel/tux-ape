@@ -16,6 +16,7 @@ void Cpc::reset()
     gateArray_.reset();
     ppi_.reset();
     psg_.reset();
+    fdc_.reset();
 }
 
 void Cpc::coldReset()
@@ -63,6 +64,13 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
         ppi_.write(high & 3, value);
         updatePsgBus();
     }
+    // Disc interface: &FA7E is the motor latch, &FB7F the FDC's data port.
+    if (!(port & 0x0480)) {
+        if (!(port & 0x0100))
+            fdc_.writeMotor(value, microseconds());
+        else if (port & 1)
+            fdc_.writeData(value, microseconds());
+    }
 }
 
 uint8_t Cpc::ioRead(uint16_t port)
@@ -90,6 +98,9 @@ uint8_t Cpc::ioRead(uint16_t port)
         }
         value &= ppi_.read(high & 3, pins);
     }
+    // Disc interface: &FB7E is the FDC's status port, &FB7F its data port.
+    if (!(port & 0x0480) && (port & 0x0100))
+        value &= (port & 1) ? fdc_.readData(microseconds()) : fdc_.readStatus(microseconds());
     return value;
 }
 

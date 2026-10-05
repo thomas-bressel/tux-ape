@@ -25,6 +25,15 @@ target_link_libraries(cpc_boot PRIVATE tuxape_core)
 add_test(NAME cpc_boot COMMAND cpc_boot)
 set_tests_properties(cpc_boot PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(disc_amsdos disc_amsdos.cpp)
+target_link_libraries(disc_amsdos PRIVATE tuxape_core)
+add_test(NAME disc_amsdos COMMAND disc_amsdos)
+set_tests_properties(disc_amsdos PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(fdc_unit fdc_unit.cpp)
+target_link_libraries(fdc_unit PRIVATE tuxape_core)
+add_test(NAME fdc_unit COMMAND fdc_unit)
+
 add_executable(keymap keymap.cpp)
 target_link_libraries(keymap PRIVATE tuxape_core)
 target_compile_definitions(keymap PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")

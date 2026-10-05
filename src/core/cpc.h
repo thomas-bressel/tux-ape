@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "core/crtc.h"
+#include "core/fdc.h"
 #include "core/gate_array.h"
 #include "core/keyboard.h"
 #include "core/memory.h"
@@ -38,6 +39,8 @@ public:
 
     // T-states since power on.
     uint64_t clock() const { return clk_; }
+    // The same in microseconds, which is what the slower peripherals count in.
+    uint64_t microseconds() const { return clk_ >> 2; }
 
     Z80<Cpc>& cpu() { return cpu_; }
     Memory& memory() { return memory_; }
@@ -47,6 +50,7 @@ public:
     Ppi& ppi() { return ppi_; }
     Psg& psg() { return psg_; }
     Keyboard& keyboard() { return keyboard_; }
+    Fdc& fdc() { return fdc_; }
 
     // ---- Z80 bus (see z80.h) -----------------------------------------------
 
@@ -125,6 +129,7 @@ private:
     Ppi ppi_;
     Psg psg_;
     Keyboard keyboard_;
+    Fdc fdc_;
 
     uint64_t clk_ = 0;
     uint64_t videoClk_ = 0;  // start of the next microsecond of video to draw
