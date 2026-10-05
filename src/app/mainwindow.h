@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <span>
 
 #include <QKeySequence>
 #include <QMainWindow>
@@ -134,6 +135,10 @@ private:
     void removeTape();
     void showTapeControl();
     void updateTapeActions();
+    // A snapshot or a tape given as what its file holds; `name` is what the
+    // user is told it is.
+    bool loadSnapshotData(std::span<const uint8_t> data, const QString& name);
+    bool insertTapeData(std::span<const uint8_t> data, const QString& name);
     void updateDiscActions();
     void updateDriveLights();
     void report(const QString& error);

@@ -53,6 +53,15 @@ QString DiscManager::insert(int drive, const QString& path)
     return {};
 }
 
+QString DiscManager::insertImage(int drive, std::span<const uint8_t> image, const QString& name)
+{
+    auto disc = Disc::fromDsk(image);
+    if (!disc)
+        return tr("%1 is not a disc image TuxAPE can read.").arg(name);
+    place(drive, std::make_unique<Disc>(std::move(*disc)), name, true);
+    return {};
+}
+
 QString DiscManager::createBlank(int drive, const QString& path, const tuxape::DiscFormat& format)
 {
     auto disc = std::make_unique<Disc>();
@@ -130,7 +139,7 @@ bool DiscManager::spareModified(int drive) const
 
 QString DiscManager::saveSpare(int drive)
 {
-    if (!spareModified(drive) || spare_[drive].path.isEmpty())
+    if (!spareModified(drive) || spare_[drive].readOnly || spare_[drive].path.isEmpty())
         return {};
     const QString error = write(*spare_[drive].disc, spare_[drive].path);
     if (error.isEmpty())

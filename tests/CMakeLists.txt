@@ -74,6 +74,10 @@ target_link_libraries(disc_amsdos PRIVATE tuxape_core)
 add_test(NAME disc_amsdos COMMAND disc_amsdos)
 set_tests_properties(disc_amsdos PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(zip zip.cpp)
+target_link_libraries(zip PRIVATE tuxape_core)
+add_test(NAME zip COMMAND zip)
+
 add_executable(tape tape.cpp)
 target_link_libraries(tape PRIVATE tuxape_core)
 add_test(NAME tape COMMAND tape)

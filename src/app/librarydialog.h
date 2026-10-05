@@ -1,5 +1,8 @@
 #pragma once
 
+#include <optional>
+#include <vector>
+
 #include <QDialog>
 #include <QList>
 #include <QString>
@@ -10,10 +13,12 @@ class QLineEdit;
 class QPushButton;
 class QTreeWidget;
 
-// One program of the library: an image file, and what its name says of it.
+// One program of the library: an image file, by itself or inside a ZIP
+// archive, and what its name says of it.
 struct LibraryEntry {
     enum Kind { Disc, Snapshot, Tape };
     QString path;
+    QString member;  // the file's name inside the archive `path`; empty for a file of its own
     Kind kind = Disc;
     QString title;
     QString year;     // four digits, or empty
@@ -25,8 +30,14 @@ struct LibraryEntry {
 // and square brackets, the year among them.
 LibraryEntry libraryEntry(const QString& path);
 // The disc images, tapes and snapshots (.dsk, .cdt, .sna) in the folders and
-// their sub-folders, in the order of their titles.
+// their sub-folders, those inside ZIP archives included, in the order of
+// their titles. An archive that holds a single program gives it its name;
+// the programs of one that holds several go by their own.
 QList<LibraryEntry> scanLibrary(const QStringList& folders);
+// What the program's file holds. Nothing if it cannot be read.
+std::optional<std::vector<uint8_t>> libraryData(const LibraryEntry& entry);
+// The program's file as shown to the user: "archive.zip » file.dsk".
+QString libraryDisplayPath(const LibraryEntry& entry);
 
 // The Library window, TuxAPE's own (WinAPE has none): the programs found
 // in the folders the user has named, a box to search them, and a double

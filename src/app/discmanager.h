@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <span>
 
 #include <QObject>
 #include <QString>
@@ -33,6 +34,10 @@ public:
     // Each of these returns an error message, or an empty string.
     // Whatever was in the drive is dropped: save it first if it matters.
     QString insert(int drive, const QString& path);
+    // A disc image that is not a file of its own (it comes out of an
+    // archive): `name` is what is shown for it. It cannot be written back,
+    // and counts as a disc from a read-only file.
+    QString insertImage(int drive, std::span<const uint8_t> image, const QString& name);
     QString createBlank(int drive, const QString& path, const tuxape::DiscFormat& format);
     // Writes the disc back to its image file if it has changed.
     QString save(int drive);

@@ -18,7 +18,12 @@ add_library(tuxape_core STATIC
     snapshot.cpp
     tape.cpp
     version.cpp
+    zip.cpp
 )
+
+# ZIP archives are unpacked with zlib.
+find_package(ZLIB REQUIRED)
+target_link_libraries(tuxape_core PRIVATE ZLIB::ZLIB)
 
 target_include_directories(tuxape_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_definitions(tuxape_core PRIVATE

@@ -13,16 +13,44 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include "core/files.h"
+#include "core/zip.h"
+
+namespace {
+
+bool isProgram(const QString& name)
+{
+    return name.endsWith(".dsk", Qt::CaseInsensitive) || name.endsWith(".cdt", Qt::CaseInsensitive)
+           || name.endsWith(".sna", Qt::CaseInsensitive);
+}
+
+LibraryEntry::Kind kindOf(const QString& name)
+{
+    return name.endsWith(".sna", Qt::CaseInsensitive)   ? LibraryEntry::Snapshot
+           : name.endsWith(".cdt", Qt::CaseInsensitive) ? LibraryEntry::Tape
+                                                        : LibraryEntry::Disc;
+}
+
+// A name out of an archive: UTF-8 in those of today, the PC's old
+// character set in those of yesterday, of which the accents are let go.
+QString memberName(const std::string& name)
+{
+    const QString text = QString::fromUtf8(name.data(), static_cast<qsizetype>(name.size()));
+    return text.contains(QChar::ReplacementCharacter) ? QString::fromLatin1(name.data(), static_cast<qsizetype>(name.size()))
+                                                      : text;
+}
+
+}  // namespace
 
 LibraryEntry libraryEntry(const QString& path)
 {
     LibraryEntry entry;
     entry.path = path;
-    entry.kind = path.endsWith(".sna", Qt::CaseInsensitive)   ? LibraryEntry::Snapshot
-                 : path.endsWith(".cdt", Qt::CaseInsensitive) ? LibraryEntry::Tape
-                                                              : LibraryEntry::Disc;
+    entry.kind = kindOf(path);
     const QString name = QFileInfo(path).completeBaseName().replace('_', ' ');
 
     // The title runs up to the first bracket.
@@ -54,24 +82,60 @@ LibraryEntry libraryEntry(const QString& path)
 QList<LibraryEntry> scanLibrary(const QStringList& folders)
 {
     QList<LibraryEntry> entries;
-    QStringList seen;
+    QSet<QString> seen;
     for (const QString& folder : folders) {
-        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.sna"}, QDir::Files,
+        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.sna", "*.zip"}, QDir::Files,
                         QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
         while (it.hasNext()) {
             const QString path = QDir::cleanPath(it.next());
             // A folder named twice, or inside another, gives each file once.
             if (seen.contains(path))
                 continue;
-            seen << path;
-            entries << libraryEntry(path);
+            seen.insert(path);
+            if (!path.endsWith(".zip", Qt::CaseInsensitive)) {
+                entries << libraryEntry(path);
+                continue;
+            }
+            const auto archive = tuxape::ZipArchive::open(path.toStdString());
+            if (!archive)
+                continue;
+            QStringList programs;
+            for (const tuxape::ZipArchive::Entry& file : archive->entries())
+                if (const QString name = memberName(file.name); isProgram(name))
+                    programs << name;
+            for (const QString& name : programs) {
+                LibraryEntry entry = libraryEntry(programs.size() == 1 ? path : name);
+                entry.path = path;
+                entry.member = name;
+                entry.kind = kindOf(name);
+                entries << entry;
+            }
         }
     }
     std::sort(entries.begin(), entries.end(), [](const LibraryEntry& a, const LibraryEntry& b) {
         const int order = a.title.compare(b.title, Qt::CaseInsensitive);
-        return order != 0 ? order < 0 : a.path < b.path;
+        return order != 0 ? order < 0 : a.path != b.path ? a.path < b.path : a.member < b.member;
     });
     return entries;
+}
+
+std::optional<std::vector<uint8_t>> libraryData(const LibraryEntry& entry)
+{
+    if (entry.member.isEmpty())
+        return tuxape::readFile(entry.path.toStdString());
+    const auto archive = tuxape::ZipArchive::open(entry.path.toStdString());
+    if (!archive)
+        return std::nullopt;
+    for (const tuxape::ZipArchive::Entry& file : archive->entries())
+        if (memberName(file.name) == entry.member)
+            return archive->read(file);
+    return std::nullopt;
+}
+
+QString libraryDisplayPath(const LibraryEntry& entry)
+{
+    const QString path = QDir::toNativeSeparators(entry.path);
+    return entry.member.isEmpty() ? path : path + QString::fromUtf8(" \u00BB ") + entry.member;
 }
 
 LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
@@ -162,7 +226,7 @@ void LibraryDialog::fill()
                                                                 : tr("Snapshot");
         auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, entry.details});
         item->setData(0, Qt::UserRole, i);
-        item->setToolTip(0, QDir::toNativeSeparators(entry.path));
+        item->setToolTip(0, libraryDisplayPath(entry));
     }
     filter();
 }
@@ -175,7 +239,8 @@ void LibraryDialog::filter()
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         QTreeWidgetItem* item = list_->topLevelItem(row);
         const LibraryEntry& entry = entries_[item->data(0, Qt::UserRole).toInt()];
-        const QString text = entry.title + ' ' + entry.year + ' ' + entry.details + ' ' + QFileInfo(entry.path).fileName();
+        const QString text = entry.title + ' ' + entry.year + ' ' + entry.details + ' ' + QFileInfo(entry.path).fileName()
+                             + ' ' + entry.member;
         const bool match = std::all_of(words.begin(), words.end(),
                                        [&](const QString& word) { return text.contains(word, Qt::CaseInsensitive); });
         item->setHidden(!match);
@@ -258,7 +323,7 @@ void LibraryDialog::editFolders()
     buttons->addStretch(1);
     buttons->addWidget(ok);
     auto* layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(tr("Disc images (.dsk), tapes (.cdt) and snapshots (.sna) are looked for in:")));
+    layout->addWidget(new QLabel(tr("Disc images (.dsk), tapes (.cdt) and snapshots (.sna), zipped or not, are looked for in:")));
     layout->addWidget(list, 1);
     layout->addLayout(buttons);
     dialog.resize(480, 260);

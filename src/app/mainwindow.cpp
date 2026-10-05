@@ -469,17 +469,24 @@ void MainWindow::saveScreenshot()
 bool MainWindow::insertTapeFile(const QString& path)
 {
     const auto data = tuxape::readFile(path.toStdString());
-    auto tape = data ? tuxape::Tape::parseCdt(*data) : std::nullopt;
+    if (!insertTapeData(data ? std::span<const uint8_t>(*data) : std::span<const uint8_t>(), path))
+        return false;
+    tapeFolder_ = QFileInfo(path).absolutePath();
+    return true;
+}
+
+bool MainWindow::insertTapeData(std::span<const uint8_t> data, const QString& name)
+{
+    auto tape = tuxape::Tape::parseCdt(data);
     if (!tape) {
-        report(tr("%1 is not a tape image.").arg(QDir::toNativeSeparators(path)));
+        report(tr("%1 is not a tape image.").arg(QDir::toNativeSeparators(name)));
         return false;
     }
     emulator_->withMachine([&](tuxape::Cpc& cpc) {
         cpc.tape().insert(std::move(*tape));
         cpc.tape().play(cpc.microseconds());
     });
-    tapePath_ = path;
-    tapeFolder_ = QFileInfo(path).absolutePath();
+    tapePath_ = name;
     if (tapeDialog_)
         tapeDialog_->setTape(tapePath_);
     updateTapeActions();
@@ -538,12 +545,27 @@ void MainWindow::showLibrary()
     const LibraryEntry* chosen = dialog.chosen();
     if (closed != QDialog::Accepted || !chosen)
         return;
-    if (chosen->kind == LibraryEntry::Snapshot)
-        loadSnapshotFile(chosen->path);
+    if (chosen->member.isEmpty()) {
+        if (chosen->kind == LibraryEntry::Snapshot)
+            loadSnapshotFile(chosen->path);
+        else if (chosen->kind == LibraryEntry::Tape)
+            insertTapeFile(chosen->path);
+        else if (saveBeforeLeaving(dialog.drive()))
+            insertDiscFile(dialog.drive(), chosen->path);
+        return;
+    }
+    // Out of an archive: the program is used as it is in there, and a disc
+    // cannot be written back.
+    const QString name = libraryDisplayPath(*chosen);
+    const auto data = libraryData(*chosen);
+    if (!data)
+        report(tr("Cannot read %1.").arg(name));
+    else if (chosen->kind == LibraryEntry::Snapshot)
+        loadSnapshotData(*data, name);
     else if (chosen->kind == LibraryEntry::Tape)
-        insertTapeFile(chosen->path);
+        insertTapeData(*data, name);
     else if (saveBeforeLeaving(dialog.drive()))
-        insertDiscFile(dialog.drive(), chosen->path);
+        report(discs_->insertImage(dialog.drive(), *data, name));
 }
 
 void MainWindow::autoType()
@@ -633,19 +655,22 @@ bool MainWindow::loadSnapshotFile(const QString& path)
         return false;
     }
     const QByteArray bytes = file.readAll();
-    std::string error;
-    const bool ok = emulator_->withMachine([&](tuxape::Cpc& cpc) {
-        return tuxape::loadSnapshot(
-            cpc, {reinterpret_cast<const uint8_t*>(bytes.constData()), static_cast<size_t>(bytes.size())}, &error);
-    });
-    if (!ok) {
-        report(tr("Cannot load %1:\n%2").arg(QDir::toNativeSeparators(path), QString::fromStdString(error)));
+    if (!loadSnapshotData({reinterpret_cast<const uint8_t*>(bytes.constData()), static_cast<size_t>(bytes.size())},
+                          QDir::toNativeSeparators(path)))
         return false;
-    }
     snapshotPath_ = path;
     snapshotFolder_ = QFileInfo(path).absolutePath();
     updateSnapshotAction_->setEnabled(true);
     return true;
+}
+
+bool MainWindow::loadSnapshotData(std::span<const uint8_t> data, const QString& name)
+{
+    std::string error;
+    const bool ok = emulator_->withMachine([&](tuxape::Cpc& cpc) { return tuxape::loadSnapshot(cpc, data, &error); });
+    if (!ok)
+        report(tr("Cannot load %1:\n%2").arg(name, QString::fromStdString(error)));
+    return ok;
 }
 
 bool MainWindow::saveSnapshotFile(const QString& path)

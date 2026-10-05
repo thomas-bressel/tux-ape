@@ -54,6 +54,66 @@ private:
     int seen_ = 0;
 };
 
+uint32_t crc32(const QByteArray& data)
+{
+    uint32_t crc = 0xFFFFFFFF;
+    for (const char c : data) {
+        crc ^= static_cast<uint8_t>(c);
+        for (int bit = 0; bit < 8; ++bit)
+            crc = crc & 1 ? crc >> 1 ^ 0xEDB88320 : crc >> 1;
+    }
+    return ~crc;
+}
+
+// Writes a ZIP archive of the files given (name in the archive, file on
+// disc), stored without packing.
+void writeZip(const QString& path, const QList<QPair<QString, QString>>& files)
+{
+    auto number = [](QByteArray& out, uint32_t value, int bytes) {
+        for (int i = 0; i < bytes; ++i)
+            out.append(static_cast<char>(value >> (8 * i)));
+    };
+    QByteArray archive, directory;
+    for (const auto& [name, source] : files) {
+        QFile file(source);
+        CHECK(file.open(QIODevice::ReadOnly));
+        const QByteArray data = file.readAll();
+        const QByteArray nameBytes = name.toUtf8();
+        QByteArray fields;  // what the two headers of a file share
+        number(fields, 20, 2);  // version needed
+        number(fields, 0, 2);   // flags
+        number(fields, 0, 2);   // stored
+        number(fields, 0, 4);   // time and date
+        number(fields, crc32(data), 4);
+        number(fields, static_cast<uint32_t>(data.size()), 4);
+        number(fields, static_cast<uint32_t>(data.size()), 4);
+        number(fields, static_cast<uint32_t>(nameBytes.size()), 2);
+        number(fields, 0, 2);  // no extra field
+        const uint32_t offset = static_cast<uint32_t>(archive.size());
+        archive += QByteArray("PK\x03\x04", 4) + fields + nameBytes + data;
+        directory += QByteArray("PK\x01\x02", 4);
+        number(directory, 20, 2);  // made by
+        directory += fields;
+        number(directory, 0, 2);  // no comment
+        number(directory, 0, 2);  // disc number
+        number(directory, 0, 2);  // attributes
+        number(directory, 0, 4);
+        number(directory, offset, 4);
+        directory += nameBytes;
+    }
+    const uint32_t start = static_cast<uint32_t>(archive.size());
+    archive += directory + QByteArray("PK\x05\x06", 4);
+    number(archive, 0, 4);
+    number(archive, static_cast<uint32_t>(files.size()), 2);
+    number(archive, static_cast<uint32_t>(files.size()), 2);
+    number(archive, static_cast<uint32_t>(directory.size()), 4);
+    number(archive, start, 4);
+    number(archive, 0, 2);
+    QFile out(path);
+    CHECK(out.open(QIODevice::WriteOnly));
+    out.write(archive);
+}
+
 void testNames()
 {
     LibraryEntry entry = libraryEntry("/games/Gryzor (UK) (1987) (CPM) [Original].dsk");
@@ -284,5 +344,75 @@ int main(int argc, char* argv[])
         const int marker = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().read(0x8000); });
         CHECK_EQ(marker, 0x42);
     }
+    // ---- Programs inside ZIP archives ---------------------------------------
+    const QString zipped = folder.filePath("zipped");
+    QDir().mkpath(zipped);
+    const QString tape = folder.filePath("harrier.cdt");
+    {
+        QFile file(tape);
+        CHECK(file.open(QIODevice::WriteOnly));
+        file.write(QByteArray("ZXTape!\x1A\x01\x14\x12\xE8\x03\xD0\x07", 15));
+    }
+    // One program to an archive: the archive's name is the one that tells.
+    const QString single = zipped + "/Barbarian (1987)(Palace)(fr).zip";
+    writeZip(single, {{"BARBAR.DSK", gryzor}, {"readme.txt", games + "/readme.txt"}});
+    // Several: each goes by its own.
+    const QString several = zipped + "/Compilation.ZIP";
+    writeZip(several, {{"disks/Zub (1986)(Mastertronic).dsk", gryzor},
+                       {"Harrier Attack (1984)(Durell).cdt", tape},
+                       {"Thing on a Spring (1986).sna", sorcery}});
+    // No program in it, and not an archive at all: nothing listed.
+    writeZip(zipped + "/documents.zip", {{"readme.txt", games + "/readme.txt"}});
+    CHECK(QFile::copy(games + "/readme.txt", zipped + "/broken.zip"));
+
+    const QList<LibraryEntry> inside = scanLibrary({zipped});
+    CHECK_EQ(inside.size(), 4);
+    if (inside.size() == 4) {
+        CHECK(inside[0].title == "Barbarian" && inside[0].year == "1987" && inside[0].details == "Palace, fr");
+        CHECK(inside[0].path == single && inside[0].member == "BARBAR.DSK" && inside[0].kind == LibraryEntry::Disc);
+        CHECK(inside[1].title == "Harrier Attack" && inside[1].kind == LibraryEntry::Tape && inside[1].path == several);
+        CHECK(inside[2].title == "Thing on a Spring" && inside[2].kind == LibraryEntry::Snapshot);
+        CHECK(inside[3].title == "Zub" && inside[3].member == "disks/Zub (1986)(Mastertronic).dsk");
+        CHECK(libraryDisplayPath(inside[3]).endsWith(QString::fromUtf8("Compilation.ZIP \u00BB disks/Zub (1986)(Mastertronic).dsk")));
+        const auto data = libraryData(inside[0]);
+        QFile original(gryzor);
+        CHECK(original.open(QIODevice::ReadOnly));
+        const QByteArray bytes = original.readAll();
+        CHECK(data && QByteArray(reinterpret_cast<const char*>(data->data()), static_cast<qsizetype>(data->size())) == bytes);
+        LibraryEntry gone = inside[0];
+        gone.member = "OTHER.DSK";
+        CHECK(!libraryData(gone));
+    }
+    CHECK(libraryData(libraryEntry(gryzor)).has_value());
+
+    // From the window: a search finds a program by its archive's name too,
+    // and each kind goes where it belongs.
+    Settings zippedSettings = window.settings();
+    zippedSettings.libraryFolders = QStringList{zipped};
+    window.applySettings(zippedSettings);
+    window.discs()->remove(0);
+    emulator.withMachine([](tuxape::Cpc& cpc) { cpc.memory().write(0x8000, 0x00); });
+    auto pick = [&](const QString& search, const QString& title, int drive) {
+        Modals modals([&](QWidget* modal) {
+            auto* dialog = qobject_cast<LibraryDialog*>(modal);
+            if (!dialog)
+                return modal->close(), void();
+            dialog->setSearch(search);
+            CHECK(dialog->listedTitles() == QStringList{title});
+            CHECK(dialog->choose(drive));
+        });
+        action->trigger();
+        CHECK_EQ(modals.seen(), 1);
+    };
+    pick("compilation zub", "Zub", 1);
+    CHECK(window.discs()->info(1).present && window.discs()->info(1).readOnly);
+    CHECK(window.discs()->info(1).path.endsWith("Zub (1986)(Mastertronic).dsk"));
+    pick("barbar", "Barbarian", 0);
+    CHECK(window.discs()->info(0).present && window.discs()->info(0).readOnly);
+    pick("harrier", "Harrier Attack", 0);
+    CHECK(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.tape().loaded() && cpc.tape().playing(); }));
+    pick("spring", "Thing on a Spring", 0);
+    const int zippedMarker = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().read(0x8000); });
+    CHECK_EQ(zippedMarker, 0x42);
     return checkSummary("gui_library");
 }
