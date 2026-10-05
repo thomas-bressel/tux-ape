@@ -24,12 +24,29 @@ Emulator::~Emulator()
 
 QString Emulator::setupMachine(tuxape::CpcModel model)
 {
+    return setupMachine(tuxape::stockMachine(model), true);
+}
+
+QString Emulator::setupMachine(const tuxape::MachineConfig& config, bool reset)
+{
     return withMachine([&](Cpc& cpc) {
         std::string error;
-        if (!tuxape::setupStockMachine(cpc, model, tuxape::defaultRomDir(), &error))
-            return QString::fromStdString(error);
-        model_ = model;
-        return QString();
+        tuxape::applyMachine(cpc, config, tuxape::defaultRomDir(), &error);
+        if (reset)
+            cpc.coldReset();
+        machine_ = config;
+        model_ = tuxape::modelOf(config);
+        return QString::fromStdString(error);
+    });
+}
+
+tuxape::MachineConfig Emulator::machine()
+{
+    return withMachine([&](Cpc& cpc) {
+        tuxape::MachineConfig config = machine_;
+        config.ram = cpc.memory().ramExpansion();
+        config.siliconDisc = cpc.memory().siliconDisc();
+        return config;
     });
 }
 

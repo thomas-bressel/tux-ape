@@ -23,7 +23,11 @@ public:
     Memory();
 
     // Fitted RAM. The Silicon Disc adds the top 256K of the first 512K.
+    // The base RAM and the pages fitted before and after keep their
+    // contents; the banking register goes back to its reset state.
     void setRam(RamExpansion expansion, bool siliconDisc);
+    // What a choice of RAM comes to, in K.
+    static int ramSizeKb(RamExpansion expansion, bool siliconDisc);
     RamExpansion ramExpansion() const { return expansion_; }
     bool siliconDisc() const { return siliconDisc_; }
     int ramSizeKb() const;

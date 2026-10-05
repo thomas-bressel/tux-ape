@@ -221,7 +221,7 @@ void MainWindow::createMenus()
     addAction(setupKey);
     addItem(settings, tr("&Display"));
     addItem(settings, tr("&Sound"));
-    addItem(settings, tr("&Memory"));
+    addItem(settings, tr("&Memory"), {}, [this] { showSetup(SetupDialog::Memory); });
     addItem(settings, tr("&Input"));
     addItem(settings, tr("&Other"));
     settings->addSeparator();
@@ -352,6 +352,13 @@ void MainWindow::setPaused(bool paused)
 void MainWindow::applySettings(const Settings& settings)
 {
     settings_ = settings;
+    // RAM and ROMs change under the running machine, as in WinAPE: it is
+    // for the user to reset it (CTRL+F9) when the firmware has to notice.
+    if (settings.machine != emulator_->machine()) {
+        const QString error = emulator_->setupMachine(settings.machine, false);
+        if (!error.isEmpty())
+            report(tr("%1.").arg(error.left(1).toUpper() + error.mid(1)));
+    }
     emulator_->setCrtcType(static_cast<tuxape::CrtcType>(settings.crtcType));
     emulator_->setFastDisc(settings.fastDisc);
     emulator_->setSpeedPercent(settings.speedPercent);
@@ -360,8 +367,9 @@ void MainWindow::applySettings(const Settings& settings)
 
 void MainWindow::showSetup(int page)
 {
-    // A snapshot may have brought its own CRTC with it.
+    // A snapshot may have brought its own CRTC and RAM with it.
     settings_.crtcType = static_cast<int>(emulator_->crtcType());
+    settings_.machine = emulator_->machine();
     SetupDialog dialog(settings_, this);
     dialog.showPage(static_cast<SetupDialog::Page>(page));
     if (dialog.exec() != QDialog::Accepted)

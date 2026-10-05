@@ -30,8 +30,16 @@ public:
     explicit Emulator(QObject* parent = nullptr);
     ~Emulator() override;
 
-    // Fits a stock machine. Returns an error message, or an empty string.
+    // Fits a stock machine and cold-resets it. Returns an error message, or
+    // an empty string.
     QString setupMachine(tuxape::CpcModel model);
+    // Fits the RAM and ROMs described, with a cold reset or, as WinAPE does
+    // when its settings change, without any. ROM images that cannot be read
+    // leave their place empty and are named in the message returned.
+    QString setupMachine(const tuxape::MachineConfig& config, bool reset);
+    // What is fitted: the last configuration given, with the RAM the
+    // machine has now (a snapshot can bring more).
+    tuxape::MachineConfig machine();
     tuxape::CpcModel model() const { return model_; }
 
     void start();
@@ -106,6 +114,7 @@ private:
     tuxape::Cpc cpc_;
 
     tuxape::CpcModel model_ = tuxape::CpcModel::Cpc6128;
+    tuxape::MachineConfig machine_;
     tuxape::KeyMap keyMap_;
     tuxape::AutoType autoType_;
     // How many PC keys currently hold each CPC key down.

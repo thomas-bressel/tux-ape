@@ -36,6 +36,9 @@ void Memory::setRam(RamExpansion expansion, bool siliconDisc)
     expansion_ = expansion;
     siliconDisc_ = siliconDisc;
 
+    const std::vector<uint8_t> oldRam = std::move(ram_);
+    const std::vector<int> oldOffset = pageOffset_;
+
     pageOffset_.assign(kMaxPages, -1);
     int pages = 0;
     auto fit = [&](int first, int count) {
@@ -52,10 +55,29 @@ void Memory::setRam(RamExpansion expansion, bool siliconDisc)
     if (siliconDisc)
         fit(4, 4);
 
+    // What was in the base RAM and in the pages that stay fitted is kept:
+    // RAM can be added to or taken from a running machine.
     ram_.assign(static_cast<size_t>(kPageSize) * (1 + pages), 0);
+    if (!oldRam.empty()) {
+        std::copy_n(oldRam.begin(), kPageSize, ram_.begin());
+        for (int p = 0; p < kMaxPages && p < static_cast<int>(oldOffset.size()); ++p)
+            if (oldOffset[p] >= 0 && pageOffset_[p] >= 0)
+                std::copy_n(oldRam.begin() + oldOffset[p], kPageSize, ram_.begin() + pageOffset_[p]);
+    }
     ramConfig_ = 0xC0;
     ramPage_ = 0;
     remap();
+}
+
+int Memory::ramSizeKb(RamExpansion expansion, bool siliconDisc)
+{
+    switch (expansion) {
+    case RamExpansion::None: return siliconDisc ? 320 : 64;
+    case RamExpansion::Internal: return siliconDisc ? 384 : 128;
+    case RamExpansion::Dk256: return siliconDisc ? 576 : 320;
+    case RamExpansion::Yarek4M: return 4160;  // the Silicon Disc's place is part of it
+    }
+    return 64;
 }
 
 int Memory::ramSizeKb() const

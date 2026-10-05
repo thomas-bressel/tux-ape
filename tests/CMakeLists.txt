@@ -59,6 +59,11 @@ target_link_libraries(cpc_boot PRIVATE tuxape_core)
 add_test(NAME cpc_boot COMMAND cpc_boot)
 set_tests_properties(cpc_boot PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(machine_setup machine_setup.cpp)
+target_link_libraries(machine_setup PRIVATE tuxape_core)
+add_test(NAME machine_setup COMMAND machine_setup)
+set_tests_properties(machine_setup PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(disc_amsdos disc_amsdos.cpp)
 target_link_libraries(disc_amsdos PRIVATE tuxape_core)
 add_test(NAME disc_amsdos COMMAND disc_amsdos)
@@ -99,4 +104,5 @@ if(TUXAPE_BUILD_APP)
             SKIP_RETURN_CODE 77
             ENVIRONMENT QT_QPA_PLATFORM=offscreen)
     endforeach()
+    target_compile_definitions(gui_setup PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")
 endif()

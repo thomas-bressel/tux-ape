@@ -32,13 +32,22 @@ int main(int argc, char* argv[])
     // Declared before the emulator, which uses it until it is destroyed.
     AudioOutput audio;
     Emulator emulator;
-    const QString error = emulator.setupMachine(tuxape::CpcModel::Cpc6128);
+    Settings settings;
+    settings.load();
+    const QString error = emulator.setupMachine(settings.machine, true);
     if (!error.isEmpty()) {
-        QMessageBox::critical(nullptr, QApplication::applicationName(),
-                              QObject::tr("%1\n\nSet the TUXAPE_ROM_DIR environment variable to the folder "
-                                          "holding WinAPE's ROM images.")
-                                  .arg(error));
-        return 1;
+        const QString message = error.left(1).toUpper() + error.mid(1) + ".";
+        if (settings.machine == tuxape::stockMachine(tuxape::CpcModel::Cpc6128)) {
+            QMessageBox::critical(nullptr, QApplication::applicationName(),
+                                  QObject::tr("%1\n\nSet the TUXAPE_ROM_DIR environment variable to the folder "
+                                              "holding WinAPE's ROM images.")
+                                      .arg(message));
+            return 1;
+        }
+        // The machine may not start, but the Setup window is there to put
+        // that right.
+        QMessageBox::warning(nullptr, QApplication::applicationName(),
+                             QObject::tr("%1\n\nChoose other ROM images in Settings > Memory.").arg(message));
     }
 
     // Without a sound device the emulator runs silent.
@@ -46,8 +55,6 @@ int main(int argc, char* argv[])
         emulator.setAudioOutput(&audio);
 
     MainWindow window(&emulator);
-    Settings settings;
-    settings.load();
     window.applySettings(settings);
     window.show();
     if (!parser.positionalArguments().isEmpty())
