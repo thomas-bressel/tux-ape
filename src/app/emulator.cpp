@@ -4,6 +4,7 @@
 
 #include "core/disasm.h"
 #include "core/files.h"
+#include "core/snapshot.h"
 
 #include "audiooutput.h"
 
@@ -232,6 +233,82 @@ bool Emulator::stopYmRecording()
     });
 }
 
+// ---- sessions --------------------------------------------------------------------
+
+void Emulator::startSessionRecording(bool fromColdReset)
+{
+    using tuxape::CpcModel;
+    using tuxape::SnapshotMachine;
+    withMachine([&](Cpc& cpc) {
+        if (fromColdReset)
+            cpc.coldReset();
+        const SnapshotMachine machine = model_ == CpcModel::Cpc464     ? SnapshotMachine::Cpc464
+                                        : model_ == CpcModel::Cpc664   ? SnapshotMachine::Cpc664
+                                        : model_ == CpcModel::Plus464  ? SnapshotMachine::Plus464
+                                        : model_ == CpcModel::Plus6128 ? SnapshotMachine::Plus6128
+                                                                       : SnapshotMachine::Cpc6128;
+        tuxape::Session session;
+        session.snapshot = tuxape::saveSnapshot(cpc, machine);
+        // The machine goes on from the snapshot as a playback will: what
+        // the snapshot does not hold has no say in what follows.
+        tuxape::beginSession(cpc, session);
+        std::memset(keyHolds_, 0, sizeof keyHolds_);
+        std::memset(pcDown_, 0, sizeof pcDown_);
+        sessionPlayer_.stop();
+        playingSession_ = false;
+        sessionRecorder_.start(std::move(session.snapshot));
+        recordingSession_ = true;
+    });
+}
+
+tuxape::Session Emulator::stopSessionRecording()
+{
+    return withMachine([&](Cpc&) {
+        recordingSession_ = false;
+        return sessionRecorder_.finish();
+    });
+}
+
+bool Emulator::playSession(const tuxape::Session& session, QString* error)
+{
+    const bool loaded = withMachine([&](Cpc& cpc) {
+        std::string message;
+        if (!tuxape::beginSession(cpc, session, &message)) {
+            if (error)
+                *error = QString::fromStdString(message);
+            return false;
+        }
+        if (sessionRecorder_.active())
+            sessionRecorder_.finish();
+        recordingSession_ = false;
+        std::memset(keyHolds_, 0, sizeof keyHolds_);
+        std::memset(pcDown_, 0, sizeof pcDown_);
+        autoType_.cancel();
+        sessionPlayer_.start(session);
+        playingSession_ = true;
+        return true;
+    });
+    if (loaded)
+        setPaused(false);
+    return loaded;
+}
+
+void Emulator::stopPlayback()
+{
+    withMachine([&](Cpc& cpc) {
+        if (!sessionPlayer_.active())
+            return;
+        sessionPlayer_.stop();
+        playingSession_ = false;
+        cpc.keyboard().releaseAll();
+    });
+}
+
+std::pair<uint32_t, uint32_t> Emulator::playbackPosition()
+{
+    return withMachine([&](Cpc&) { return std::make_pair(sessionPlayer_.position(), sessionPlayer_.frames()); });
+}
+
 // ---- debugging -------------------------------------------------------------------
 
 void Emulator::watchAddresses()
@@ -368,6 +445,9 @@ void Emulator::reset(bool cold)
 
 void Emulator::pcKeyEvent(uint8_t pcKey, bool numLock, bool pressed)
 {
+    // While a session plays, the keys are its own.
+    if (playingSession_)
+        return;
     withMachine([&](Cpc& cpc) {
         if (pressed) {
             if (pcDown_[numLock][pcKey])
@@ -510,9 +590,19 @@ void Emulator::threadMain()
         }
 
         machineMutex_.lock();
-        if (joystickEnabled_)
-            applyJoystick(joystick_.poll());
-        autoType_.frame();
+        bool playbackOver = false;
+        if (sessionPlayer_.active()) {
+            // The keyboard is the recording's.
+            if (!sessionPlayer_.frame(cpc_.keyboard())) {
+                playingSession_ = false;
+                playbackOver = true;
+            }
+        } else {
+            if (joystickEnabled_)
+                applyJoystick(joystick_.poll());
+            autoType_.frame();
+            sessionRecorder_.frame(cpc_.keyboard());
+        }
         cpc_.runFrame();
         ym_.frame(cpc_.psg());
         // A breakpoint, the end of a step, or a break instruction: the
@@ -534,6 +624,8 @@ void Emulator::threadMain()
         playSound();
         const uint64_t frames = cpc_.monitor().frameNumber();
         machineMutex_.unlock();
+        if (playbackOver)
+            emit playbackFinished();
         if (stop) {
             emit stopped();
             continue;

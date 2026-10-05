@@ -44,6 +44,12 @@ public:
     // Puts a tape (a CDT file) in the deck, rewound and with Play pressed:
     // it runs when the CPC starts the motor.
     bool insertTapeFile(const QString& path);
+    // Records a session to a file, from the machine's present state or
+    // from a cold reset, until stopSessionRecording(); and plays one back.
+    // Problems are reported to the user.
+    void startSessionRecording(const QString& path, bool fromColdReset);
+    bool stopSessionRecording();
+    bool playSessionFile(const QString& path);
     // Plugs a cartridge (a CPR file) in. The machine becomes a Plus if it
     // was not one, and starts afresh, as one does when its cartridge is
     // changed.
@@ -90,6 +96,9 @@ private:
     QAction* cartridgeAction_ = nullptr;
     QAction* recordWavAction_ = nullptr;
     QAction* recordYmAction_ = nullptr;
+    QAction* recordSessionAction_ = nullptr;
+    QAction* playSessionAction_ = nullptr;
+    QString sessionPath_;  // the file the session being recorded goes to
     QString recordingFolder_;
     QAction* tapeControlAction_ = nullptr;
     QAction* rewindTapeAction_ = nullptr;
@@ -154,6 +163,10 @@ private:
     // recording starts; chosen again, the entry ends it.
     void toggleWavRecording();
     void toggleYmRecording();
+    // File > Record Session and Playback Session, each ended by choosing
+    // its entry again.
+    void toggleSessionRecording();
+    void toggleSessionPlayback();
     // The cassette deck.
     void chooseTape();
     void removeTape();

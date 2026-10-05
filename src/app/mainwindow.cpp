@@ -13,6 +13,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QMimeData>
 #include <QTimer>
 #include <QToolButton>
@@ -31,6 +32,7 @@
 
 #include "core/cartridge.h"
 #include "core/files.h"
+#include "core/session.h"
 #include "core/setup.h"
 #include "core/snapshot.h"
 
@@ -93,6 +95,8 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
 
     connect(emulator_, &Emulator::statsChanged, this, &MainWindow::updateStats, Qt::QueuedConnection);
     connect(emulator_, &Emulator::stopped, this, &MainWindow::machineStopped, Qt::QueuedConnection);
+    connect(emulator_, &Emulator::playbackFinished, this, [this] { playSessionAction_->setChecked(false); },
+            Qt::QueuedConnection);
     connect(QApplication::clipboard(), &QClipboard::dataChanged, this,
             [this] { pasteAction_->setEnabled(!QApplication::clipboard()->text().isEmpty()); });
     connect(discs_, &DiscManager::changed, this, &MainWindow::updateDiscActions);
@@ -223,8 +227,10 @@ void MainWindow::createMenus()
         addItem(file, tr("&Update Snapshot"), CTRL | Qt::Key_F6, [this] { saveSnapshotFile(snapshotPath_); });
     updateSnapshotAction_->setEnabled(false);
     file->addSeparator();
-    addItem(file, tr("Playbac&k Session..."));
-    addItem(file, tr("&Record Session..."));
+    playSessionAction_ = addItem(file, tr("Playbac&k Session..."), {}, [this] { toggleSessionPlayback(); });
+    recordSessionAction_ = addItem(file, tr("&Record Session..."), {}, [this] { toggleSessionRecording(); });
+    playSessionAction_->setCheckable(true);
+    recordSessionAction_->setCheckable(true);
     file->addSeparator();
     addItem(file, tr("Save Screens&hot..."), CTRL | Qt::Key_F7, [this] { saveScreenshot(); });
     addItem(file, tr("R&ecord AVI..."));
@@ -533,6 +539,81 @@ void MainWindow::saveScreenshot()
     settings_.save();
 }
 
+// ---- sessions --------------------------------------------------------------------
+
+void MainWindow::startSessionRecording(const QString& path, bool fromColdReset)
+{
+    sessionPath_ = path;
+    emulator_->startSessionRecording(fromColdReset);
+    recordSessionAction_->setChecked(true);
+    playSessionAction_->setChecked(false);
+}
+
+bool MainWindow::stopSessionRecording()
+{
+    const tuxape::Session session = emulator_->stopSessionRecording();
+    recordSessionAction_->setChecked(false);
+    if (tuxape::writeFile(sessionPath_.toStdString(), session.serialise()))
+        return true;
+    report(tr("Cannot write %1.").arg(QDir::toNativeSeparators(sessionPath_)));
+    return false;
+}
+
+bool MainWindow::playSessionFile(const QString& path)
+{
+    const auto data = tuxape::readFile(path.toStdString());
+    const auto session = data ? tuxape::Session::parse(*data) : std::nullopt;
+    QString error = tr("it is not a session recorded by TuxAPE");
+    const bool playing = session && emulator_->playSession(*session, &error);
+    if (!playing)
+        report(tr("Cannot play %1:\n%2.").arg(QDir::toNativeSeparators(path), error));
+    playSessionAction_->setChecked(playing);
+    recordSessionAction_->setChecked(emulator_->recordingSession());
+    updateDebugActions();
+    return playing;
+}
+
+void MainWindow::toggleSessionRecording()
+{
+    if (emulator_->recordingSession()) {
+        stopSessionRecording();
+        return;
+    }
+    recordSessionAction_->setChecked(false);
+    QString path = QFileDialog::getSaveFileName(this, tr("Session Recording"), recordingFolder_,
+                                                tr("Session Recording Files (*.snr)"));
+    if (path.isEmpty())
+        return;
+    if (QFileInfo(path).suffix().isEmpty())
+        path += QLatin1String(".snr");
+    recordingFolder_ = QFileInfo(path).absolutePath();
+    // From where the machine stands, or from a machine just switched on.
+    QMessageBox question(QMessageBox::Question, tr("Session Recording"), tr("Where is the recording to start from?"),
+                         QMessageBox::NoButton, this);
+    question.addButton(tr("Current State"), QMessageBox::AcceptRole);
+    QAbstractButton* cold = question.addButton(tr("Cold Reset"), QMessageBox::DestructiveRole);
+    QAbstractButton* cancel = question.addButton(QMessageBox::Cancel);
+    question.exec();
+    if (question.clickedButton() != cancel)
+        startSessionRecording(path, question.clickedButton() == cold);
+}
+
+void MainWindow::toggleSessionPlayback()
+{
+    if (emulator_->playingSession()) {
+        emulator_->stopPlayback();
+        playSessionAction_->setChecked(false);
+        return;
+    }
+    playSessionAction_->setChecked(false);
+    const QString path = QFileDialog::getOpenFileName(this, tr("Session Recording"), recordingFolder_,
+                                                      tr("Session Recording Files (*.snr);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    recordingFolder_ = QFileInfo(path).absolutePath();
+    playSessionFile(path);
+}
+
 // ---- recording -------------------------------------------------------------------
 
 void MainWindow::toggleWavRecording()
@@ -757,7 +838,18 @@ void MainWindow::updateStats(int speedPercent, int framesPerSecond)
 {
     if (emulator_->isPaused())
         return;
-    statusLabel_->setText(tr("%1%  FPS: %2").arg(speedPercent).arg(framesPerSecond));
+    QString text = tr("%1%  FPS: %2").arg(speedPercent).arg(framesPerSecond);
+    // A session playing: where it is, and how long it is.
+    if (emulator_->playingSession()) {
+        const auto [played, total] = emulator_->playbackPosition();
+        auto clock = [](uint32_t frames) {
+            return QStringLiteral("%1:%2").arg(frames / 50 / 60).arg(frames / 50 % 60, 2, 10, QLatin1Char('0'));
+        };
+        text += tr("  Playback %1 / %2").arg(clock(played), clock(total));
+    } else if (emulator_->recordingSession()) {
+        text += tr("  Recording");
+    }
+    statusLabel_->setText(text);
 }
 
 // ---- disc drives -----------------------------------------------------------

@@ -55,6 +55,13 @@ public:
 
     // What the PSG's I/O port reads with the given matrix line selected.
     uint8_t line(int n) const { return n < 10 ? lines_[n] : 0xFF; }
+    // A whole line of the matrix at once, a 0 for each key held down: for
+    // the playback of a recorded session.
+    void setLine(int n, uint8_t value)
+    {
+        if (n >= 0 && n < 10)
+            lines_[n] = value;
+    }
 
 private:
     uint8_t lines_[10];

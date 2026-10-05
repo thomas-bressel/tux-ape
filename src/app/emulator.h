@@ -16,6 +16,7 @@
 #include "core/autotype.h"
 #include "core/cpc.h"
 #include "core/recording.h"
+#include "core/session.h"
 #include "core/keymap.h"
 #include "core/setup.h"
 
@@ -129,6 +130,22 @@ public:
     bool stopYmRecording();
     bool recordingYm() const { return recordingYm_; }
 
+    // ---- Sessions ----
+    // Records what the keyboard and the joysticks do, from the machine's
+    // present state or from a cold reset, until stopped: the session is
+    // then handed back.
+    void startSessionRecording(bool fromColdReset);
+    tuxape::Session stopSessionRecording();
+    bool recordingSession() const { return recordingSession_; }
+    // Plays a session back. The keyboard is the recording's until it ends
+    // (playbackFinished() is then sent) or is stopped. False, with a
+    // message, if its snapshot cannot be loaded.
+    bool playSession(const tuxape::Session& session, QString* error = nullptr);
+    void stopPlayback();
+    bool playingSession() const { return playingSession_; }
+    // Frames played so far and frames in all, for a clock.
+    std::pair<uint32_t, uint32_t> playbackPosition();
+
     // ---- For the debugger ----
     // Breakpoints: the machine pauses just before the instruction at one of
     // these addresses, and stopped() is sent. They can all be switched off
@@ -154,6 +171,8 @@ signals:
     // The machine has paused by itself: on a breakpoint, a break
     // instruction, or at the end of a step.
     void stopped();
+    // A session has been played to its end.
+    void playbackFinished();
     // Sent about once a second: achieved speed and pictures per second.
     void statsChanged(int speedPercent, int framesPerSecond);
 
@@ -212,6 +231,11 @@ private:
     QImage frame_;
     std::atomic<bool> framePending_{false};
     uint64_t lastFrameNumber_ = 0;
+
+    tuxape::SessionRecorder sessionRecorder_;
+    tuxape::SessionPlayer sessionPlayer_;
+    std::atomic<bool> recordingSession_{false};
+    std::atomic<bool> playingSession_{false};
 
     tuxape::WavRecorder wav_;
     tuxape::YmRecorder ym_;

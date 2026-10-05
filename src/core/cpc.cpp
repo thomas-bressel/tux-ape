@@ -72,6 +72,15 @@ void Cpc::run(uint32_t microseconds)
     syncSound();
 }
 
+void Cpc::alignClocks()
+{
+    syncSound();
+    clk_ = (clk_ + 3) & ~uint64_t(3);
+    videoClk_ = clk_;
+    runUntil_ = clk_;
+    stopRun_ = false;
+}
+
 void Cpc::stepInstruction()
 {
     cpu_.step();

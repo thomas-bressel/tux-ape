@@ -18,6 +18,7 @@ add_library(tuxape_core STATIC
     psg.cpp
     recording.cpp
     screen_text.cpp
+    session.cpp
     setup.cpp
     snapshot.cpp
     tape.cpp

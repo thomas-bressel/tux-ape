@@ -43,6 +43,12 @@ public:
     void run(uint32_t microseconds);
     void runFrame() { run(kFrameMicroseconds); }
 
+    // Brings the machine's clocks into step with one another and forgets
+    // any time owed, so that what it does from here depends on its state
+    // alone: a recorded session starts with this, when recorded and when
+    // played back.
+    void alignClocks();
+
     // For a debugger. One instruction, or one turn of one that repeats
     // (LDIR): a single step. And, for the hook below to stop the machine
     // on a breakpoint, an end to run() before the instruction it was
