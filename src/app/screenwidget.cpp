@@ -1,5 +1,7 @@
 #include "screenwidget.h"
 
+#include <cstring>
+
 #include <QKeyEvent>
 #include <QPainter>
 
@@ -26,7 +28,25 @@ ScreenWidget::ScreenWidget(Emulator* emulator, QWidget* parent)
 
 QSize ScreenWidget::sizeHint() const
 {
-    return {kDisplayWidth, kDisplayHeight};
+    return halfSize_ ? QSize(kDisplayWidth / 2, kDisplayHeight / 2) : QSize(kDisplayWidth, kDisplayHeight);
+}
+
+void ScreenWidget::setHalfSize(bool half)
+{
+    if (half == halfSize_)
+        return;
+    halfSize_ = half;
+    updateGeometry();
+    update();
+}
+
+void ScreenWidget::setRenderBothLines(bool both)
+{
+    if (both == renderBoth_)
+        return;
+    renderBoth_ = both;
+    striped_ = QImage();
+    update();
 }
 
 QSize ScreenWidget::minimumSizeHint() const
@@ -54,7 +74,20 @@ void ScreenWidget::paintEvent(QPaintEvent*)
     const QRect target(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2), size);
     if (target != rect())
         painter.fillRect(rect(), Qt::black);
-    painter.drawImage(target, image_);
+    // At half size a CPC line is one screen line: there is no second line
+    // to leave out.
+    if (renderBoth_ || halfSize_ || image_.isNull()) {
+        painter.drawImage(target, image_);
+        return;
+    }
+    if (striped_.isNull()) {
+        striped_ = QImage(image_.width(), image_.height() * 2, QImage::Format_RGB32);
+        striped_.fill(Qt::black);
+    }
+    const qsizetype rowBytes = static_cast<qsizetype>(image_.width()) * 4;
+    for (int y = 0; y < image_.height(); ++y)
+        std::memcpy(striped_.scanLine(y * 2), image_.constScanLine(y), static_cast<size_t>(rowBytes));
+    painter.drawImage(target, striped_);
 }
 
 bool ScreenWidget::event(QEvent* event)

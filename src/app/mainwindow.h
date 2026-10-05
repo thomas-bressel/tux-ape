@@ -91,6 +91,9 @@ private:
     void showSetup(int page);
     void setSpeed(int percent);
     void toggleFullScreen();
+    // What surrounds the picture and how it is drawn, from the settings
+    // for the window or for full screen, whichever it is now.
+    void applyWindowOptions();
     void paste();
     void updateStats(int speedPercent, int framesPerSecond);
 

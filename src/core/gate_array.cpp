@@ -87,26 +87,36 @@ void GateArray::reset()
     prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
 }
 
-void GateArray::setMonitor(MonitorKind kind, bool linear)
+uint32_t GateArray::monitorColour(int hardwareColour, MonitorKind kind, bool linear, int brightness)
 {
     const int level[3] = {0x00, linear ? 0x66 : 0x80, 0xFF};
-    for (int c = 0; c < 32; ++c) {
-        const uint8_t* l = kLevels[c];
-        uint32_t r = level[l[0]], g = level[l[1]], b = level[l[2]];
-        if (kind != MonitorKind::Colour) {
-            // A monochrome tube shows the firmware's 27 colours as evenly
-            // spaced brightness steps: green weighs 9, red 3, blue 1.
-            const uint32_t luma = (l[1] * 9 + l[0] * 3 + l[2]) * 255 / 26;
-            if (kind == MonitorKind::Green) {
-                r = 0;
-                g = luma;
-                b = 0;
-            } else {
-                r = g = b = luma;
-            }
+    const uint8_t* l = kLevels[hardwareColour & 31];
+    int r = level[l[0]], g = level[l[1]], b = level[l[2]];
+    if (kind != MonitorKind::Colour) {
+        // A monochrome tube shows the firmware's 27 colours as evenly
+        // spaced brightness steps: green weighs 9, red 3, blue 1.
+        const int luma = (l[1] * 9 + l[0] * 3 + l[2]) * 255 / 26;
+        if (kind == MonitorKind::Green) {
+            r = 0;
+            g = luma;
+            b = 0;
+        } else {
+            r = g = b = luma;
         }
-        colours_[c] = 0xFF000000 | r << 16 | g << 8 | b;
     }
+    // The brightness knob moves the whole picture up or down, black
+    // included, as it does on a real tube.
+    const int shift = brightness * 128 / 100;
+    auto adjusted = [shift](int value) { return static_cast<uint32_t>(value + shift < 0 ? 0 : value + shift > 255 ? 255 : value + shift); };
+    if (kind == MonitorKind::Green)
+        return 0xFF000000 | adjusted(g) << 8;
+    return 0xFF000000 | adjusted(r) << 16 | adjusted(g) << 8 | adjusted(b);
+}
+
+void GateArray::setMonitor(MonitorKind kind, bool linear, int brightness)
+{
+    for (int c = 0; c < 32; ++c)
+        colours_[c] = monitorColour(c, kind, linear, brightness);
     for (int i = 0; i < 17; ++i)
         rgb_[i] = colours_[ink_[i]];
 }

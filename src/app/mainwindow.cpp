@@ -219,7 +219,7 @@ void MainWindow::createMenus()
     setupKey->setShortcut(Qt::Key_F12);
     connect(setupKey, &QAction::triggered, setupAction_, &QAction::trigger);
     addAction(setupKey);
-    addItem(settings, tr("&Display"));
+    addItem(settings, tr("&Display"), {}, [this] { showSetup(SetupDialog::Display); });
     addItem(settings, tr("&Sound"));
     addItem(settings, tr("&Memory"), {}, [this] { showSetup(SetupDialog::Memory); });
     addItem(settings, tr("&Input"));
@@ -363,6 +363,27 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setFastDisc(settings.fastDisc);
     emulator_->setSpeedPercent(settings.speedPercent);
     emulator_->setDisplayEvery(settings.displayEvery ? settings.displayEveryFrames : 0);
+    emulator_->setMonitor(settings.monitorType, settings.linearPalette, settings.brightness);
+    emulator_->setVerticalHold(settings.verticalHold);
+    applyWindowOptions();
+}
+
+void MainWindow::applyWindowOptions()
+{
+    const Settings::WindowOptions& options = isFullScreen() ? settings_.fullScreen : settings_.windowed;
+    // With the menus hidden their shortcuts still work, and the right-click
+    // menu, which is the main menu again, brings everything back.
+    menuBar()->setVisible(!options.hideMenus);
+    controlPanel_->setVisible(!options.hidePanel);
+    screen_->setCursor(options.hideMouse ? Qt::BlankCursor : Qt::ArrowCursor);
+    screen_->setContextMenuPolicy(options.noRightClick ? Qt::NoContextMenu : Qt::CustomContextMenu);
+    screen_->setRenderBothLines(options.renderBothLines);
+    if (screen_->halfSize() != options.halfSize) {
+        screen_->setHalfSize(options.halfSize);
+        // The window follows the picture's new size.
+        if (!isFullScreen() && !isMaximized())
+            QTimer::singleShot(0, this, [this] { adjustSize(); });
+    }
 }
 
 void MainWindow::showSetup(int page)
@@ -371,6 +392,7 @@ void MainWindow::showSetup(int page)
     settings_.crtcType = static_cast<int>(emulator_->crtcType());
     settings_.machine = emulator_->machine();
     SetupDialog dialog(settings_, this);
+    dialog.setPreview(emulator_->frame());
     dialog.showPage(static_cast<SetupDialog::Page>(page));
     if (dialog.exec() != QDialog::Accepted)
         return;
@@ -392,15 +414,11 @@ void MainWindow::setSpeed(int percent)
 
 void MainWindow::toggleFullScreen()
 {
-    const bool enter = !isFullScreen();
-    // WinAPE's defaults for full screen: nothing but the picture.
-    menuBar()->setVisible(!enter);
-    controlPanel_->setVisible(!enter);
-    screen_->setCursor(enter ? Qt::BlankCursor : Qt::ArrowCursor);
-    if (enter)
-        showFullScreen();
-    else
+    if (isFullScreen())
         showNormal();
+    else
+        showFullScreen();
+    applyWindowOptions();
     screen_->setFocus();
 }
 

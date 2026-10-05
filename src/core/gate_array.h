@@ -46,7 +46,11 @@ public:
 
     // Rebuilds the colours sent to the monitor. `linear` selects evenly
     // spaced levels, as on the Plus, instead of the CPC's brighter half tone.
-    void setMonitor(MonitorKind kind, bool linear);
+    // `brightness` is the monitor's knob, from -100 to 100 with 0 in the
+    // middle.
+    void setMonitor(MonitorKind kind, bool linear, int brightness = 0);
+    // What a hardware colour (0-31) looks like on such a monitor, 0xAARRGGBB.
+    static uint32_t monitorColour(int hardwareColour, MonitorKind kind, bool linear, int brightness);
 
     // State, named as in the WinAPE register window.
     uint8_t mode() const { return mode_; }                  // mode being displayed

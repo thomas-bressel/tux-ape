@@ -76,6 +76,12 @@ public:
     void setFastDisc(bool fast);
     bool fastDisc();
 
+    // The monitor: its kind (0 colour, 1 green, 2 greyscale), WinAPE's
+    // "linear palette", the brightness knob (-100 to 100) and the vertical
+    // hold (lines the picture is moved by).
+    void setMonitor(int kind, bool linearPalette, int brightness);
+    void setVerticalHold(int lines);
+
     void reset(bool cold);
 
     // A key of the PC keyboard went down or up. `pcKey` is a DirectInput

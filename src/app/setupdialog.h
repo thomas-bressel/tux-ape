@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QImage>
 
 #include "settings.h"
 
@@ -37,6 +38,11 @@ public:
     bool loadProfile(const QString& path);
     bool saveProfile(const QString& path, unsigned parts) const;
 
+    // The picture the Display page shows a piece of, in the colours of the
+    // monitor chosen there. It must have been made with the settings the
+    // window was opened with.
+    void setPreview(const QImage& frame);
+
     // The ROM named in a row of the Memory page's list: row 0 is the
     // firmware ROM, row 1 upper ROM 0, and so on. Empty for none.
     QString rom(int row) const;
@@ -54,6 +60,19 @@ private:
     QCheckBox* displayEvery_ = nullptr;
     QSpinBox* displayEveryFrames_ = nullptr;
 
+    Settings opened_;  // what the window was opened with
+    QImage previewFrame_;
+    QLabel* preview_ = nullptr;
+    QRadioButton* monitor_[3] = {};
+    QSlider* verticalHold_ = nullptr;
+    QLabel* verticalHoldLabel_ = nullptr;
+    QSlider* brightness_ = nullptr;
+    QLabel* brightnessLabel_ = nullptr;
+    QCheckBox* linearPalette_ = nullptr;
+    // Half size, both lines, hide mouse, hide panel, hide menus, no
+    // right-click menu: for the window, then for full screen.
+    QCheckBox* windowOptions_[2][6] = {};
+
     QRadioButton* ram_[4] = {};
     QCheckBox* siliconDisc_ = nullptr;
     QLabel* totalRam_ = nullptr;
@@ -65,7 +84,10 @@ private:
     QString romNames_[1 + tuxape::Memory::kRomSlots];
 
     QWidget* createGeneralPage();
+    QWidget* createDisplayPage();
     QWidget* createMemoryPage();
+    void updatePreview();
+    int chosenMonitor() const;
     void fillProfiles();
     void profileChosen(int index);
     void saveProfileAs();

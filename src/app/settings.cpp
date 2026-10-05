@@ -21,6 +21,28 @@ std::string upperKey(int slot)
     return "Upper(" + std::to_string(slot) + ")";
 }
 
+// The window's options have the same key names for full screen, with "FS"
+// after them.
+void readWindowOptions(const tuxape::IniFile& ini, const std::string& suffix, Settings::WindowOptions& options)
+{
+    options.halfSize = ini.getBool(kConfiguration, "Half Size" + suffix, options.halfSize);
+    options.renderBothLines = ini.getBool(kConfiguration, "Render Both" + suffix, options.renderBothLines);
+    options.hideMouse = ini.getBool(kConfiguration, "Hide Mouse" + suffix, options.hideMouse);
+    options.hidePanel = ini.getBool(kConfiguration, "Hide Panel" + suffix, options.hidePanel);
+    options.hideMenus = ini.getBool(kConfiguration, "Hide Menus" + suffix, options.hideMenus);
+    options.noRightClick = ini.getBool(kConfiguration, "No Right Click" + suffix, options.noRightClick);
+}
+
+void writeWindowOptions(tuxape::IniFile& ini, const std::string& suffix, const Settings::WindowOptions& options)
+{
+    ini.setBool(kConfiguration, "Half Size" + suffix, options.halfSize);
+    ini.setBool(kConfiguration, "Render Both" + suffix, options.renderBothLines);
+    ini.setBool(kConfiguration, "Hide Mouse" + suffix, options.hideMouse);
+    ini.setBool(kConfiguration, "Hide Panel" + suffix, options.hidePanel);
+    ini.setBool(kConfiguration, "Hide Menus" + suffix, options.hideMenus);
+    ini.setBool(kConfiguration, "No Right Click" + suffix, options.noRightClick);
+}
+
 }  // namespace
 
 QString Settings::file()
@@ -82,6 +104,13 @@ void Settings::read(const tuxape::IniFile& ini)
     machine.rom32 = ini.getBool(kRoms, "Enable 32 ROMs", machine.rom32);
     machine.disableAllRoms = ini.getBool(kRoms, "Disable All", machine.disableAllRoms);
     machine.onlyLower0And7 = ini.getBool(kRoms, "Enable L07", machine.onlyLower0And7);
+
+    monitorType = std::clamp(ini.getInt(kConfiguration, "Monitor Type", monitorType), 0, 2);
+    brightness = std::clamp(ini.getInt(kConfiguration, "Monitor Brightness", brightness), -100, 100);
+    verticalHold = std::clamp(ini.getInt(kConfiguration, "VHOLD Position", verticalHold), -32, 32);
+    linearPalette = ini.getBool(kConfiguration, "Linear Palette", linearPalette);
+    readWindowOptions(ini, "", windowed);
+    readWindowOptions(ini, " FS", fullScreen);
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -106,6 +135,16 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kRoms, "Disable All", machine.disableAllRoms);
         ini.setBool(kRoms, "Enable L07", machine.onlyLower0And7);
     }
+    if (parts & MonitorPart) {
+        ini.setInt(kConfiguration, "Monitor Type", monitorType);
+        ini.setInt(kConfiguration, "Monitor Brightness", brightness);
+        ini.setInt(kConfiguration, "VHOLD Position", verticalHold);
+        ini.setBool(kConfiguration, "Linear Palette", linearPalette);
+    }
+    if (parts & WindowedPart)
+        writeWindowOptions(ini, "", windowed);
+    if (parts & FullScreenPart)
+        writeWindowOptions(ini, " FS", fullScreen);
 }
 
 bool Settings::loadProfile(const QString& path)

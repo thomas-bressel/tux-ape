@@ -3,8 +3,8 @@
 // Runs without a display (QT_QPA_PLATFORM=offscreen).
 //
 //   gui_setup [prefix]   also saves pictures of the Setup window's pages
-//                        as <prefix>general.png, <prefix>memory.png and
-//                        <prefix>profile.png
+//                        as <prefix>general.png, <prefix>display.png,
+//                        <prefix>memory.png and <prefix>profile.png
 
 #include <QAction>
 #include <QApplication>
@@ -14,6 +14,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
+#include <QMenuBar>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSlider>
@@ -30,6 +31,7 @@
 #include "core/screen_text.h"
 #include "emulator.h"
 #include "mainwindow.h"
+#include "screenwidget.h"
 #include "settings.h"
 #include "setupdialog.h"
 
@@ -358,16 +360,20 @@ void testProfiles(const QString& folder, const QString& picture)
     partsDialog.show();
     CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::RamPart | Settings::RomsPart);
     auto* tree = partsDialog.findChild<QTreeWidget*>("tvSettings");
-    CHECK(tree && tree->topLevelItemCount() == 2);
-    if (tree && tree->topLevelItemCount() == 2) {
-        CHECK(tree->topLevelItem(0)->text(0) == "General");
-        CHECK(tree->topLevelItem(1)->text(0) == "Memory");
-        CHECK(tree->topLevelItem(0)->checkState(0) == Qt::PartiallyChecked);
-        CHECK(tree->topLevelItem(1)->checkState(0) == Qt::Checked);
+    CHECK(tree && tree->topLevelItemCount() == 3);
+    if (tree && tree->topLevelItemCount() == 3) {
+        CHECK(tree->topLevelItem(0)->text(0) == "Display");
+        CHECK(tree->topLevelItem(1)->text(0) == "General");
+        CHECK(tree->topLevelItem(2)->text(0) == "Memory");
+        CHECK(tree->topLevelItem(0)->checkState(0) == Qt::Unchecked);
+        CHECK(tree->topLevelItem(1)->checkState(0) == Qt::PartiallyChecked);
+        CHECK(tree->topLevelItem(2)->checkState(0) == Qt::Checked);
         // Ticking a group ticks all of it.
         tree->topLevelItem(0)->setCheckState(0, Qt::Checked);
+        tree->topLevelItem(1)->setCheckState(0, Qt::Checked);
         CHECK_EQ(partsDialog.parts(), Settings::AllParts);
-        tree->topLevelItem(1)->setCheckState(0, Qt::Unchecked);
+        tree->topLevelItem(0)->setCheckState(0, Qt::Unchecked);
+        tree->topLevelItem(2)->setCheckState(0, Qt::Unchecked);
         CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::SpeedPart | Settings::FastDiscPart);
         if (!picture.isEmpty()) {
             QApplication::processEvents();
@@ -417,6 +423,133 @@ void testProfiles(const QString& folder, const QString& picture)
     QFile::remove(Settings::userProfileFolder() + "/Big machine.wpf");
 }
 
+// The Display page: the monitor, the vertical hold, the brightness, and what
+// the window shows around the picture.
+void testDisplayPage(const QImage& frame, const QString& picture)
+{
+    // The defaults are WinAPE's: in full screen nothing but the picture.
+    const Settings defaults;
+    CHECK_EQ(defaults.monitorType, 0);
+    CHECK(defaults.linearPalette);
+    CHECK(defaults.windowed.renderBothLines && defaults.windowed.hideMouse);
+    CHECK(!defaults.windowed.hidePanel && !defaults.windowed.hideMenus && !defaults.windowed.halfSize);
+    CHECK(defaults.fullScreen.hidePanel && defaults.fullScreen.hideMenus && defaults.fullScreen.hideMouse);
+
+    Settings settings;
+    settings.verticalHold = -5;
+    SetupDialog dialog(settings);
+    dialog.setPreview(frame);
+    dialog.showPage(SetupDialog::Display);
+    dialog.show();
+    auto* tabs = dialog.findChild<QTabWidget*>("PageControl");
+    CHECK(tabs && tabs->currentIndex() == SetupDialog::Display);
+
+    auto* colour = dialog.findChild<QRadioButton*>("rbColour");
+    auto* green = dialog.findChild<QRadioButton*>("rbGreen");
+    auto* grey = dialog.findChild<QRadioButton*>("rbGreyscale");
+    auto* hold = dialog.findChild<QSlider*>("slVSync");
+    auto* holdLabel = dialog.findChild<QLabel*>("lVSync");
+    auto* bright = dialog.findChild<QSlider*>("slBright");
+    auto* brightLabel = dialog.findChild<QLabel*>("lBright");
+    auto* linear = dialog.findChild<QCheckBox*>("ckLinearPalette");
+    auto* preview = dialog.findChild<QLabel*>("iScreen");
+    auto* halfSize = dialog.findChild<QCheckBox*>("ckHalfSize");
+    auto* hidePanel = dialog.findChild<QCheckBox*>("ckHidePanel");
+    auto* hidePanelFs = dialog.findChild<QCheckBox*>("ckHidePanelFS");
+    auto* bothLinesFs = dialog.findChild<QCheckBox*>("ckRenderBothFS");
+    auto* noRightClick = dialog.findChild<QCheckBox*>("ckNoRightClick");
+    const bool found = colour && green && grey && hold && holdLabel && bright && brightLabel && linear && preview
+                       && halfSize && hidePanel && hidePanelFs && bothLinesFs && noRightClick;
+    CHECK(found);
+    if (!found)
+        return;
+
+    CHECK(colour->isChecked());
+    CHECK_EQ(hold->value(), -5);
+    CHECK(holdLabel->text() == "-5");
+    CHECK_EQ(bright->value(), 0);
+    CHECK(brightLabel->text() == "0");
+    CHECK(linear->isChecked());
+    CHECK(!halfSize->isChecked() && !hidePanel->isChecked() && hidePanelFs->isChecked());
+    CHECK(bothLinesFs->isChecked());
+    CHECK(dialog.settings() == settings);
+
+    // The piece of picture shown follows the monitor chosen: on a green
+    // screen nothing has any red or blue.
+    auto shown = [&] { return preview->pixmap(Qt::ReturnByValue).toImage().convertToFormat(QImage::Format_RGB32); };
+    auto count = [&](auto&& test) {
+        const QImage image = shown();
+        int matching = 0;
+        for (int y = 0; y < image.height(); y += 3)
+            for (int x = 0; x < image.width(); x += 3)
+                matching += test(image.pixel(x, y)) ? 1 : 0;
+        return matching;
+    };
+    CHECK(!shown().isNull());
+    CHECK(count([](QRgb p) { return qBlue(p) > 0x40; }) > 100);  // the firmware's blue paper
+    green->setChecked(true);
+    CHECK_EQ(count([](QRgb p) { return qRed(p) != 0 || qBlue(p) != 0; }), 0);
+    CHECK(count([](QRgb p) { return qGreen(p) > 0x10; }) > 100);
+    grey->setChecked(true);
+    CHECK_EQ(count([](QRgb p) { return qRed(p) != qGreen(p) || qGreen(p) != qBlue(p); }), 0);
+    // Brighter is brighter: the paper, nearly black in grey, comes up.
+    const int before = count([](QRgb p) { return qGreen(p) > 0x40; });
+    bright->setValue(60);
+    CHECK(brightLabel->text() == "60");
+    CHECK(count([](QRgb p) { return qGreen(p) > 0x40; }) > before);
+
+    hold->setValue(12);
+    CHECK(holdLabel->text() == "12");
+    linear->setChecked(false);
+    halfSize->setChecked(true);
+    hidePanel->setChecked(true);
+    hidePanelFs->setChecked(false);
+    bothLinesFs->setChecked(false);
+    noRightClick->setChecked(true);
+    const Settings changed = dialog.settings();
+    CHECK_EQ(changed.monitorType, 2);
+    CHECK_EQ(changed.brightness, 60);
+    CHECK_EQ(changed.verticalHold, 12);
+    CHECK(!changed.linearPalette);
+    CHECK(changed.windowed.halfSize && changed.windowed.hidePanel && changed.windowed.noRightClick);
+    CHECK(changed.windowed.renderBothLines && changed.windowed.hideMouse && !changed.windowed.hideMenus);
+    CHECK(!changed.fullScreen.hidePanel && !changed.fullScreen.renderBothLines && changed.fullScreen.hideMenus);
+
+    // Kept under WinAPE's keys, and brought back.
+    CHECK(changed.save());
+    tuxape::IniFile ini;
+    CHECK(ini.load(Settings::file().toStdString()));
+    CHECK(ini.get("Configuration", "Monitor Type") == "2");
+    CHECK(ini.get("Configuration", "Monitor Brightness") == "60");
+    CHECK(ini.get("Configuration", "VHOLD Position") == "12");
+    CHECK(ini.get("Configuration", "Linear Palette") == "false");
+    CHECK(ini.get("Configuration", "Half Size") == "true");
+    CHECK(ini.get("Configuration", "Half Size FS") == "false");
+    CHECK(ini.get("Configuration", "Hide Panel") == "true");
+    CHECK(ini.get("Configuration", "Hide Panel FS") == "false");
+    CHECK(ini.get("Configuration", "Render Both FS") == "false");
+    CHECK(ini.get("Configuration", "No Right Click") == "true");
+    Settings again;
+    again.load();
+    CHECK(again == changed);
+    QFile::remove(Settings::file());
+
+    // What does not exist yet is greyed out.
+    for (const char* name : {"ckDXStretch", "ckPAL", "ckDriveLED", "ckShowTrack", "rb8bitFS", "rb16bitFS"}) {
+        const QWidget* widget = dialog.findChild<QWidget*>(name);
+        CHECK(widget && !widget->isEnabled());
+    }
+
+    if (!picture.isEmpty()) {
+        SetupDialog fresh((Settings()));
+        fresh.setPreview(frame);
+        fresh.showPage(SetupDialog::Display);
+        fresh.show();
+        QApplication::processEvents();
+        CHECK(fresh.grab().save(picture));
+    }
+}
+
 void testDialog(const QString& picture)
 {
     Settings settings;
@@ -456,9 +589,10 @@ void testDialog(const QString& picture)
     CHECK(tabs->tabText(0) == "General");
     CHECK(tabs->tabText(3) == "Memory");
     CHECK(tabs->isTabEnabled(0));
+    CHECK(tabs->isTabEnabled(1));
     CHECK(tabs->isTabEnabled(3));
-    CHECK(!tabs->isTabEnabled(1));
-    dialog.showPage(SetupDialog::Display);
+    CHECK(!tabs->isTabEnabled(2));
+    dialog.showPage(SetupDialog::Sound);
     CHECK_EQ(tabs->currentIndex(), 0);
 
     // What TuxAPE cannot do yet is greyed out.
@@ -535,9 +669,11 @@ int main(int argc, char* argv[])
 
     QAction* general = actionNamed(window, "General");
     QAction* display = actionNamed(window, "Display");
+    QAction* sound = actionNamed(window, "Sound");
     QAction* memory = actionNamed(window, "Memory");
     CHECK(general && general->isEnabled());
-    CHECK(display && !display->isEnabled());
+    CHECK(display && display->isEnabled());
+    CHECK(sound && !sound->isEnabled());
     CHECK(memory && memory->isEnabled());
     CHECK(emulator.machine() == tuxape::stockMachine(tuxape::CpcModel::Cpc6128));
 
@@ -597,6 +733,43 @@ int main(int argc, char* argv[])
     emulator.reset(true);
     CHECK(QTest::qWaitFor([&] { return screen().find("BASIC 1.0") != std::string::npos; }, 15000));
     CHECK(QTest::qWaitFor([&] { return screen().find("Ready") != std::string::npos; }, 15000));
+
+    // The Display settings reach the picture and the window.
+    testDisplayPage(emulator.frame(), prefix.isEmpty() ? QString() : prefix + "display.png");
+    settings = window.settings();
+    CHECK(window.menuBar()->isVisibleTo(&window));
+    CHECK(window.screen()->sizeHint() == QSize(768, 540));
+    CHECK(window.screen()->renderBothLines());
+    CHECK(window.screen()->cursor().shape() == Qt::BlankCursor);  // WinAPE hides the pointer over the picture
+    settings.monitorType = 1;
+    settings.windowed.halfSize = true;
+    settings.windowed.renderBothLines = false;
+    settings.windowed.hideMenus = true;
+    settings.windowed.hideMouse = false;
+    settings.windowed.noRightClick = true;
+    window.applySettings(settings);
+    CHECK(!window.menuBar()->isVisibleTo(&window));
+    CHECK(window.screen()->sizeHint() == QSize(384, 270));
+    CHECK(!window.screen()->renderBothLines());
+    CHECK(window.screen()->cursor().shape() == Qt::ArrowCursor);
+    CHECK(window.screen()->contextMenuPolicy() == Qt::NoContextMenu);
+    // A green monitor: the pictures that follow have no red and no blue.
+    emulator.autoType(QStringLiteral("PRINT 1\n"));
+    CHECK(QTest::qWaitFor(
+        [&] {
+            const QImage image = emulator.frame();
+            for (int y = 60; y < 200; y += 7)
+                for (int x = 100; x < 600; x += 7)
+                    if (qRed(image.pixel(x, y)) != 0 || qBlue(image.pixel(x, y)) != 0)
+                        return false;
+            return true;
+        },
+        15000));
+    settings.windowed = Settings::WindowOptions();
+    settings.monitorType = 0;
+    window.applySettings(settings);
+    CHECK(window.menuBar()->isVisibleTo(&window));
+    CHECK(window.screen()->sizeHint() == QSize(768, 540));
 
     // A ROM image that cannot be read is named, and its place left empty.
     tuxape::MachineConfig broken = settings.machine;

@@ -9,6 +9,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -26,6 +27,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
+#include "core/gate_array.h"
 #include "core/setup.h"
 #include "core/version.h"
 
@@ -131,6 +133,7 @@ private:
 
 SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     : QDialog(parent)
+    , opened_(settings)
 {
     setWindowTitle(tr("TuxAPE - Setup"));
 
@@ -158,7 +161,7 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
         tabs_->setTabToolTip(index, tr("Not available yet"));
     };
     tabs_->addTab(createGeneralPage(), tr("General"));
-    addEmptyPage(tr("Display"));
+    tabs_->addTab(createDisplayPage(), tr("Display"));
     addEmptyPage(tr("Sound"));
     tabs_->addTab(createMemoryPage(), tr("Memory"));
     addEmptyPage(tr("Input"));
@@ -277,6 +280,183 @@ QWidget* SetupDialog::createGeneralPage()
     layout->addWidget(versionBox, 1);
     layout->addLayout(right);
     return page;
+}
+
+QWidget* SetupDialog::createDisplayPage()
+{
+    auto* page = new QWidget;
+
+    // ---- The monitor and a piece of its picture ----
+    const char* const monitorNames[3] = {"rbColour", "rbGreen", "rbGreyscale"};
+    const QString monitorTexts[3] = {tr("Colour"), tr("Green"), tr("Greyscale")};
+    auto* monitorRow = new QHBoxLayout;
+    for (int i = 0; i < 3; ++i) {
+        monitor_[i] = new QRadioButton(monitorTexts[i]);
+        monitor_[i]->setObjectName(monitorNames[i]);
+        connect(monitor_[i], &QRadioButton::toggled, this, &SetupDialog::updatePreview);
+        monitorRow->addWidget(monitor_[i]);
+    }
+    monitorRow->addStretch(1);
+    preview_ = new QLabel;
+    preview_->setObjectName("iScreen");
+    preview_->setFixedSize(300, 216);
+    preview_->setFrameShape(QFrame::Panel);
+    preview_->setFrameShadow(QFrame::Sunken);
+    preview_->setStyleSheet("background-color: black;");
+    auto* left = new QVBoxLayout;
+    left->addLayout(monitorRow);
+    left->addWidget(preview_);
+    left->addStretch(1);
+
+    // ---- V Hold ----
+    auto* holdBox = new QGroupBox(tr("V Hold"));
+    holdBox->setObjectName("gbVHold");
+    verticalHold_ = new QSlider(Qt::Vertical);
+    verticalHold_->setObjectName("slVSync");
+    verticalHold_->setRange(-32, 32);
+    verticalHoldLabel_ = new QLabel;
+    verticalHoldLabel_->setObjectName("lVSync");
+    verticalHoldLabel_->setAlignment(Qt::AlignHCenter);
+    connect(verticalHold_, &QSlider::valueChanged, this,
+            [this](int value) { verticalHoldLabel_->setText(QString::number(value)); });
+    auto* holdLayout = new QVBoxLayout(holdBox);
+    holdLayout->addWidget(verticalHold_, 1, Qt::AlignHCenter);
+    holdLayout->addWidget(verticalHoldLabel_);
+
+    // ---- What the window shows, for the window and for full screen ----
+    const QString optionTexts[6] = {tr("Half Size Display"), tr("Render both lines"), tr("Hide Mouse Pointer"),
+                                    tr("Hide Control Panel"), tr("Hide Menus"),       tr("No Right-Click Menu")};
+    const char* const optionNames[6] = {"ckHalfSize", "ckRenderBoth", "ckHideMouse",
+                                        "ckHidePanel", "ckHideMenus", "ckNoRightClick"};
+    QGroupBox* optionBoxes[2] = {new QGroupBox(tr("Windowed")), new QGroupBox(tr("Full Screen"))};
+    optionBoxes[0]->setObjectName("gbWindowed");
+    optionBoxes[1]->setObjectName("gbFullScreen");
+    for (int mode = 0; mode < 2; ++mode) {
+        auto* layout = new QVBoxLayout(optionBoxes[mode]);
+        layout->setSpacing(2);
+        for (int i = 0; i < 6; ++i) {
+            windowOptions_[mode][i] = new QCheckBox(optionTexts[i]);
+            windowOptions_[mode][i]->setObjectName(QString::fromLatin1(optionNames[i]) + (mode ? "FS" : ""));
+            layout->addWidget(windowOptions_[mode][i]);
+        }
+        if (mode == 0) {
+            // Stretching is the window system's business here.
+            auto* stretch = notYet(new QCheckBox(tr("DirectX Stretch")));
+            stretch->setObjectName("ckDXStretch");
+            layout->addWidget(stretch);
+        }
+        layout->addStretch(1);
+    }
+
+    // ---- Shared ----
+    auto* sharedBox = new QGroupBox(tr("Shared"));
+    auto* pal = notYet(new QCheckBox(tr("PAL Emulation")));
+    pal->setObjectName("ckPAL");
+    linearPalette_ = new QCheckBox(tr("Linear Palette"));
+    linearPalette_->setObjectName("ckLinearPalette");
+    connect(linearPalette_, &QCheckBox::toggled, this, &SetupDialog::updatePreview);
+    auto* driveLed = notYet(new QCheckBox(tr("On-Screen Drive LED")));
+    driveLed->setObjectName("ckDriveLED");
+    auto* showTrack = notYet(new QCheckBox(tr("Show Drive Cylinders")));
+    showTrack->setObjectName("ckShowTrack");
+    auto* sharedLayout = new QVBoxLayout(sharedBox);
+    sharedLayout->setSpacing(2);
+    for (QCheckBox* box : {pal, linearPalette_, driveLed, showTrack})
+        sharedLayout->addWidget(box);
+
+    // ---- Full Screen Colours: always true colour here ----
+    auto* coloursBox = new QGroupBox(tr("Full Screen Colours"));
+    auto* depth8 = notYet(new QRadioButton(tr("8 Bit (Performance)")));
+    depth8->setObjectName("rb8bitFS");
+    auto* depth16 = notYet(new QRadioButton(tr("16 Bit (Accuracy)")));
+    depth16->setObjectName("rb16bitFS");
+    depth16->setChecked(true);
+    auto* coloursLayout = new QVBoxLayout(coloursBox);
+    coloursLayout->setSpacing(2);
+    coloursLayout->addWidget(depth8);
+    coloursLayout->addWidget(depth16);
+
+    // ---- Brightness ----
+    auto* brightBox = new QGroupBox(tr("Brightness"));
+    brightBox->setObjectName("gbBrightness");
+    brightness_ = new QSlider(Qt::Horizontal);
+    brightness_->setObjectName("slBright");
+    brightness_->setRange(-100, 100);
+    brightness_->setPageStep(10);
+    brightnessLabel_ = new QLabel;
+    brightnessLabel_->setObjectName("lBright");
+    brightnessLabel_->setMinimumWidth(fontMetrics().horizontalAdvance("-100"));
+    brightnessLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    connect(brightness_, &QSlider::valueChanged, this, [this](int value) {
+        brightnessLabel_->setText(QString::number(value));
+        updatePreview();
+    });
+    auto* brightLayout = new QHBoxLayout(brightBox);
+    brightLayout->addWidget(brightness_, 1);
+    brightLayout->addWidget(brightnessLabel_);
+
+    auto* grid = new QGridLayout;
+    grid->addWidget(holdBox, 0, 0, 2, 1);
+    grid->addWidget(optionBoxes[0], 0, 1);
+    grid->addWidget(optionBoxes[1], 0, 2);
+    grid->addWidget(sharedBox, 1, 1);
+    grid->addWidget(coloursBox, 1, 2);
+    grid->addWidget(brightBox, 2, 0, 1, 3);
+
+    auto* layout = new QHBoxLayout(page);
+    layout->addLayout(left);
+    layout->addLayout(grid, 1);
+    return page;
+}
+
+int SetupDialog::chosenMonitor() const
+{
+    return monitor_[1]->isChecked() ? 1 : monitor_[2]->isChecked() ? 2 : 0;
+}
+
+void SetupDialog::setPreview(const QImage& frame)
+{
+    previewFrame_ = frame.convertToFormat(QImage::Format_RGB32);
+    updatePreview();
+}
+
+// A piece of the picture, twice as large, as the monitor chosen on the page
+// would show it: each colour of the picture is taken back to the hardware
+// colour it stands for, then to that colour on the new monitor.
+void SetupDialog::updatePreview()
+{
+    if (!preview_ || previewFrame_.isNull() || !brightness_ || !linearPalette_)
+        return;
+    using tuxape::GateArray;
+    using tuxape::MonitorKind;
+    QRgb from[32], to[32];
+    for (int colour = 0; colour < 32; ++colour) {
+        from[colour] = GateArray::monitorColour(colour, static_cast<MonitorKind>(opened_.monitorType),
+                                                opened_.linearPalette, opened_.brightness);
+        to[colour] = GateArray::monitorColour(colour, static_cast<MonitorKind>(chosenMonitor()),
+                                              linearPalette_->isChecked(), brightness_->value());
+    }
+    // Where the firmware's text begins.
+    const QRect piece = QRect(64, 36, 150, 108).intersected(previewFrame_.rect());
+    QImage shown = previewFrame_.copy(piece);
+    QRgb last = 0, lastTo = 0xFF000000;
+    for (int y = 0; y < shown.height(); ++y) {
+        auto* line = reinterpret_cast<QRgb*>(shown.scanLine(y));
+        for (int x = 0; x < shown.width(); ++x) {
+            const QRgb pixel = line[x] | 0xFF000000;
+            if (pixel != last) {
+                last = pixel;
+                lastTo = pixel;  // a colour that is none of the monitor's (the black of a sync) stays
+                for (int colour = 0; colour < 32; ++colour)
+                    if (from[colour] == pixel) {
+                        lastTo = to[colour];
+                        break;
+                    }
+            }
+            line[x] = lastTo;
+        }
+    }
+    preview_->setPixmap(QPixmap::fromImage(shown.scaled(preview_->size())));
 }
 
 QWidget* SetupDialog::createMemoryPage()
@@ -449,6 +629,21 @@ void SetupDialog::updateTiming()
 
 void SetupDialog::setSettings(const Settings& settings)
 {
+    monitor_[settings.monitorType]->setChecked(true);
+    verticalHold_->setValue(settings.verticalHold);
+    verticalHoldLabel_->setText(QString::number(settings.verticalHold));
+    brightness_->setValue(settings.brightness);
+    brightnessLabel_->setText(QString::number(settings.brightness));
+    linearPalette_->setChecked(settings.linearPalette);
+    const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
+    for (int mode = 0; mode < 2; ++mode) {
+        const bool values[6] = {options[mode]->halfSize,  options[mode]->renderBothLines, options[mode]->hideMouse,
+                                options[mode]->hidePanel, options[mode]->hideMenus,       options[mode]->noRightClick};
+        for (int i = 0; i < 6; ++i)
+            windowOptions_[mode][i]->setChecked(values[i]);
+    }
+    updatePreview();
+
     crtcType_->setCurrentIndex(settings.crtcType);
     fastDisc_->setChecked(settings.fastDisc);
     speed_->setValue(settings.speedPercent);
@@ -500,6 +695,10 @@ ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
     };
     // A profile is first of all a machine: that is what is ticked to begin
     // with.
+    auto* display = group(tr("Display"));
+    leaf(display, tr("Full Screen Settings"), Settings::FullScreenPart, false);
+    leaf(display, tr("Monitor"), Settings::MonitorPart, false);
+    leaf(display, tr("Windowed Settings"), Settings::WindowedPart, false);
     auto* general = group(tr("General"));
     leaf(general, tr("CRTC Type"), Settings::CrtcPart, true);
     leaf(general, tr("Emulation Speed"), Settings::SpeedPart, false);
@@ -640,5 +839,19 @@ Settings SetupDialog::settings() const
     machine.rom32 = rom32_->isChecked();
     machine.disableAllRoms = disableRoms_->isChecked();
     machine.onlyLower0And7 = onlyLower0And7_->isChecked();
+
+    settings.monitorType = chosenMonitor();
+    settings.verticalHold = verticalHold_->value();
+    settings.brightness = brightness_->value();
+    settings.linearPalette = linearPalette_->isChecked();
+    Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
+    for (int mode = 0; mode < 2; ++mode) {
+        options[mode]->halfSize = windowOptions_[mode][0]->isChecked();
+        options[mode]->renderBothLines = windowOptions_[mode][1]->isChecked();
+        options[mode]->hideMouse = windowOptions_[mode][2]->isChecked();
+        options[mode]->hidePanel = windowOptions_[mode][3]->isChecked();
+        options[mode]->hideMenus = windowOptions_[mode][4]->isChecked();
+        options[mode]->noRightClick = windowOptions_[mode][5]->isChecked();
+    }
     return settings;
 }

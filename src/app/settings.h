@@ -20,6 +20,25 @@ struct Settings {
     // RAM and ROMs: a CPC6128 until the user says otherwise.
     tuxape::MachineConfig machine = tuxape::stockMachine(tuxape::CpcModel::Cpc6128);
 
+    // The Display page. The defaults are WinAPE's.
+    int monitorType = 0;        // 0 colour, 1 green, 2 greyscale
+    int brightness = 0;         // -100 to 100
+    int verticalHold = 0;       // lines the picture is moved by, -32 to 32
+    bool linearPalette = true;
+    // What the window shows around the picture, and how the picture is
+    // drawn: one set of choices for the window, one for full screen.
+    struct WindowOptions {
+        bool halfSize = false;
+        bool renderBothLines = true;
+        bool hideMouse = true;
+        bool hidePanel = false;
+        bool hideMenus = false;
+        bool noRightClick = false;
+        bool operator==(const WindowOptions&) const = default;
+    };
+    WindowOptions windowed;
+    WindowOptions fullScreen{false, true, true, true, true, false};
+
     // Values out of range are brought back into it; a missing file or key
     // leaves the default.
     void load();
@@ -34,7 +53,10 @@ struct Settings {
         FastDiscPart = 4,
         RamPart = 8,
         RomsPart = 16,
-        AllParts = 31,
+        MonitorPart = 32,
+        WindowedPart = 64,
+        FullScreenPart = 128,
+        AllParts = 255,
     };
     void read(const tuxape::IniFile& ini);
     void write(tuxape::IniFile& ini, unsigned parts = AllParts) const;

@@ -154,6 +154,18 @@ bool Emulator::fastDisc()
     return withMachine([](Cpc& cpc) { return cpc.fdc().fast(); });
 }
 
+void Emulator::setMonitor(int kind, bool linearPalette, int brightness)
+{
+    withMachine([&](Cpc& cpc) {
+        cpc.gateArray().setMonitor(static_cast<tuxape::MonitorKind>(std::clamp(kind, 0, 2)), linearPalette, brightness);
+    });
+}
+
+void Emulator::setVerticalHold(int lines)
+{
+    withMachine([lines](Cpc& cpc) { cpc.monitor().setVerticalHold(lines); });
+}
+
 void Emulator::reset(bool cold)
 {
     withMachine([cold](Cpc& cpc) {
