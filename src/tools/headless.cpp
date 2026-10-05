@@ -136,6 +136,9 @@ int main(int argc, char* argv[])
         std::error_code ec;
         std::filesystem::create_directories(screenshotDir, ec);
         runner.setScreenshotSink([&](const std::string& name) {
+            // The time helps to see where a script and the program it
+            // drives have drifted apart.
+            std::printf("%9.3f s  %s\n", static_cast<double>(cpc.microseconds()) / 1e6, name.c_str());
             return savePicture(cpc, screenshotDir / (name + ".png"));
         });
         const bool ok = runner.run(cslFile);

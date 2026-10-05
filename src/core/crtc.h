@@ -51,7 +51,7 @@ public:
     uint8_t vtac() const { return vtac_; }  // vertical total adjust counter
     uint8_t hsc() const { return hsc_; }    // horizontal sync counter
     uint8_t vsc() const { return vsc_; }    // vertical sync counter
-    bool inVerticalAdjust() const { return inAdjust_; }
+    bool inVerticalAdjust() const { return type_ == CrtcType::HD6845S ? adjust_ && !lastLine_ : inAdjust_; }
 
 private:
     CrtcType type_ = CrtcType::HD6845S;
@@ -72,11 +72,36 @@ private:
     bool vDisp_ = false;
     bool inAdjust_ = false;
 
+    // ---- CRTC 0 (HD6845S / UM6845) ---------------------------------------
+    // This chip makes its vertical decisions at fixed places on the line
+    // (Compendium, chapters 10 to 13 and 16): during the first two
+    // characters it works out whether the line is the last of the frame and
+    // arms the vertical adjustment by default; on the third it keeps or
+    // drops that adjustment and allows the next VSYNC. Lines too short to
+    // get there leave things armed or frozen, which is what the "rupture"
+    // techniques play with.
+    bool lastLine_ = false;        // this line was found to be the last of the frame
+    bool adjust_ = false;          // vertical adjustment armed or running
+    bool adjustRunning_ = false;   // ... and past the point where it can be dropped
+    bool adjustUndecided_ = false; // still to be confirmed against R5
+    bool c9Enabled_ = false;       // the line reached character 1: C9 may count
+    bool c4CountArmed_ = false;    // C9 equalled R9 on character 0
+    bool c9MatchAtEnd_ = false;    // C9 equalled R9 during the last character
+    bool vsyncAllowed_ = false;    // the line reached character 2
+    bool r7Match_ = false;         // C4 = R7 has been noted: no VSYNC from it again
+    bool vsyncFresh_ = false;      // VSYNC began mid-line: its line count restarts
+
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
     void endOfLine();
     void startRow();
     void startFrame();
     void startVsync();
+
+    bool onLastLine() const { return vcc_ == reg_[4] && vlc_ == reg_[9]; }
+    void lineStart0();
+    void rowChanged0();
+    void newFrame0();
+    void decideAdjustment0();
 };
 
 }  // namespace tuxape
