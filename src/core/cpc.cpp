@@ -48,18 +48,34 @@ void Cpc::run(uint32_t microseconds)
     if (runUntil_ < clk_)
         runUntil_ = clk_;
     runUntil_ += static_cast<uint64_t>(microseconds) * 4;
-    if (watchedCount_ == 0) {
+    if (watchedCount_ == 0 && !breakInstructions_) {
         while (clk_ < runUntil_)
             cpu_.step();
     } else {
+        stopRun_ = false;
         while (clk_ < runUntil_) {
             // Not when an interrupt is about to be taken: the instruction
             // will run, and be reported, after the handler returns.
-            if (watched_[cpu_.pc] && execHook_ && !cpu_.interruptDue())
+            if (watchedCount_ != 0 && watched_[cpu_.pc] && execHook_ && !cpu_.interruptDue())
                 execHook_(cpu_.pc);
+            if (stopRun_)
+                break;
             cpu_.step();
+            if (stopRun_)
+                break;
         }
+        // Stopped: the time not used is not owed.
+        if (stopRun_)
+            runUntil_ = clk_;
+        stopRun_ = false;
     }
+    syncSound();
+}
+
+void Cpc::stepInstruction()
+{
+    cpu_.step();
+    runUntil_ = clk_;
     syncSound();
 }
 

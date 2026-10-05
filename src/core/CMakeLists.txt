@@ -6,6 +6,7 @@ add_library(tuxape_core STATIC
     cpc.cpp
     crtc.cpp
     csl.cpp
+    disasm.cpp
     disc.cpp
     fdc.cpp
     files.cpp

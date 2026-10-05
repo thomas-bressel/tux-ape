@@ -43,6 +43,22 @@ public:
     void run(uint32_t microseconds);
     void runFrame() { run(kFrameMicroseconds); }
 
+    // For a debugger. One instruction, or one turn of one that repeats
+    // (LDIR): a single step. And, for the hook below to stop the machine
+    // on a breakpoint, an end to run() before the instruction it was
+    // called for; run() then returns early.
+    void stepInstruction();
+    void stopRun() { stopRun_ = true; }
+    // ED FF, which no program uses, as a breakpoint written into the
+    // program: run() ends after it, and breakInstructionHit() says so once.
+    void setBreakInstructions(bool on) { breakInstructions_ = on; }
+    bool breakInstructionHit()
+    {
+        const bool hit = breakInstructionHit_;
+        breakInstructionHit_ = false;
+        return hit;
+    }
+
     // Calls `hook` just before the instruction at a watched address runs.
     // Tools use this to observe a program, for instance to collect what it
     // prints by watching the firmware's character output routine.
@@ -171,6 +187,8 @@ public:
     {
         if (ssmHook_)
             ssmOpcode(op);
+        if (breakInstructions_ && op == 0xFF)
+            stopRun_ = breakInstructionHit_ = true;
     }
 
     uint8_t irqAck()
@@ -221,6 +239,9 @@ private:
     uint16_t ssmNextPc_ = 0;  // where the second half must sit
 
     ExecHook execHook_;
+    bool stopRun_ = false;
+    bool breakInstructions_ = false;
+    bool breakInstructionHit_ = false;
     std::vector<uint8_t> watched_;  // one flag per address; empty when nothing is watched
     int watchedCount_ = 0;
 
