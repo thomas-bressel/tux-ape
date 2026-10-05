@@ -23,6 +23,7 @@
 #include "emulator.h"
 #include "icons.h"
 #include "screenwidget.h"
+#include "setupdialog.h"
 
 #include "core/snapshot.h"
 
@@ -212,15 +213,20 @@ void MainWindow::createMenus()
 
     // ---- Settings ----
     QMenu* settings = menuBar()->addMenu(tr("&Settings"));
-    addItem(settings, tr("&General"));
+    setupAction_ = addItem(settings, tr("&General"), {}, [this] { showSetup(SetupDialog::General); });
+    // WinAPE opens its Setup window on F12 without saying so in the menu.
+    auto* setupKey = new QAction(this);
+    setupKey->setShortcut(Qt::Key_F12);
+    connect(setupKey, &QAction::triggered, setupAction_, &QAction::trigger);
+    addAction(setupKey);
     addItem(settings, tr("&Display"));
     addItem(settings, tr("&Sound"));
     addItem(settings, tr("&Memory"));
     addItem(settings, tr("&Input"));
     addItem(settings, tr("&Other"));
     settings->addSeparator();
-    addItem(settings, tr("&Normal Speed (100%)"), SHIFT | Qt::Key_F3, [this] { emulator_->setSpeedPercent(100); });
-    addItem(settings, tr("&High Speed (1000%)"), SHIFT | Qt::Key_F4, [this] { emulator_->setSpeedPercent(1000); });
+    addItem(settings, tr("&Normal Speed (100%)"), SHIFT | Qt::Key_F3, [this] { setSpeed(100); });
+    addItem(settings, tr("&High Speed (1000%)"), SHIFT | Qt::Key_F4, [this] { setSpeed(1000); });
     settings->addSeparator();
     fullScreenAction_ = addItem(settings, tr("&Full Screen"), Qt::Key_F10, [this] { toggleFullScreen(); });
     addItem(settings, tr("&Reset"), CTRL | Qt::Key_F9, [this] { emulator_->reset(false); });
@@ -290,7 +296,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
     addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
     row->addWidget(separator(controlPanel_));
-    addButton(IconId::Settings, tr("Settings (F12)"), nullptr);
+    addButton(IconId::Settings, tr("Settings (F12)"), setupAction_);
     addButton(IconId::Pokes, tr("Pokes (CTRL+F8)"), nullptr);
     addButton(IconId::FullScreen, tr("Toggle Full Screen (F10)"), fullScreenAction_);
     row->addWidget(separator(controlPanel_));
@@ -341,6 +347,39 @@ void MainWindow::setPaused(bool paused)
     pauseAction_->setEnabled(!paused);
     if (paused)
         statusLabel_->setText(tr("Paused"));
+}
+
+void MainWindow::applySettings(const Settings& settings)
+{
+    settings_ = settings;
+    emulator_->setCrtcType(static_cast<tuxape::CrtcType>(settings.crtcType));
+    emulator_->setFastDisc(settings.fastDisc);
+    emulator_->setSpeedPercent(settings.speedPercent);
+    emulator_->setDisplayEvery(settings.displayEvery ? settings.displayEveryFrames : 0);
+}
+
+void MainWindow::showSetup(int page)
+{
+    // A snapshot may have brought its own CRTC with it.
+    settings_.crtcType = static_cast<int>(emulator_->crtcType());
+    SetupDialog dialog(settings_, this);
+    dialog.showPage(static_cast<SetupDialog::Page>(page));
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    applySettings(dialog.settings());
+    if (!settings_.save())
+        report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+}
+
+// The two speeds of the Settings menu: they set the speed of the Setup
+// window and leave its "Display Every" mode.
+void MainWindow::setSpeed(int percent)
+{
+    Settings settings = settings_;
+    settings.speedPercent = percent;
+    settings.displayEvery = false;
+    applySettings(settings);
+    settings_.save();
 }
 
 void MainWindow::toggleFullScreen()

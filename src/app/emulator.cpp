@@ -71,7 +71,7 @@ void Emulator::playSound()
         return;
     std::vector<int16_t>& samples = cpc_.audio().samples();
     // Speeded up or slowed down, the sound would only be noise.
-    if (speedPercent_ != 100) {
+    if (speedPercent_ != 100 || displayEvery_ != 0) {
         if (!audioSilenced_)
             audio_->clear();
         audioSilenced_ = true;
@@ -106,6 +106,31 @@ void Emulator::setPaused(bool paused)
 void Emulator::setSpeedPercent(int percent)
 {
     speedPercent_ = std::clamp(percent, 5, 1000);
+}
+
+void Emulator::setDisplayEvery(int frames)
+{
+    displayEvery_ = std::clamp(frames, 0, 50);
+}
+
+void Emulator::setCrtcType(tuxape::CrtcType type)
+{
+    withMachine([type](Cpc& cpc) { cpc.crtc().setType(type); });
+}
+
+tuxape::CrtcType Emulator::crtcType()
+{
+    return withMachine([](Cpc& cpc) { return cpc.crtc().type(); });
+}
+
+void Emulator::setFastDisc(bool fast)
+{
+    withMachine([fast](Cpc& cpc) { cpc.fdc().setFast(fast); });
+}
+
+bool Emulator::fastDisc()
+{
+    return withMachine([](Cpc& cpc) { return cpc.fdc().fast(); });
 }
 
 void Emulator::reset(bool cold)
@@ -192,6 +217,7 @@ void Emulator::threadMain()
     auto statsStart = deadline;
     uint64_t statsMicroseconds = 0;
     uint64_t statsFrames = cpc_.monitor().frameNumber();
+    int unshown = 0;  // frames run since the last picture shown
 
     while (running_) {
         if (paused_) {
@@ -205,7 +231,11 @@ void Emulator::threadMain()
         machineMutex_.lock();
         autoType_.frame();
         cpc_.runFrame();
-        publishFrame();
+        const int every = displayEvery_;
+        if (++unshown >= every) {
+            publishFrame();
+            unshown = 0;
+        }
         playSound();
         const uint64_t frames = cpc_.monitor().frameNumber();
         machineMutex_.unlock();
@@ -225,6 +255,11 @@ void Emulator::threadMain()
             statsFrames = frames;
         }
 
+        if (every != 0) {
+            // Flat out.
+            deadline = now;
+            continue;
+        }
         deadline += duration_cast<Clock::duration>(
             duration<double, std::micro>(Cpc::kFrameMicroseconds * 100.0 / speedPercent_));
         // If the host cannot keep up, do not try to make up the lost time.

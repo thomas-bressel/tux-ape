@@ -56,6 +56,17 @@ public:
     // Emulation speed, 100 being the speed of a real CPC.
     void setSpeedPercent(int percent);
     int speedPercent() const { return speedPercent_; }
+    // WinAPE's "Display Every n frame(s)": the machine runs as fast as the
+    // host allows and only one picture in `frames` is shown. 0 turns this
+    // off, and the speed above applies again.
+    void setDisplayEvery(int frames);
+    int displayEvery() const { return displayEvery_; }
+
+    void setCrtcType(tuxape::CrtcType type);
+    tuxape::CrtcType crtcType();
+    // Disc drives without their mechanical delays.
+    void setFastDisc(bool fast);
+    bool fastDisc();
 
     void reset(bool cold);
 
@@ -108,6 +119,7 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
     std::atomic<int> speedPercent_{100};
+    std::atomic<int> displayEvery_{0};
     std::mutex wakeMutex_;
     std::condition_variable wake_;
 

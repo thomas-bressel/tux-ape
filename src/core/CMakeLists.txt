@@ -8,6 +8,7 @@ add_library(tuxape_core STATIC
     fdc.cpp
     files.cpp
     gate_array.cpp
+    inifile.cpp
     keymap.cpp
     memory.cpp
     monitor.cpp

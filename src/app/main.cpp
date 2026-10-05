@@ -46,6 +46,9 @@ int main(int argc, char* argv[])
         emulator.setAudioOutput(&audio);
 
     MainWindow window(&emulator);
+    Settings settings;
+    settings.load();
+    window.applySettings(settings);
     window.show();
     if (!parser.positionalArguments().isEmpty())
         window.insertDiscFile(0, parser.positionalArguments().first());

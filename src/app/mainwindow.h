@@ -5,6 +5,8 @@
 #include <QKeySequence>
 #include <QMainWindow>
 
+#include "settings.h"
+
 class DiscManager;
 class Emulator;
 class QAction;
@@ -35,6 +37,11 @@ public:
     bool loadSnapshotFile(const QString& path);
     bool saveSnapshotFile(const QString& path);
 
+    // Puts the user's settings into effect. The window starts with the
+    // defaults; it is for the application to load the saved ones.
+    void applySettings(const Settings& settings);
+    const Settings& settings() const { return settings_; }
+
 protected:
     void closeEvent(QCloseEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -51,6 +58,7 @@ private:
     QString discFolder_;  // where the last disc image was opened
     QString snapshotFolder_;  // where the last snapshot was read or written
     QString snapshotPath_;    // the file "Update Snapshot" writes to
+    Settings settings_;
 
     QAction* runAction_ = nullptr;
     QAction* pauseAction_ = nullptr;
@@ -61,6 +69,7 @@ private:
     QAction* loadSnapshotAction_ = nullptr;
     QAction* saveSnapshotAction_ = nullptr;
     QAction* updateSnapshotAction_ = nullptr;
+    QAction* setupAction_ = nullptr;
     struct DriveActions {
         QAction* format = nullptr;
         QAction* flip = nullptr;
@@ -78,6 +87,9 @@ private:
     void showContextMenu(const QPoint& pos);
 
     void setPaused(bool paused);
+    // Shows the Setup window on one of its pages (SetupDialog::Page).
+    void showSetup(int page);
+    void setSpeed(int percent);
     void toggleFullScreen();
     void paste();
     void updateStats(int speedPercent, int framesPerSecond);
