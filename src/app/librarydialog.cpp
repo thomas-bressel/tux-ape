@@ -25,13 +25,14 @@ namespace {
 bool isProgram(const QString& name)
 {
     return name.endsWith(".dsk", Qt::CaseInsensitive) || name.endsWith(".cdt", Qt::CaseInsensitive)
-           || name.endsWith(".sna", Qt::CaseInsensitive);
+           || name.endsWith(".cpr", Qt::CaseInsensitive) || name.endsWith(".sna", Qt::CaseInsensitive);
 }
 
 LibraryEntry::Kind kindOf(const QString& name)
 {
     return name.endsWith(".sna", Qt::CaseInsensitive)   ? LibraryEntry::Snapshot
            : name.endsWith(".cdt", Qt::CaseInsensitive) ? LibraryEntry::Tape
+           : name.endsWith(".cpr", Qt::CaseInsensitive) ? LibraryEntry::Cartridge
                                                         : LibraryEntry::Disc;
 }
 
@@ -84,7 +85,7 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
     QList<LibraryEntry> entries;
     QSet<QString> seen;
     for (const QString& folder : folders) {
-        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.sna", "*.zip"}, QDir::Files,
+        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.cpr", "*.sna", "*.zip"}, QDir::Files,
                         QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
         while (it.hasNext()) {
             const QString path = QDir::cleanPath(it.next());
@@ -221,9 +222,10 @@ void LibraryDialog::fill()
     list_->clear();
     for (int i = 0; i < entries_.size(); ++i) {
         const LibraryEntry& entry = entries_[i];
-        const QString kind = entry.kind == LibraryEntry::Disc   ? tr("Disc")
-                             : entry.kind == LibraryEntry::Tape ? tr("Tape")
-                                                                : tr("Snapshot");
+        const QString kind = entry.kind == LibraryEntry::Disc        ? tr("Disc")
+                             : entry.kind == LibraryEntry::Tape      ? tr("Tape")
+                             : entry.kind == LibraryEntry::Cartridge ? tr("Cartridge")
+                                                                     : tr("Snapshot");
         auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, entry.details});
         item->setData(0, Qt::UserRole, i);
         item->setToolTip(0, libraryDisplayPath(entry));
@@ -251,7 +253,7 @@ void LibraryDialog::filter()
     if (!list_->currentItem() || list_->currentItem()->isHidden())
         list_->setCurrentItem(first);
     if (folders_.isEmpty())
-        count_->setText(tr("Click Folders... to say where your discs, tapes and snapshots are."));
+        count_->setText(tr("Click Folders... to say where your discs, tapes, cartridges and snapshots are."));
     else
         count_->setText(tr("%1 of %2").arg(shown).arg(entries_.size()));
     updateButtons();
@@ -267,7 +269,7 @@ void LibraryDialog::updateButtons()
 {
     const int index = current();
     const LibraryEntry::Kind kind = index >= 0 ? entries_[index].kind : LibraryEntry::Disc;
-    insertA_->setText(kind == LibraryEntry::Snapshot ? tr("&Load") : kind == LibraryEntry::Tape ? tr("&Insert") : tr("Insert in &A:"));
+    insertA_->setText(kind == LibraryEntry::Snapshot ? tr("&Load") : kind == LibraryEntry::Disc ? tr("Insert in &A:") : tr("&Insert"));
     insertA_->setEnabled(index >= 0);
     insertB_->setEnabled(index >= 0 && kind == LibraryEntry::Disc);
 }
@@ -323,7 +325,7 @@ void LibraryDialog::editFolders()
     buttons->addStretch(1);
     buttons->addWidget(ok);
     auto* layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(tr("Disc images (.dsk), tapes (.cdt) and snapshots (.sna), zipped or not, are looked for in:")));
+    layout->addWidget(new QLabel(tr("Discs (.dsk), tapes (.cdt), cartridges (.cpr) and snapshots (.sna), zipped or not, are looked for in:")));
     layout->addWidget(list, 1);
     layout->addLayout(buttons);
     dialog.resize(480, 260);

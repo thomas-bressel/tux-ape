@@ -65,12 +65,12 @@ MachineConfig stockMachine(CpcModel model)
     case CpcModel::Plus464:
         config.ram = RamExpansion::None;
         config.cartridge = "CPC_PLUS.CPR";
-        config.plus = true;
+        config.cartridgeEnabled = config.plus = true;
         break;
     case CpcModel::Plus6128:
         config.ram = RamExpansion::Internal;
         config.cartridge = "CPC_PLUS.CPR";
-        config.plus = true;
+        config.cartridgeEnabled = config.plus = true;
         break;
     }
     return config;
@@ -78,7 +78,7 @@ MachineConfig stockMachine(CpcModel model)
 
 CpcModel modelOf(const MachineConfig& config)
 {
-    if (config.plus && !config.cartridge.empty())
+    if (config.isPlus())
         return config.ram == RamExpansion::None ? CpcModel::Plus464 : CpcModel::Plus6128;
     const std::string firmware = lowered(std::filesystem::path(config.lowerRom).stem().string());
     if (firmware.find("464") != std::string::npos)
@@ -158,7 +158,7 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
     // A Plus: the cartridge. The 464 Plus has no disc drive, and so no
     // AMSDOS in its ROM 7.
     std::optional<Cartridge> cartridge;
-    if (config.plus && !config.cartridge.empty()) {
+    if (config.isPlus()) {
         std::filesystem::path file = findRom(config.cartridge, romDir);
         if (file.empty())
             file = findRom(config.cartridge + ".cpr", romDir);

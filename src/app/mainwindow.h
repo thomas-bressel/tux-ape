@@ -41,6 +41,10 @@ public:
     // Puts a tape (a CDT file) in the deck, rewound and with Play pressed:
     // it runs when the CPC starts the motor.
     bool insertTapeFile(const QString& path);
+    // Plugs a cartridge (a CPR file) in. The machine becomes a Plus if it
+    // was not one, and starts afresh, as one does when its cartridge is
+    // changed.
+    bool insertCartridgeFile(const QString& path);
 
     // Puts the user's settings into effect. The window starts with the
     // defaults; it is for the application to load the saved ones.
@@ -77,6 +81,7 @@ private:
     QAction* updateSnapshotAction_ = nullptr;
     QAction* setupAction_ = nullptr;
     QAction* libraryAction_ = nullptr;
+    QAction* cartridgeAction_ = nullptr;
     QAction* tapeControlAction_ = nullptr;
     QAction* rewindTapeAction_ = nullptr;
     QAction* removeTapeAction_ = nullptr;
@@ -84,6 +89,7 @@ private:
     TapeDialog* tapeDialog_ = nullptr;
     QString tapePath_;    // the file the tape in the deck came from
     QString tapeFolder_;  // where the last tape image was opened
+    QString cartridgeFolder_;
     QString librarySearch_;  // what the Library window was last searching for
     struct DriveActions {
         QAction* format = nullptr;
@@ -130,6 +136,7 @@ private:
     void saveScreenshot();
     void autoType();
     void showLibrary();
+    void chooseCartridge();
     // The cassette deck.
     void chooseTape();
     void removeTape();

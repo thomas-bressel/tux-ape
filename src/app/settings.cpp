@@ -104,6 +104,10 @@ void Settings::read(const tuxape::IniFile& ini)
         for (int slot = 0; slot < tuxape::Memory::kRomSlots; ++slot)
             machine.upperRoms[static_cast<size_t>(slot)] = ini.get(kRoms, upperKey(slot));
     }
+    if (ini.has(kRoms, "Cartridge"))
+        machine.cartridge = ini.get(kRoms, "Cartridge");
+    machine.cartridgeEnabled = ini.getBool(kRoms, "Cartridge Enabled", machine.cartridgeEnabled);
+    machine.plus = ini.getBool(kConfiguration, "Enable Plus", machine.plus);
     machine.rom32 = ini.getBool(kRoms, "Enable 32 ROMs", machine.rom32);
     machine.disableAllRoms = ini.getBool(kRoms, "Disable All", machine.disableAllRoms);
     machine.onlyLower0And7 = ini.getBool(kRoms, "Enable L07", machine.onlyLower0And7);
@@ -170,6 +174,9 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.set(kRoms, "Lower", machine.lowerRom);
         for (int slot = 0; slot < tuxape::Memory::kRomSlots; ++slot)
             ini.set(kRoms, upperKey(slot), machine.upperRoms[static_cast<size_t>(slot)]);
+        ini.set(kRoms, "Cartridge", machine.cartridge);
+        ini.setBool(kRoms, "Cartridge Enabled", machine.cartridgeEnabled);
+        ini.setBool(kConfiguration, "Enable Plus", machine.plus);
         ini.setBool(kRoms, "Enable 32 ROMs", machine.rom32);
         ini.setBool(kRoms, "Disable All", machine.disableAllRoms);
         ini.setBool(kRoms, "Enable L07", machine.onlyLower0And7);
@@ -229,8 +236,7 @@ bool Settings::saveProfile(const QString& path, unsigned parts) const
 bool Settings::profileUsable(const QString& path)
 {
     tuxape::IniFile ini;
-    return ini.load(path.toStdString()) && !ini.getBool(kConfiguration, "Enable Plus", false)
-           && !ini.getBool(kRoms, "Cartridge Enabled", false);
+    return ini.load(path.toStdString());
 }
 
 QString Settings::profileFolder()

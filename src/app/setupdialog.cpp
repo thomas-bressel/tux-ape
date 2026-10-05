@@ -242,8 +242,9 @@ QWidget* SetupDialog::createGeneralPage()
     crtcRow->addWidget(crtcLabel);
     crtcRow->addWidget(crtcType_, 1);
 
-    auto* enablePlus = notYet(new QCheckBox(tr("Enable Plus Features")));
-    enablePlus->setObjectName("ckEnablePlus");
+    enablePlus_ = new QCheckBox(tr("Enable Plus Features"));
+    enablePlus_->setObjectName("ckEnablePlus");
+    enablePlus_->setToolTip(tr("Needs a cartridge, on the Memory page"));
     auto* plusPpi = notYet(new QCheckBox(tr("Plus PPI Emulation")));
     plusPpi->setObjectName("ckPlusPPI");
     auto* fourDrives = notYet(new QCheckBox(tr("Enable Four Drives (Non-Standard)")));
@@ -263,7 +264,7 @@ QWidget* SetupDialog::createGeneralPage()
     auto* optionsLayout = new QVBoxLayout(optionsBox);
     optionsLayout->setSpacing(3);
     optionsLayout->addLayout(crtcRow);
-    for (QWidget* widget : {static_cast<QWidget*>(enablePlus), static_cast<QWidget*>(plusPpi),
+    for (QWidget* widget : {static_cast<QWidget*>(enablePlus_), static_cast<QWidget*>(plusPpi),
                             static_cast<QWidget*>(fourDrives), static_cast<QWidget*>(fastDisc_),
                             static_cast<QWidget*>(flyback), static_cast<QWidget*>(disableUpdate)})
         optionsLayout->addWidget(widget);
@@ -840,12 +841,22 @@ QWidget* SetupDialog::createMemoryPage()
         return row;
     };
     auto* cartridgeBox = new QGroupBox(tr("Cartridge"));
-    auto* enableCartridge = notYet(new QCheckBox(tr("Enable Cartridge")));
-    enableCartridge->setObjectName("ckEnableCart");
+    enableCartridge_ = new QCheckBox(tr("Enable Cartridge"));
+    enableCartridge_->setObjectName("ckEnableCart");
+    cartridgeFile_ = new QLabel;
+    cartridgeFile_->setObjectName("lCartridge");
+    auto* browseCartridge = new QToolButton;
+    browseCartridge->setObjectName("sbCartridge");
+    browseCartridge->setText("...");
+    connect(browseCartridge, &QToolButton::clicked, this, &SetupDialog::chooseCartridge);
+    auto* cartridgeRow = new QHBoxLayout;
+    cartridgeRow->addWidget(new QLabel(tr("File:")));
+    cartridgeRow->addWidget(cartridgeFile_, 1);
+    cartridgeRow->addWidget(browseCartridge);
     auto* cartridgeLayout = new QVBoxLayout(cartridgeBox);
     cartridgeLayout->setSpacing(3);
-    cartridgeLayout->addWidget(enableCartridge);
-    cartridgeLayout->addLayout(fileRow(tr("File:"), QString(), "sbCartridge"));
+    cartridgeLayout->addWidget(enableCartridge_);
+    cartridgeLayout->addLayout(cartridgeRow);
 
     auto* multifaceBox = new QGroupBox(tr("Multiface"));
     auto* enableMultiface = notYet(new QCheckBox(tr("Enable Multiface")));
@@ -906,6 +917,25 @@ tuxape::RamExpansion SetupDialog::chosenRam() const
         if (ram_[i]->isChecked())
             return static_cast<tuxape::RamExpansion>(i);
     return tuxape::RamExpansion::None;
+}
+
+void SetupDialog::setCartridge(const QString& cartridge)
+{
+    cartridge_ = cartridge;
+    cartridgeFile_->setText(QFileInfo(QDir::fromNativeSeparators(cartridge)).fileName());
+    cartridgeFile_->setToolTip(QDir::toNativeSeparators(cartridge));
+}
+
+// A cartridge from the ROM folder goes by its name, as ROM images do.
+void SetupDialog::chooseCartridge()
+{
+    const QString romDir = QDir::cleanPath(QString::fromStdString(tuxape::defaultRomDir().string()));
+    const QString path = QFileDialog::getOpenFileName(this, tr("Cartridge"), romDir, tr("Cartridges (*.cpr);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    const QFileInfo file(path);
+    setCartridge(QDir::cleanPath(file.absolutePath()) == romDir ? file.fileName() : QDir::toNativeSeparators(path));
+    enableCartridge_->setChecked(true);
 }
 
 void SetupDialog::updateTotalRam()
@@ -996,6 +1026,9 @@ void SetupDialog::setSettings(const Settings& settings)
     keyboardFile_ = settings.keyboardFile;
 
     crtcType_->setCurrentIndex(settings.crtcType);
+    enablePlus_->setChecked(settings.machine.plus);
+    enableCartridge_->setChecked(settings.machine.cartridgeEnabled);
+    setCartridge(QString::fromStdString(settings.machine.cartridge));
     fastDisc_->setChecked(settings.fastDisc);
     speed_->setValue(settings.speedPercent);
     displayEvery_->setChecked(settings.displayEvery);
@@ -1189,6 +1222,9 @@ Settings SetupDialog::settings() const
     tuxape::MachineConfig& machine = settings.machine;
     machine.ram = chosenRam();
     machine.siliconDisc = siliconDisc_->isChecked();
+    machine.plus = enablePlus_->isChecked();
+    machine.cartridgeEnabled = enableCartridge_->isChecked();
+    machine.cartridge = cartridge_.toStdString();
     machine.lowerRom = romNames_[0].toStdString();
     for (int slot = 0; slot < tuxape::Memory::kRomSlots; ++slot)
         machine.upperRoms[static_cast<size_t>(slot)] = romNames_[1 + slot].toStdString();

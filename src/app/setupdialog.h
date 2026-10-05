@@ -71,6 +71,7 @@ private:
     QTabWidget* tabs_ = nullptr;
     QComboBox* crtcType_ = nullptr;
     QCheckBox* fastDisc_ = nullptr;
+    QCheckBox* enablePlus_ = nullptr;
     QSlider* speed_ = nullptr;
     QLabel* speedLabel_ = nullptr;
     QCheckBox* displayEvery_ = nullptr;
@@ -109,6 +110,11 @@ private:
 
     QRadioButton* ram_[4] = {};
     QCheckBox* siliconDisc_ = nullptr;
+    QCheckBox* enableCartridge_ = nullptr;
+    QLabel* cartridgeFile_ = nullptr;
+    QString cartridge_;  // a file of the ROM folder by its name, or a path
+    void setCartridge(const QString& cartridge);
+    void chooseCartridge();
     QLabel* totalRam_ = nullptr;
     QTableWidget* roms_ = nullptr;
     QCheckBox* rom32_ = nullptr;

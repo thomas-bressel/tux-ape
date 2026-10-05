@@ -274,8 +274,8 @@ void testMemoryPage(const QString& picture)
     CHECK_EQ(dialog.settings().crtcType, settings.crtcType);
     CHECK_EQ(dialog.settings().speedPercent, settings.speedPercent);
 
-    // Cartridges and the Multiface are still to come.
-    for (const char* name : {"ckEnableCart", "sbCartridge", "ckEnableMultiface", "sbMultiface"}) {
+    // The Multiface is still to come.
+    for (const char* name : {"ckEnableMultiface", "sbMultiface"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
     }
@@ -296,7 +296,7 @@ void testProfiles(const QString& folder, const QString& picture)
     const QString profiles = QStringLiteral(TUXAPE_WINAPE_DIR "/Profile");
     CHECK(Settings::profileFolder() == profiles);
     CHECK(Settings::profileUsable(profiles + "/CPC6128.wpf"));
-    CHECK(!Settings::profileUsable(profiles + "/6128 Plus.wpf"));  // needs the Plus and a cartridge
+    CHECK(Settings::profileUsable(profiles + "/6128 Plus.wpf"));
     CHECK(!Settings::profileUsable(profiles + "/no such profile.wpf"));
 
     Settings settings;
@@ -324,8 +324,8 @@ void testProfiles(const QString& folder, const QString& picture)
     const auto* model = qobject_cast<QStandardItemModel*>(combo->model());
     CHECK(model != nullptr);
     if (model) {
-        CHECK(!model->item(1)->isEnabled());  // the Plus machines are to come
-        CHECK(!model->item(4)->isEnabled());
+        CHECK(model->item(1)->isEnabled());
+        CHECK(model->item(4)->isEnabled());
         CHECK(model->item(5)->isEnabled());
         CHECK(model->item(9)->isEnabled());
     }
@@ -851,7 +851,7 @@ void testDialog(const QString& picture)
 
     // What TuxAPE cannot do yet is greyed out.
     for (const char* name :
-         {"ckEnablePlus", "ckPlusPPI", "ckFourDrives", "ckFlyback", "ckDisableUpdate", "bUpdate", "ckTurbo"}) {
+         {"ckPlusPPI", "ckFourDrives", "ckFlyback", "ckDisableUpdate", "bUpdate", "ckTurbo"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
     }

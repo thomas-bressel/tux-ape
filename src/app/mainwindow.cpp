@@ -28,7 +28,9 @@
 #include "tapedialog.h"
 #include "tooldialogs.h"
 
+#include "core/cartridge.h"
 #include "core/files.h"
+#include "core/setup.h"
 #include "core/snapshot.h"
 
 namespace {
@@ -141,6 +143,10 @@ void MainWindow::dropEvent(QDropEvent* event)
             insertTapeFile(path);
             continue;
         }
+        if (QFileInfo(path).suffix().compare(QLatin1String("cpr"), Qt::CaseInsensitive) == 0) {
+            insertCartridgeFile(path);
+            continue;
+        }
         if (drive >= DiscManager::kDrives)
             continue;
         if (saveBeforeLeaving(drive) && insertDiscFile(drive, path))
@@ -190,7 +196,7 @@ void MainWindow::createMenus()
     }
     swapAction_ = addItem(file, tr("&Swap Discs A: and B:"), SHIFT | CTRL | Qt::Key_F3, [this] { swapDiscs(); });
     driveSetupAction_ = addItem(file, tr("&Drive Setup..."), Qt::Key_F2, [this] { driveSetup(); });
-    addItem(file, tr("Load &Cartridge..."), CTRL | Qt::Key_F3);
+    cartridgeAction_ = addItem(file, tr("Load &Cartridge..."), CTRL | Qt::Key_F3, [this] { chooseCartridge(); });
     QMenu* tape = file->addMenu(tr("&Tape"));
     tapeControlAction_ = addItem(tape, tr("&Show Tape Control"), {}, [this] { showTapeControl(); });
     addItem(tape, tr("&Insert Tape Image..."), CTRL | Qt::Key_F4, [this] { chooseTape(); });
@@ -310,7 +316,7 @@ void MainWindow::createControlPanel()
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Library, tr("Library (CTRL+L)"), libraryAction_);
     addButton(IconId::Disc, tr("Change Disc (F2)"), driveSetupAction_);
-    addButton(IconId::Cartridge, tr("Change Cartridge (CTRL+F3)"), nullptr);
+    addButton(IconId::Cartridge, tr("Change Cartridge (CTRL+F3)"), cartridgeAction_);
     addButton(IconId::Tape, tr("Tape Control"), tapeControlAction_);
     addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
     addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
@@ -372,8 +378,13 @@ void MainWindow::applySettings(const Settings& settings)
     settings_ = settings;
     // RAM and ROMs change under the running machine, as in WinAPE: it is
     // for the user to reset it (CTRL+F9) when the firmware has to notice.
-    if (settings.machine != emulator_->machine()) {
-        const QString error = emulator_->setupMachine(settings.machine, false);
+    // A cartridge put in, changed or taken out starts the machine afresh:
+    // nothing that was running could go on.
+    const tuxape::MachineConfig before = emulator_->machine();
+    if (settings.machine != before) {
+        const bool otherCartridge = settings.machine.isPlus() != before.isPlus()
+                                    || (before.isPlus() && settings.machine.cartridge != before.cartridge);
+        const QString error = emulator_->setupMachine(settings.machine, otherCartridge);
         if (!error.isEmpty())
             report(tr("%1.").arg(error.left(1).toUpper() + error.mid(1)));
     }
@@ -464,6 +475,49 @@ void MainWindow::saveScreenshot()
     settings_.save();
 }
 
+// ---- cartridges ------------------------------------------------------------------
+
+bool MainWindow::insertCartridgeFile(const QString& path)
+{
+    const auto data = tuxape::readFile(path.toStdString());
+    if (!data || !tuxape::Cartridge::parseCpr(*data)) {
+        report(tr("%1 is not a cartridge image.").arg(QDir::toNativeSeparators(path)));
+        return false;
+    }
+    Settings settings = settings_;
+    settings.machine = emulator_->machine();
+    if (!settings.machine.isPlus()) {
+        // A CPC's own ROMs have no place in a Plus: its firmware, BASIC
+        // and AMSDOS are in the cartridge. Other ROMs stay on their board.
+        settings.machine.lowerRom.clear();
+        settings.machine.upperRoms[0].clear();
+        settings.machine.upperRoms[7].clear();
+    }
+    settings.machine.cartridge = QDir::toNativeSeparators(path).toStdString();
+    settings.machine.cartridgeEnabled = settings.machine.plus = true;
+    settings.crtcType = static_cast<int>(tuxape::CrtcType::AsicPlus);
+    const QString error = emulator_->setupMachine(settings.machine, true);
+    emulator_->setCrtcType(tuxape::CrtcType::AsicPlus);
+    settings_ = settings;
+    cartridgeFolder_ = QFileInfo(path).absolutePath();
+    if (!error.isEmpty())
+        report(tr("%1.").arg(error.left(1).toUpper() + error.mid(1)));
+    if (!settings_.save())
+        report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+    return error.isEmpty();
+}
+
+void MainWindow::chooseCartridge()
+{
+    const QString folder = cartridgeFolder_.isEmpty() ? QString::fromStdString(tuxape::defaultRomDir().string())
+                                                      : cartridgeFolder_;
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load Cartridge"), folder,
+                                                      tr("Cartridges (*.cpr);;All files (*)"));
+    if (!path.isEmpty())
+        insertCartridgeFile(path);
+    screen_->setFocus();
+}
+
 // ---- the cassette deck ---------------------------------------------------------
 
 bool MainWindow::insertTapeFile(const QString& path)
@@ -550,6 +604,8 @@ void MainWindow::showLibrary()
             loadSnapshotFile(chosen->path);
         else if (chosen->kind == LibraryEntry::Tape)
             insertTapeFile(chosen->path);
+        else if (chosen->kind == LibraryEntry::Cartridge)
+            insertCartridgeFile(chosen->path);
         else if (saveBeforeLeaving(dialog.drive()))
             insertDiscFile(dialog.drive(), chosen->path);
         return;
@@ -564,7 +620,17 @@ void MainWindow::showLibrary()
         loadSnapshotData(*data, name);
     else if (chosen->kind == LibraryEntry::Tape)
         insertTapeData(*data, name);
-    else if (saveBeforeLeaving(dialog.drive()))
+    else if (chosen->kind == LibraryEntry::Cartridge) {
+        // A cartridge is named in the settings, to be there at the next
+        // start: it is taken out of its archive and kept beside them.
+        const QString folder = QFileInfo(Settings::file()).absolutePath() + "/Cartridge";
+        const QString file = folder + '/' + QFileInfo(chosen->member).fileName();
+        QDir().mkpath(folder);
+        if (tuxape::writeFile(file.toStdString(), *data))
+            insertCartridgeFile(file);
+        else
+            report(tr("Cannot write %1.").arg(QDir::toNativeSeparators(file)));
+    } else if (saveBeforeLeaving(dialog.drive()))
         report(discs_->insertImage(dialog.drive(), *data, name));
 }
 

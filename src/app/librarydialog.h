@@ -16,7 +16,7 @@ class QTreeWidget;
 // One program of the library: an image file, by itself or inside a ZIP
 // archive, and what its name says of it.
 struct LibraryEntry {
-    enum Kind { Disc, Snapshot, Tape };
+    enum Kind { Disc, Snapshot, Tape, Cartridge };
     QString path;
     QString member;  // the file's name inside the archive `path`; empty for a file of its own
     Kind kind = Disc;
@@ -29,9 +29,9 @@ struct LibraryEntry {
 // TOSEC, "Gryzor (1987)(Ocean)(fr)[cr].dsk": a title, then notes in round
 // and square brackets, the year among them.
 LibraryEntry libraryEntry(const QString& path);
-// The disc images, tapes and snapshots (.dsk, .cdt, .sna) in the folders and
-// their sub-folders, those inside ZIP archives included, in the order of
-// their titles. An archive that holds a single program gives it its name;
+// The disc images, tapes, cartridges and snapshots (.dsk, .cdt, .cpr, .sna)
+// in the folders and their sub-folders, those inside ZIP archives included,
+// in the order of their titles. An archive that holds a single program gives it its name;
 // the programs of one that holds several go by their own.
 QList<LibraryEntry> scanLibrary(const QStringList& folders);
 // What the program's file holds. Nothing if it cannot be read.

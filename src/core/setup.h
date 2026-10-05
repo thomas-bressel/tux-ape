@@ -28,11 +28,15 @@ struct MachineConfig {
     bool rom32 = false;           // a ROM board of 32 slots, not 16
     bool disableAllRoms = false;  // fit none of the ROMs named above
     bool onlyLower0And7 = false;  // fit only the firmware, slot 0 and slot 7
-    // A Plus machine: the cartridge (a CPR file, looked for like a ROM
-    // image) is its firmware, and the ASIC's features are there. The ROMs
-    // named above are then those of an expansion board.
+    // A Plus machine, which takes both of WinAPE's switches, "Enable Plus
+    // Features" and "Enable Cartridge": the cartridge (a CPR file, looked
+    // for like a ROM image, or a path) is its firmware, and the ASIC's
+    // features are there. The ROMs named above are then those of an
+    // expansion board.
     std::string cartridge;
+    bool cartridgeEnabled = false;
     bool plus = false;
+    bool isPlus() const { return plus && cartridgeEnabled && !cartridge.empty(); }
 
     bool operator==(const MachineConfig&) const = default;
 };
