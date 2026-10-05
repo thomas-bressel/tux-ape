@@ -5,6 +5,10 @@ set(CMAKE_AUTORCC ON)
 
 # Everything but main() is a library, so that tests can drive the windows.
 add_library(tuxape_app STATIC
+    discdialogs.cpp
+    discdialogs.h
+    discmanager.cpp
+    discmanager.h
     emulator.cpp
     emulator.h
     hostkeys.cpp

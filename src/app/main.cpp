@@ -25,6 +25,7 @@ int main(int argc, char* argv[])
     const QCommandLineOption grabDelayOption("grab-after", QObject::tr("Milliseconds to wait before --grab."),
                                              "ms", "3000");
     parser.addOptions({grabOption, grabDelayOption});
+    parser.addPositionalArgument("disc", QObject::tr("Disc image to put in drive A:."), "[disc]");
     parser.process(app);
 
     Emulator emulator;
@@ -39,6 +40,8 @@ int main(int argc, char* argv[])
 
     MainWindow window(&emulator);
     window.show();
+    if (!parser.positionalArguments().isEmpty())
+        window.insertDiscFile(0, parser.positionalArguments().first());
     emulator.start();
 
     if (parser.isSet(grabOption)) {

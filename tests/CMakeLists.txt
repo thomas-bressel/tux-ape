@@ -48,10 +48,12 @@ endif()
 
 if(TUXAPE_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Test)
-    add_executable(gui_smoke gui_smoke.cpp)
-    target_link_libraries(gui_smoke PRIVATE tuxape_app Qt6::Test)
-    add_test(NAME gui_smoke COMMAND gui_smoke)
-    set_tests_properties(gui_smoke PROPERTIES
-        SKIP_RETURN_CODE 77
-        ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+    foreach(test gui_smoke gui_discs)
+        add_executable(${test} ${test}.cpp)
+        target_link_libraries(${test} PRIVATE tuxape_app Qt6::Test)
+        add_test(NAME ${test} COMMAND ${test})
+        set_tests_properties(${test} PROPERTIES
+            SKIP_RETURN_CODE 77
+            ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+    endforeach()
 endif()
