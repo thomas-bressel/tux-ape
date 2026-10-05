@@ -42,6 +42,10 @@ add_executable(crtc0 crtc0.cpp)
 target_link_libraries(crtc0 PRIVATE tuxape_core)
 add_test(NAME crtc0 COMMAND crtc0)
 
+add_executable(crtc_interlace crtc_interlace.cpp)
+target_link_libraries(crtc_interlace PRIVATE tuxape_core)
+add_test(NAME crtc_interlace COMMAND crtc_interlace)
+
 add_executable(snapshot snapshot.cpp)
 target_link_libraries(snapshot PRIVATE tuxape_core)
 add_test(NAME snapshot COMMAND snapshot ${CMAKE_CURRENT_SOURCE_DIR}/roms/acid/snapshot)

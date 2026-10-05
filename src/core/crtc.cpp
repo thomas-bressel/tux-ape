@@ -26,6 +26,9 @@ void Crtc::reset()
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
     c9Enabled_ = c4CountArmed_ = c9MatchAtEnd_ = false;
     vsyncAllowed_ = r7Match_ = vsyncFresh_ = false;
+    parityFrame_ = parityR6_ = false;
+    extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
+    c9Out_ = 0;
 }
 
 void Crtc::write(uint8_t value, bool early)
@@ -112,7 +115,7 @@ void Crtc::write(uint8_t value, bool early)
 
     // On the last character of a line the C4 step follows the registers to
     // the end: R9 brought to C9 there still counts.
-    if (type_ == CrtcType::HD6845S && hcc_ == reg_[0] && vlc_ == reg_[9])
+    if (type_ == CrtcType::HD6845S && hcc_ == reg_[0] && c9AtR9())
         c9MatchAtEnd_ = true;
 }
 
@@ -134,12 +137,14 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     ma_ = static_cast<uint16_t>((maRow_ + hcc_) & 0x3FFF);
     inAdjust_ = false;
     vtac_ = 0;
+    extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
+    latchC9();
     lastLine_ = onLastLine();
     adjust_ = lastLine_ && hcc_ < 3;
     adjustRunning_ = adjustUndecided_ = false;
     c9Enabled_ = hcc_ >= 1;
     vsyncAllowed_ = hcc_ >= 2;
-    c4CountArmed_ = vlc_ == reg_[9];
+    c4CountArmed_ = c9AtR9();
     c9MatchAtEnd_ = false;
     r7Match_ = vcc_ == reg_[7];
     vsyncFresh_ = false;
@@ -240,8 +245,16 @@ void Crtc::tick()
         // The C4 step is decided on the last character and cannot be taken
         // back: not by R9 moving away during that character (10.3.1.2), nor
         // by R0 changing so that the line carries on.
-        if (hcc_ == reg_[0] && vlc_ == reg_[9])
+        if (hcc_ == reg_[0] && c9AtR9())
             c9MatchAtEnd_ = true;
+        // The VSYNC of an even frame, held back to the middle of the line.
+        if (midVsync_ && hcc_ == reg_[0] / 2) {
+            midVsync_ = false;
+            if (!vsync_) {
+                startVsync();
+                vsyncFresh_ = true;
+            }
+        }
     }
 
     if (hcc_ == 0) {
@@ -258,7 +271,7 @@ void Crtc::tick()
         hDisp_ = false;
         // The address reached at the end of a row's last line becomes the
         // start of the next row.
-        if (vlc_ == reg_[9])
+        if (c9AtR9())
             maRow_ = ma_;
     }
 
@@ -360,10 +373,53 @@ void Crtc::decideAdjustment0()
     }
 }
 
+// Has C9 reached the end of the character row? Outside "interlace sync &
+// video" mode that is C9 = R9. In that mode each frame only shows the lines
+// of its parity: C9 is put out doubled, with the parity as its low bit, and
+// is compared with R9 whose low bit is replaced by that parity. With R9 odd
+// the row has one line more in total than the two frames can share evenly;
+// the rows showing even lines then get it, as a line that follows the match
+// and ends the row whatever happens during it (19.5.2).
+//
+// The parity counts as soon as R8 is written, but C9 is only doubled from
+// the next line on, and for one line too long when the mode is left: the
+// line of the change compares the wrong value (19.8.1). The Compendium gives
+// the comparison as "R9 + parity"; taking the low bit away first, and the
+// extra line being what it is said to be here, is what the 40 measurements
+// of Shaker B test 1 on a real CRTC 0 need (R9 = 5 and 6, both parities).
+bool Crtc::c9AtR9() const
+{
+    if (type_ != CrtcType::HD6845S)
+        return vlc_ == reg_[9];
+    if (extraLine_)
+        return true;
+    if (!interlaceVideo())
+        return c9Out_ == reg_[9];
+    return !longRow0() && c9Out_ == ((reg_[9] & 0x1E) | c9Parity0());
+}
+
+// A row of even lines with R9 odd: its match brings one more line.
+bool Crtc::longRow0() const
+{
+    return interlaceVideo() && (reg_[9] & 1) != 0 && !c9Parity0();
+}
+
+// C9 as the line that starts will put it out. Only here does it take, or
+// lose, its doubled form.
+void Crtc::latchC9()
+{
+    c9Out_ = interlaceVideo() ? static_cast<uint8_t>((vlc_ << 1 | c9Parity0()) & 0x1F) : vlc_;
+}
+
 void Crtc::rowChanged0()
 {
-    if (vcc_ == reg_[6])
+    if (vcc_ == reg_[6]) {
         vDisp_ = false;
+        // This is also where the chip settles the parity of the next frame,
+        // whatever R8 holds: a frame whose C4 never meets R6 leaves the
+        // parity where it was (19.5.2).
+        parityR6_ = !parityFrame_;
+    }
 }
 
 void Crtc::newFrame0()
@@ -371,9 +427,46 @@ void Crtc::newFrame0()
     vcc_ = 0;
     vlc_ = 0;
     lastLine_ = adjust_ = adjustRunning_ = false;
+    interlaceLine_ = false;
     vDisp_ = true;
+    parityFrame_ = parityR6_;
     maRow_ = startAddress();
     rowChanged0();
+}
+
+// The frame has run its lines. With an interlace mode set, one that is to
+// be followed by an odd frame gets one more line, counted as if it had been
+// asked for through R5 (11.2.2, 11.9, 19.6.1).
+void Crtc::endFrame0()
+{
+    if (!interlace() || !parityR6_) {
+        newFrame0();
+        return;
+    }
+    interlaceLine_ = true;
+    if (vcc_ == reg_[4]) {
+        vcc_ = (vcc_ + 1) & 0x7F;
+        rowChanged0();
+        vlc_ = 0;
+    } else {
+        vlc_ = (vlc_ + 1) & 0x1F;
+    }
+    lastLine_ = false;
+    adjust_ = adjustRunning_ = true;
+}
+
+// C4 has just become equal to R7. The VSYNC follows at once, except that an
+// interlace mode holds it back: to the middle of the line on even frames,
+// and by a whole line on the rows that are a line longer on odd frames,
+// which keeps the two frames in step (16.5.1, 19.5.2).
+void Crtc::matchedR7()
+{
+    if (interlace() && !parityFrame_)
+        midVsync_ = true;
+    else if (interlaceVideo() && parityFrame_ && (reg_[9] & 1) && (vcc_ & 1))
+        lateVsync_ = true;
+    else
+        startVsync();
 }
 
 void Crtc::lineStart0()
@@ -404,8 +497,14 @@ void Crtc::lineStart0()
 
         // C4 moves on if C9 equalled R9 at some point of the last
         // character; C9 goes back to 0 only if it still does (10.3.1.2).
-        const bool c9Match = c4Step && vlc_ == reg_[9];
-        if (adjust_) {
+        const bool c9Match = c4Step && c9AtR9();
+        const bool extra = !extraLine_ && longRow0() && c9Out_ == (reg_[9] & 0x1E);
+        extraLine_ = false;
+        const uint8_t row = vcc_;
+        const uint8_t nextLine = (vlc_ + 1) & 0x1F;
+        if (interlaceLine_) {
+            newFrame0();
+        } else if (adjust_) {
             if (vcc_ != reg_[4]) {
                 // Adjustment lines: C9 runs on to R5 whatever R9 says, and
                 // reaching it ends the frame (11.2.2, 13.2.4). One that was
@@ -414,7 +513,7 @@ void Crtc::lineStart0()
                 // (13.2.5, Shaker B "RVNI LTD").
                 const bool reached = ((vlc_ + 1) & 0x1F) == reg_[5];
                 if (reached || (!adjustRunning_ && vlc_ == reg_[5])) {
-                    newFrame0();
+                    endFrame0();
                 } else {
                     vlc_ = (vlc_ + 1) & 0x1F;
                 }
@@ -428,7 +527,7 @@ void Crtc::lineStart0()
                 lastLine_ = false;
             }
         } else if (lastLine_) {
-            newFrame0();
+            endFrame0();
         } else {
             if (c4Step) {
                 vcc_ = (vcc_ + 1) & 0x7F;
@@ -438,8 +537,12 @@ void Crtc::lineStart0()
         }
 
         // Work out what this new line is.
-        c4CountArmed_ = vlc_ == reg_[9];
-        if (!adjust_ || lastLine_ || onLastLine()) {
+        extraLine_ = extra && !interlaceLine_ && vcc_ == row && vlc_ == nextLine;
+        latchC9();
+        c4CountArmed_ = c9AtR9();
+        if (interlaceLine_) {
+            // Nothing to work out: the frame ends with this line.
+        } else if (!adjust_ || lastLine_ || onLastLine()) {
             lastLine_ = onLastLine();
             if (lastLine_) {
                 adjust_ = true;
@@ -458,14 +561,22 @@ void Crtc::lineStart0()
         rowChanged0();
         lastLine_ = false;
         adjustRunning_ = adjust_;
+        latchC9();
+    } else {
+        latchC9();
     }
 
     // A VSYNC needs C4 to become equal to R7, and the previous line to have
     // reached character 2. Failing the second, the match is recorded all
     // the same and that VSYNC is lost (13.2.2, 16.3).
+    if (lateVsync_) {
+        lateVsync_ = false;
+        if (!vsync_)
+            startVsync();
+    }
     const bool match = vcc_ == reg_[7];
     if (match && !r7Match_ && !vsync_ && vsyncAllowed_)
-        startVsync();
+        matchedR7();
     r7Match_ = match;
     vsyncAllowed_ = false;
 }

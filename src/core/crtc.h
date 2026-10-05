@@ -58,7 +58,11 @@ public:
     HsyncCut previousHsyncCut() const { return previousHsyncCut_; }
     bool displayEnable() const;
     uint16_t ma() const { return ma_; }  // 14-bit refresh address
-    uint8_t ra() const { return vlc_; }  // raster line within the character row
+    // Raster line within the character row. It is C9 itself, except in
+    // "interlace sync & video" mode, where each frame shows every other line.
+    uint8_t ra() const { return type_ == CrtcType::HD6845S ? c9Out_ : vlc_; }
+    // Interlace: whether the frame in progress is an odd one.
+    bool oddFrame() const { return parityFrame_; }
 
     // Registers and internal counters, named as in the WinAPE register window.
     uint8_t reg(int n) const { return reg_[n & 0x1F]; }
@@ -111,16 +115,37 @@ private:
     bool r7Match_ = false;         // C4 = R7 has been noted: no VSYNC from it again
     bool vsyncFresh_ = false;      // VSYNC began mid-line: its line count restarts
 
+    // ---- Interlace (R8, Compendium chapter 19) ---------------------------
+    // Frames are told apart by a parity that the chip keeps whatever R8
+    // holds. With an interlace mode set, even frames get one more line and
+    // their VSYNC waits for the middle of the line; in "sync & video" mode
+    // C9 is also put out doubled, with the parity as its low bit.
+    bool parityFrame_ = false;     // the frame in progress is an odd one
+    bool parityR6_ = false;        // parity the next frame will take (set as C4 meets R6)
+    uint8_t c9Out_ = 0;            // C9 as put out on the line in progress
+    bool extraLine_ = false;       // on the line a row of even lines gets when R9 is odd
+    bool interlaceLine_ = false;   // on the line added to an even frame
+    bool midVsync_ = false;        // a VSYNC is waiting for the middle of the line
+    bool lateVsync_ = false;       // a VSYNC is waiting for the next line
+
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
     void endOfLine();
     void startRow();
     void startFrame();
     void startVsync();
 
-    bool onLastLine() const { return vcc_ == reg_[4] && vlc_ == reg_[9]; }
+    bool interlace() const { return (reg_[8] & 1) != 0; }
+    bool interlaceVideo() const { return (reg_[8] & 3) == 3; }
+    bool c9Parity0() const { return parityFrame_ != ((reg_[9] & 1) != 0 && (vcc_ & 1) != 0); }
+    bool c9AtR9() const;
+    bool longRow0() const;
+    void latchC9();
+    bool onLastLine() const { return vcc_ == reg_[4] && c9AtR9(); }
     void lineStart0();
     void rowChanged0();
     void newFrame0();
+    void endFrame0();
+    void matchedR7();
     void decideAdjustment0();
 };
 
