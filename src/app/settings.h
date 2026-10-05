@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 #include "core/setup.h"
 
@@ -58,6 +59,9 @@ struct Settings {
     bool screenshotHalfSize = false;
     bool screenshotHalfHeight = false;
     QString screenshotFolder;
+
+    // The folders the Library window finds its programs in.
+    QStringList libraryFolders;
 
     // Values out of range are brought back into it; a missing file or key
     // leaves the default.

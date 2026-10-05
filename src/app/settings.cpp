@@ -144,6 +144,12 @@ void Settings::read(const tuxape::IniFile& ini)
     screenshotHalfHeight = ini.getBool("Screenshots", "Half Height", screenshotHalfHeight);
     if (ini.has("Screenshots", "Path"))
         screenshotFolder = QString::fromStdString(ini.get("Screenshots", "Path"));
+
+    if (!ini.keys("Library").empty()) {
+        libraryFolders.clear();
+        for (int n = 1; ini.has("Library", "Folder" + std::to_string(n)); ++n)
+            libraryFolders << QString::fromStdString(ini.get("Library", "Folder" + std::to_string(n)));
+    }
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -196,6 +202,11 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool("Screenshots", "Half Size", screenshotHalfSize);
         ini.setBool("Screenshots", "Half Height", screenshotHalfHeight);
         ini.set("Screenshots", "Path", screenshotFolder.toStdString());
+        for (const std::string& key : ini.keys("Library"))
+            ini.remove("Library", key);
+        ini.setInt("Library", "Folders", static_cast<int>(libraryFolders.size()));
+        for (qsizetype n = 0; n < libraryFolders.size(); ++n)
+            ini.set("Library", "Folder" + std::to_string(n + 1), libraryFolders[n].toStdString());
     }
 }
 

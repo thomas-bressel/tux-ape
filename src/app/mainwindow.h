@@ -71,6 +71,8 @@ private:
     QAction* saveSnapshotAction_ = nullptr;
     QAction* updateSnapshotAction_ = nullptr;
     QAction* setupAction_ = nullptr;
+    QAction* libraryAction_ = nullptr;
+    QString librarySearch_;  // what the Library window was last searching for
     struct DriveActions {
         QAction* format = nullptr;
         QAction* flip = nullptr;
@@ -115,6 +117,7 @@ private:
     // Screenshots and Auto-Type.
     void saveScreenshot();
     void autoType();
+    void showLibrary();
     void updateDiscActions();
     void updateDriveLights();
     void report(const QString& error);

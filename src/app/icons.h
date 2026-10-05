@@ -11,6 +11,7 @@ enum class IconId {
     StepOver,
     Registers,
     Assembler,
+    Library,
     Disc,
     Cartridge,
     Tape,

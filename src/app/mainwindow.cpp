@@ -22,6 +22,7 @@
 #include "discmanager.h"
 #include "emulator.h"
 #include "icons.h"
+#include "librarydialog.h"
 #include "screenwidget.h"
 #include "setupdialog.h"
 #include "tooldialogs.h"
@@ -166,6 +167,9 @@ void MainWindow::createMenus()
 
     // ---- File ----
     QMenu* file = menuBar()->addMenu(tr("&File"));
+    // TuxAPE's own: WinAPE has no library.
+    libraryAction_ = addItem(file, tr("Li&brary..."), CTRL | Qt::Key_L, [this] { showLibrary(); });
+    file->addSeparator();
     const char* driveNames[2] = {QT_TR_NOOP("Drive &A:"), QT_TR_NOOP("Drive &B:")};
     for (int drive = 0; drive < 2; ++drive) {
         const Qt::Key key = drive == 0 ? Qt::Key_F1 : Qt::Key_F2;
@@ -289,6 +293,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::Registers, tr("Registers"), nullptr);
     addButton(IconId::Assembler, tr("Assembler (F3)"), nullptr);
     row->addWidget(separator(controlPanel_));
+    addButton(IconId::Library, tr("Library (CTRL+L)"), libraryAction_);
     addButton(IconId::Disc, tr("Change Disc (F2)"), driveSetupAction_);
     addButton(IconId::Cartridge, tr("Change Cartridge (CTRL+F3)"), nullptr);
     addButton(IconId::Tape, tr("Tape Control"), nullptr);
@@ -442,6 +447,28 @@ void MainWindow::saveScreenshot()
         settings_.screenshotFolder = QFileInfo(path).absolutePath();
     }
     settings_.save();
+}
+
+// The Library window: the program chosen there goes into the machine, a
+// disc in its drive, a snapshot as it is.
+void MainWindow::showLibrary()
+{
+    LibraryDialog dialog(settings_.libraryFolders, this);
+    dialog.setSearch(librarySearch_);
+    const int closed = dialog.exec();
+    librarySearch_ = dialog.search();
+    if (dialog.folders() != settings_.libraryFolders) {
+        settings_.libraryFolders = dialog.folders();
+        if (!settings_.save())
+            report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+    }
+    const LibraryEntry* chosen = dialog.chosen();
+    if (closed != QDialog::Accepted || !chosen)
+        return;
+    if (chosen->kind == LibraryEntry::Snapshot)
+        loadSnapshotFile(chosen->path);
+    else if (saveBeforeLeaving(dialog.drive()))
+        insertDiscFile(dialog.drive(), chosen->path);
 }
 
 void MainWindow::autoType()

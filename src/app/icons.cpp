@@ -125,6 +125,19 @@ void draw(QPainter& p, IconId id)
         p.setBrush(kYellow);
         p.drawRect(QRectF(6, 6.5, 8, 4.5));
         break;
+    case IconId::Library:
+        // Books on a shelf.
+        p.setPen(outline());
+        p.setBrush(kRed);
+        p.drawRect(QRectF(2.5, 4, 4, 12));
+        p.setBrush(kBlue);
+        p.drawRect(QRectF(6.5, 2.5, 4, 13.5));
+        p.setBrush(kYellow);
+        p.drawRect(QRectF(10.5, 5, 3.5, 11));
+        p.setBrush(kGreen);
+        p.drawPolygon(QPolygonF({{14.5, 6.5}, {17.5, 5.5}, {19, 15.5}, {16, 16}}));
+        p.drawLine(QPointF(1.5, 17.5), QPointF(19, 17.5));
+        break;
     case IconId::Tape:
         p.setPen(outline());
         p.setBrush(kInk.lighter(170));

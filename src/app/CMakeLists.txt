@@ -20,6 +20,8 @@ add_library(tuxape_app STATIC
     hostkeys.h
     icons.cpp
     icons.h
+    librarydialog.cpp
+    librarydialog.h
     mainwindow.cpp
     mainwindow.h
     screenwidget.cpp
