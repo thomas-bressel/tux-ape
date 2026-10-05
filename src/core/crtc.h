@@ -135,7 +135,7 @@ private:
     bool lateVsync_ = false;       // a VSYNC is waiting for the next line
 
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
-    void endOfLine();
+    void endOfLine(bool oneCharacter);
     void startRow();
     void startFrame();
     void startVsync();

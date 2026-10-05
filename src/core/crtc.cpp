@@ -233,11 +233,12 @@ void Crtc::tick()
     const bool type0 = type_ == CrtcType::HD6845S;
     const bool newLine = hcc_ == reg_[0];
     if (newLine) {
+        const bool oneCharacter = hcc_ == 0;
         hcc_ = 0;
         if (type0)
             lineStart0();
         else
-            endOfLine();
+            endOfLine(oneCharacter);
     } else {
         ++hcc_;
     }
@@ -292,10 +293,13 @@ void Crtc::tick()
         // not turn the display back on (17.1, seen on CRTC 0).
         if (newLine || !type0)
             hDisp_ = true;
-        // While on the first row the UM6845R follows R12/R13 live.
-        if (type_ == CrtcType::UM6845R && vcc_ == 0)
-            maRow_ = startAddress();
-        ma_ = maRow_;
+        // On its first row the UM6845R takes every line's address straight
+        // from R12/R13, which can therefore be changed from one line to the
+        // next there. The address kept for the next row is another thing:
+        // it only moves when C0 meets R1 on a row's last line, so a frame
+        // that never does shows R12/R13 on its first row and whatever was
+        // kept last on all the others (17.4.2, Shaker "R1 stories").
+        ma_ = type_ == CrtcType::UM6845R && vcc_ == 0 ? startAddress() : maRow_;
     } else {
         ma_ = (ma_ + 1) & 0x3FFF;
     }
@@ -325,9 +329,14 @@ void Crtc::tick()
     }
 }
 
-void Crtc::endOfLine()
+void Crtc::endOfLine(bool oneCharacter)
 {
-    if (vsync_) {
+    // The VSYNC lasts a number of lines. On the UM6845R a line of a single
+    // character (R0 = 0) does not count as one: C9 and C4 go on, but a VSYNC
+    // begun there is still up when lines get longer again, where the MC6845
+    // has long finished it (Shaker "VSYNC conditions", first screen, on real
+    // chips of both kinds).
+    if (vsync_ && !(oneCharacter && type_ == CrtcType::UM6845R)) {
         // Types 1 and 2 ignore the programmed width and always use 16 lines.
         const bool fixed = type_ == CrtcType::UM6845R || type_ == CrtcType::MC6845;
         const uint8_t width = fixed ? 0 : reg_[3] >> 4;
@@ -378,7 +387,8 @@ void Crtc::startFrame()
     vlc_ = 0;
     vcc_ = 0;
     vDisp_ = true;
-    maRow_ = startAddress();
+    if (type_ != CrtcType::UM6845R)
+        maRow_ = startAddress();
     startRow();
 }
 
