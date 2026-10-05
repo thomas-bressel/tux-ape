@@ -39,6 +39,14 @@ struct Settings {
     WindowOptions windowed;
     WindowOptions fullScreen{false, true, true, true, true, false};
 
+    // The Sound page.
+    bool soundOn = true;        // WinAPE's "DirectSound", as against "None"
+    int soundRate = 44100;      // or 22050
+    bool sound16Bit = true;
+    bool soundStereo = true;
+    int soundVolume = 15;       // 0 to 15
+    int soundBufferSync = 0;    // tenths of a frame of extra sound kept in hand, 0 to 20
+
     // Values out of range are brought back into it; a missing file or key
     // leaves the default.
     void load();
@@ -56,7 +64,8 @@ struct Settings {
         MonitorPart = 32,
         WindowedPart = 64,
         FullScreenPart = 128,
-        AllParts = 255,
+        SoundPart = 256,
+        AllParts = 511,
     };
     void read(const tuxape::IniFile& ini);
     void write(tuxape::IniFile& ini, unsigned parts = AllParts) const;

@@ -162,7 +162,7 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     };
     tabs_->addTab(createGeneralPage(), tr("General"));
     tabs_->addTab(createDisplayPage(), tr("Display"));
-    addEmptyPage(tr("Sound"));
+    tabs_->addTab(createSoundPage(), tr("Sound"));
     tabs_->addTab(createMemoryPage(), tr("Memory"));
     addEmptyPage(tr("Input"));
     addEmptyPage(tr("Other"));
@@ -459,6 +459,115 @@ void SetupDialog::updatePreview()
     preview_->setPixmap(QPixmap::fromImage(shown.scaled(preview_->size())));
 }
 
+QWidget* SetupDialog::createSoundPage()
+{
+    auto* page = new QWidget;
+
+    // A row of radio buttons in a box of their own.
+    auto radioBox = [this](const QString& title, std::initializer_list<std::pair<const char*, QString>> buttons,
+                           QRadioButton** into, bool sideBySide) {
+        auto* box = new QGroupBox(title);
+        QBoxLayout* layout = sideBySide ? static_cast<QBoxLayout*>(new QHBoxLayout(box))
+                                        : static_cast<QBoxLayout*>(new QVBoxLayout(box));
+        layout->setSpacing(3);
+        for (const auto& [name, text] : buttons) {
+            auto* button = new QRadioButton(text);
+            button->setObjectName(name);
+            layout->addWidget(button);
+            *into++ = button;
+        }
+        return box;
+    };
+
+    auto* outputBox = radioBox(tr("Sound Output"),
+                               {{"rbNone", tr("None")}, {"rbSpeaker", tr("PC Speaker")}, {"rbDirectSound", tr("DirectSound")}},
+                               soundOutput_, true);
+    notYet(soundOutput_[1]);  // no PC speaker to beep with
+    soundOutput_[2]->setToolTip(tr("The sound device of this computer"));
+    for (QRadioButton* button : soundOutput_)
+        connect(button, &QRadioButton::toggled, this, &SetupDialog::updateSoundOptions);
+    auto* rateBox = radioBox(tr("Sample Rate"), {{"rb22", tr("22 kHz")}, {"rb44", tr("44 kHz")}}, soundRate_, false);
+    auto* bitsBox = radioBox(tr("Bits Per Sample"), {{"rb8bit", tr("8 bit")}, {"rb16bit", tr("16 bit")}}, soundBits_, false);
+    auto* channelsBox =
+        radioBox(tr("Sample Channels"), {{"rbMono", tr("Mono")}, {"rbStereo", tr("Stereo")}}, soundChannels_, false);
+    auto* optionsRow = new QHBoxLayout;
+    optionsRow->addWidget(rateBox);
+    optionsRow->addWidget(bitsBox);
+    optionsRow->addWidget(channelsBox);
+
+    // ---- Sound Buffer Synchronisation ----
+    auto* syncBox = new QGroupBox(tr("Sound Buffer Synchronisation"));
+    auto* advice = new QLabel(tr("Change this setting if you experience sound timing problems, if the sound seems "
+                                 "to lag behind the display, repeats unneccesarily, seems broken or jittery."));
+    advice->setWordWrap(true);
+    soundBufferSync_ = new QSlider(Qt::Horizontal);
+    soundBufferSync_->setObjectName("slBufferSync");
+    soundBufferSync_->setRange(0, 20);
+    soundBufferSyncLabel_ = new QLabel;
+    soundBufferSyncLabel_->setObjectName("lBufferSync");
+    soundBufferSyncLabel_->setAlignment(Qt::AlignHCenter);
+    connect(soundBufferSync_, &QSlider::valueChanged, this, [this](int value) {
+        soundBufferSyncLabel_->setText(QStringLiteral("%1.%2").arg(value / 10).arg(value % 10));
+    });
+    auto* syncLayout = new QVBoxLayout(syncBox);
+    syncLayout->addWidget(advice);
+    syncLayout->addWidget(soundBufferSync_);
+    syncLayout->addWidget(soundBufferSyncLabel_);
+
+    // ---- Other Sounds: to come ----
+    auto* otherBox = new QGroupBox(tr("Other Sounds"));
+    auto* discSounds = notYet(new QCheckBox(tr("Disc Drive Sounds")));
+    discSounds->setObjectName("ckDiscSound");
+    auto* tapeSounds = notYet(new QCheckBox(tr("Tape Loading Sounds")));
+    tapeSounds->setObjectName("ckTapeSound");
+    auto* amDrum = notYet(new QCheckBox(tr("AmDrum")));
+    amDrum->setObjectName("ckAmDrum");
+    auto* otherLayout = new QHBoxLayout(otherBox);
+    otherLayout->addWidget(discSounds);
+    otherLayout->addWidget(tapeSounds);
+    otherLayout->addWidget(amDrum);
+
+    // ---- Volume ----
+    auto* volumeBox = new QGroupBox(tr("Volume"));
+    soundVolume_ = new QSlider(Qt::Vertical);
+    soundVolume_->setObjectName("slVolume");
+    soundVolume_->setRange(0, 15);
+    soundVolume_->setPageStep(1);
+    soundVolumeLabel_ = new QLabel;
+    soundVolumeLabel_->setObjectName("lVolume");
+    soundVolumeLabel_->setMinimumWidth(fontMetrics().horizontalAdvance("15"));
+    connect(soundVolume_, &QSlider::valueChanged, this,
+            [this](int value) { soundVolumeLabel_->setText(QString::number(value)); });
+    auto* volumeLayout = new QHBoxLayout(volumeBox);
+    volumeLayout->addWidget(soundVolume_);
+    volumeLayout->addWidget(soundVolumeLabel_);
+
+    auto* left = new QVBoxLayout;
+    left->addWidget(outputBox);
+    left->addLayout(optionsRow);
+    left->addWidget(syncBox);
+    left->addWidget(otherBox);
+    left->addStretch(1);
+    auto* layout = new QHBoxLayout(page);
+    layout->addLayout(left, 1);
+    layout->addWidget(volumeBox);
+    return page;
+}
+
+// The sound card's options mean nothing without the sound card.
+void SetupDialog::updateSoundOptions()
+{
+    const bool on = soundOutput_[2]->isChecked();
+    for (QRadioButton* button : soundRate_)
+        button->setEnabled(on);
+    for (QRadioButton* button : soundBits_)
+        button->setEnabled(on);
+    for (QRadioButton* button : soundChannels_)
+        button->setEnabled(on);
+    soundVolume_->setEnabled(on);
+    soundBufferSync_->setEnabled(on);
+}
+
 QWidget* SetupDialog::createMemoryPage()
 {
     auto* page = new QWidget;
@@ -644,6 +753,17 @@ void SetupDialog::setSettings(const Settings& settings)
     }
     updatePreview();
 
+    soundOutput_[settings.soundOn ? 2 : 0]->setChecked(true);
+    soundRate_[settings.soundRate < 33000 ? 0 : 1]->setChecked(true);
+    soundBits_[settings.sound16Bit ? 1 : 0]->setChecked(true);
+    soundChannels_[settings.soundStereo ? 1 : 0]->setChecked(true);
+    soundVolume_->setValue(settings.soundVolume);
+    soundVolumeLabel_->setText(QString::number(settings.soundVolume));
+    soundBufferSync_->setValue(settings.soundBufferSync);
+    soundBufferSyncLabel_->setText(
+        QStringLiteral("%1.%2").arg(settings.soundBufferSync / 10).arg(settings.soundBufferSync % 10));
+    updateSoundOptions();
+
     crtcType_->setCurrentIndex(settings.crtcType);
     fastDisc_->setChecked(settings.fastDisc);
     speed_->setValue(settings.speedPercent);
@@ -706,6 +826,8 @@ ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
     auto* memory = group(tr("Memory"));
     leaf(memory, tr("RAM"), Settings::RamPart, true);
     leaf(memory, tr("ROMs"), Settings::RomsPart, true);
+    auto* sound = group(tr("Sound"));
+    leaf(sound, tr("Sound Output"), Settings::SoundPart, false);
     tree_->expandAll();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
@@ -853,5 +975,12 @@ Settings SetupDialog::settings() const
         options[mode]->hideMenus = windowOptions_[mode][4]->isChecked();
         options[mode]->noRightClick = windowOptions_[mode][5]->isChecked();
     }
+
+    settings.soundOn = soundOutput_[2]->isChecked();
+    settings.soundRate = soundRate_[0]->isChecked() ? 22050 : 44100;
+    settings.sound16Bit = soundBits_[1]->isChecked();
+    settings.soundStereo = soundChannels_[1]->isChecked();
+    settings.soundVolume = soundVolume_->value();
+    settings.soundBufferSync = soundBufferSync_->value();
     return settings;
 }

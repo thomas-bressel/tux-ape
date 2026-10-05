@@ -76,6 +76,13 @@ public:
     void setFastDisc(bool fast);
     bool fastDisc();
 
+    // Sound, as the Sound page of the Setup window has it: on or off, the
+    // sample rate (22050 or 44100), 16 or 8 bits per sample, stereo or
+    // mono, the volume (0 to 15) and how many frames of sound are kept in
+    // hand on top of the usual (the "buffer synchronisation").
+    void setSound(bool on, int sampleRate, bool sixteenBit, bool stereo, int volume, double extraFrames);
+    bool soundOn() const { return soundOn_; }
+
     // The monitor: its kind (0 colour, 1 green, 2 greyscale), WinAPE's
     // "linear palette", the brightness knob (-100 to 100) and the vertical
     // hold (lines the picture is moved by).
@@ -143,7 +150,10 @@ private:
     std::atomic<bool> framePending_{false};
     uint64_t lastFrameNumber_ = 0;
 
-    AudioOutput* audio_ = nullptr;
+    AudioOutput* device_ = nullptr;  // the sound device, if the host has one
+    AudioOutput* audio_ = nullptr;   // ... when sound is wanted
+    bool soundOn_ = true;
+    bool eightBit_ = false;
     bool audioSilenced_ = false;
 
     void threadMain();

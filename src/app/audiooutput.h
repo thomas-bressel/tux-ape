@@ -10,7 +10,12 @@
 // enough to ride out the host's scheduling hiccups.
 class AudioOutput {
 public:
-    static constexpr double kTargetLatency = 0.06;  // seconds
+    static constexpr double kTargetLatency = 0.06;  // seconds, unless set otherwise
+
+    // How much sound is kept waiting to be played. More rides out a busier
+    // host, at the price of sound that trails the picture.
+    void setTargetLatency(double seconds) { targetLatency_ = seconds < 0.02 ? 0.02 : seconds; }
+    double targetLatency() const { return targetLatency_; }
 
     AudioOutput() = default;
     ~AudioOutput();
@@ -33,4 +38,5 @@ public:
 private:
     unsigned device_ = 0;
     int sampleRate_ = 0;
+    double targetLatency_ = kTargetLatency;
 };

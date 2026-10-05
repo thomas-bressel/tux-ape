@@ -220,7 +220,7 @@ void MainWindow::createMenus()
     connect(setupKey, &QAction::triggered, setupAction_, &QAction::trigger);
     addAction(setupKey);
     addItem(settings, tr("&Display"), {}, [this] { showSetup(SetupDialog::Display); });
-    addItem(settings, tr("&Sound"));
+    addItem(settings, tr("&Sound"), {}, [this] { showSetup(SetupDialog::Sound); });
     addItem(settings, tr("&Memory"), {}, [this] { showSetup(SetupDialog::Memory); });
     addItem(settings, tr("&Input"));
     addItem(settings, tr("&Other"));
@@ -365,6 +365,8 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setDisplayEvery(settings.displayEvery ? settings.displayEveryFrames : 0);
     emulator_->setMonitor(settings.monitorType, settings.linearPalette, settings.brightness);
     emulator_->setVerticalHold(settings.verticalHold);
+    emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
+                        settings.soundVolume, settings.soundBufferSync / 10.0);
     applyWindowOptions();
 }
 

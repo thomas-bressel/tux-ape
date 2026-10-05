@@ -73,6 +73,15 @@ private:
     // right-click menu: for the window, then for full screen.
     QCheckBox* windowOptions_[2][6] = {};
 
+    QRadioButton* soundOutput_[3] = {};  // none, PC speaker, sound card
+    QRadioButton* soundRate_[2] = {};    // 22 kHz, 44 kHz
+    QRadioButton* soundBits_[2] = {};    // 8, 16
+    QRadioButton* soundChannels_[2] = {};  // mono, stereo
+    QSlider* soundVolume_ = nullptr;
+    QLabel* soundVolumeLabel_ = nullptr;
+    QSlider* soundBufferSync_ = nullptr;
+    QLabel* soundBufferSyncLabel_ = nullptr;
+
     QRadioButton* ram_[4] = {};
     QCheckBox* siliconDisc_ = nullptr;
     QLabel* totalRam_ = nullptr;
@@ -85,6 +94,8 @@ private:
 
     QWidget* createGeneralPage();
     QWidget* createDisplayPage();
+    QWidget* createSoundPage();
+    void updateSoundOptions();
     QWidget* createMemoryPage();
     void updatePreview();
     int chosenMonitor() const;

@@ -58,7 +58,7 @@ double AudioOutput::queue(const int16_t* samples, size_t count)
     // at once instead of stuttering while it builds up.
     if (SDL_GetQueuedAudioSize(device_) == 0) {
         const std::vector<int16_t> silence(
-            static_cast<size_t>(sampleRate_ * kTargetLatency) * kChannels, 0);
+            static_cast<size_t>(sampleRate_ * targetLatency_) * kChannels, 0);
         SDL_QueueAudio(device_, silence.data(), static_cast<Uint32>(silence.size() * sizeof(int16_t)));
     }
     if (count > 0)

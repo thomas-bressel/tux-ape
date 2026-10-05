@@ -1,6 +1,7 @@
 #include "settings.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include <QDir>
 #include <QFileInfo>
@@ -111,6 +112,27 @@ void Settings::read(const tuxape::IniFile& ini)
     linearPalette = ini.getBool(kConfiguration, "Linear Palette", linearPalette);
     readWindowOptions(ini, "", windowed);
     readWindowOptions(ini, " FS", fullScreen);
+
+    // WinAPE's "Sound Mode": 0 none, 1 the PC speaker (there is none here:
+    // silence), 2 the sound card.
+    soundOn = ini.getInt(kConfiguration, "Sound Mode", soundOn ? 2 : 0) == 2;
+    soundRate = ini.getInt(kConfiguration, "Sound Rate", soundRate) < 33000 ? 22050 : 44100;
+    sound16Bit = ini.getInt(kConfiguration, "Sound Bits", sound16Bit ? 16 : 8) > 8;
+    soundStereo = ini.getBool(kConfiguration, "Sound Stereo", soundStereo);
+    soundVolume = std::clamp(ini.getInt(kConfiguration, "Sound Volume", soundVolume), 0, 15);
+    // Written like WinAPE's "0.4": frames, with one decimal.
+    if (ini.has(kConfiguration, "Sound Frame Delay")) {
+        // Read by hand: the C library would want a comma where the user's
+        // language has one.
+        const std::string delay = ini.get(kConfiguration, "Sound Frame Delay");
+        const size_t point = delay.find('.');
+        const int whole = std::atoi(delay.substr(0, point).c_str());
+        const int tenth = point != std::string::npos && point + 1 < delay.size() && delay[point + 1] >= '0'
+                              && delay[point + 1] <= '9'
+                              ? delay[point + 1] - '0'
+                              : 0;
+        soundBufferSync = std::clamp(whole * 10 + tenth, 0, 20);
+    }
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -145,6 +167,15 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         writeWindowOptions(ini, "", windowed);
     if (parts & FullScreenPart)
         writeWindowOptions(ini, " FS", fullScreen);
+    if (parts & SoundPart) {
+        ini.setInt(kConfiguration, "Sound Mode", soundOn ? 2 : 0);
+        ini.setInt(kConfiguration, "Sound Rate", soundRate);
+        ini.setInt(kConfiguration, "Sound Bits", sound16Bit ? 16 : 8);
+        ini.setBool(kConfiguration, "Sound Stereo", soundStereo);
+        ini.setInt(kConfiguration, "Sound Volume", soundVolume);
+        ini.set(kConfiguration, "Sound Frame Delay",
+                std::to_string(soundBufferSync / 10) + "." + std::to_string(soundBufferSync % 10));
+    }
 }
 
 bool Settings::loadProfile(const QString& path)

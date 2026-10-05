@@ -4,7 +4,8 @@
 //
 //   gui_setup [prefix]   also saves pictures of the Setup window's pages
 //                        as <prefix>general.png, <prefix>display.png,
-//                        <prefix>memory.png and <prefix>profile.png
+//                        <prefix>sound.png, <prefix>memory.png and
+//                        <prefix>profile.png
 
 #include <QAction>
 #include <QApplication>
@@ -360,8 +361,12 @@ void testProfiles(const QString& folder, const QString& picture)
     partsDialog.show();
     CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::RamPart | Settings::RomsPart);
     auto* tree = partsDialog.findChild<QTreeWidget*>("tvSettings");
-    CHECK(tree && tree->topLevelItemCount() == 3);
-    if (tree && tree->topLevelItemCount() == 3) {
+    CHECK(tree && tree->topLevelItemCount() == 4);
+    if (tree && tree->topLevelItemCount() == 4) {
+        CHECK(tree->topLevelItem(3)->text(0) == "Sound");
+        tree->topLevelItem(3)->setCheckState(0, Qt::Checked);
+        CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::RamPart | Settings::RomsPart | Settings::SoundPart);
+        tree->topLevelItem(3)->setCheckState(0, Qt::Unchecked);
         CHECK(tree->topLevelItem(0)->text(0) == "Display");
         CHECK(tree->topLevelItem(1)->text(0) == "General");
         CHECK(tree->topLevelItem(2)->text(0) == "Memory");
@@ -371,9 +376,11 @@ void testProfiles(const QString& folder, const QString& picture)
         // Ticking a group ticks all of it.
         tree->topLevelItem(0)->setCheckState(0, Qt::Checked);
         tree->topLevelItem(1)->setCheckState(0, Qt::Checked);
+        tree->topLevelItem(3)->setCheckState(0, Qt::Checked);
         CHECK_EQ(partsDialog.parts(), Settings::AllParts);
         tree->topLevelItem(0)->setCheckState(0, Qt::Unchecked);
         tree->topLevelItem(2)->setCheckState(0, Qt::Unchecked);
+        tree->topLevelItem(3)->setCheckState(0, Qt::Unchecked);
         CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::SpeedPart | Settings::FastDiscPart);
         if (!picture.isEmpty()) {
             QApplication::processEvents();
@@ -550,6 +557,103 @@ void testDisplayPage(const QImage& frame, const QString& picture)
     }
 }
 
+// The Sound page: where the sound goes and how it is made.
+void testSoundPage(const QString& picture)
+{
+    const Settings defaults;
+    CHECK(defaults.soundOn && defaults.sound16Bit && defaults.soundStereo);
+    CHECK_EQ(defaults.soundRate, 44100);
+    CHECK_EQ(defaults.soundVolume, 15);
+
+    Settings settings;
+    settings.soundVolume = 9;
+    settings.soundBufferSync = 4;
+    SetupDialog dialog(settings);
+    dialog.showPage(SetupDialog::Sound);
+    dialog.show();
+
+    auto* none = dialog.findChild<QRadioButton*>("rbNone");
+    auto* speaker = dialog.findChild<QRadioButton*>("rbSpeaker");
+    auto* card = dialog.findChild<QRadioButton*>("rbDirectSound");
+    auto* rate22 = dialog.findChild<QRadioButton*>("rb22");
+    auto* rate44 = dialog.findChild<QRadioButton*>("rb44");
+    auto* bits8 = dialog.findChild<QRadioButton*>("rb8bit");
+    auto* bits16 = dialog.findChild<QRadioButton*>("rb16bit");
+    auto* mono = dialog.findChild<QRadioButton*>("rbMono");
+    auto* stereo = dialog.findChild<QRadioButton*>("rbStereo");
+    auto* volume = dialog.findChild<QSlider*>("slVolume");
+    auto* volumeLabel = dialog.findChild<QLabel*>("lVolume");
+    auto* sync = dialog.findChild<QSlider*>("slBufferSync");
+    auto* syncLabel = dialog.findChild<QLabel*>("lBufferSync");
+    const bool found = none && speaker && card && rate22 && rate44 && bits8 && bits16 && mono && stereo && volume
+                       && volumeLabel && sync && syncLabel;
+    CHECK(found);
+    if (!found)
+        return;
+
+    CHECK(card->isChecked() && rate44->isChecked() && bits16->isChecked() && stereo->isChecked());
+    CHECK(!speaker->isEnabled());  // no PC speaker here
+    CHECK_EQ(volume->value(), 9);
+    CHECK(volumeLabel->text() == "9");
+    CHECK_EQ(sync->value(), 4);
+    CHECK(syncLabel->text() == "0.4");
+    CHECK(dialog.settings() == settings);
+
+    // Without the sound card its options mean nothing.
+    none->setChecked(true);
+    CHECK(!rate22->isEnabled() && !bits8->isEnabled() && !mono->isEnabled() && !volume->isEnabled());
+    CHECK(!dialog.settings().soundOn);
+    card->setChecked(true);
+    CHECK(rate22->isEnabled() && volume->isEnabled());
+
+    rate22->setChecked(true);
+    bits8->setChecked(true);
+    mono->setChecked(true);
+    volume->setValue(3);
+    sync->setValue(15);
+    CHECK(syncLabel->text() == "1.5");
+    const Settings changed = dialog.settings();
+    CHECK(changed.soundOn);
+    CHECK_EQ(changed.soundRate, 22050);
+    CHECK(!changed.sound16Bit && !changed.soundStereo);
+    CHECK_EQ(changed.soundVolume, 3);
+    CHECK_EQ(changed.soundBufferSync, 15);
+
+    // Kept under WinAPE's keys where it has them.
+    CHECK(changed.save());
+    tuxape::IniFile ini;
+    CHECK(ini.load(Settings::file().toStdString()));
+    CHECK(ini.get("Configuration", "Sound Mode") == "2");
+    CHECK(ini.get("Configuration", "Sound Bits") == "8");
+    CHECK(ini.get("Configuration", "Sound Stereo") == "false");
+    CHECK(ini.get("Configuration", "Sound Volume") == "3");
+    CHECK(ini.get("Configuration", "Sound Frame Delay") == "1.5");
+    Settings again;
+    again.load();
+    CHECK(again == changed);
+    // WinAPE.ini as it comes: the sound card, 8 bits, stereo, full volume.
+    QFile::remove(Settings::file());
+    CHECK(QFile::copy(QStringLiteral(TUXAPE_WINAPE_DIR "/WinAPE.ini"), Settings::file()));
+    again.load();
+    CHECK(again.soundOn && !again.sound16Bit && again.soundStereo);
+    CHECK_EQ(again.soundVolume, 15);
+    CHECK_EQ(again.soundBufferSync, 0);
+    QFile::remove(Settings::file());
+
+    for (const char* name : {"ckDiscSound", "ckTapeSound", "ckAmDrum"}) {
+        const QWidget* widget = dialog.findChild<QWidget*>(name);
+        CHECK(widget && !widget->isEnabled());
+    }
+
+    if (!picture.isEmpty()) {
+        SetupDialog fresh((Settings()));
+        fresh.showPage(SetupDialog::Sound);
+        fresh.show();
+        QApplication::processEvents();
+        CHECK(fresh.grab().save(picture));
+    }
+}
+
 void testDialog(const QString& picture)
 {
     Settings settings;
@@ -590,9 +694,10 @@ void testDialog(const QString& picture)
     CHECK(tabs->tabText(3) == "Memory");
     CHECK(tabs->isTabEnabled(0));
     CHECK(tabs->isTabEnabled(1));
+    CHECK(tabs->isTabEnabled(2));
     CHECK(tabs->isTabEnabled(3));
-    CHECK(!tabs->isTabEnabled(2));
-    dialog.showPage(SetupDialog::Sound);
+    CHECK(!tabs->isTabEnabled(4));
+    dialog.showPage(SetupDialog::Input);
     CHECK_EQ(tabs->currentIndex(), 0);
 
     // What TuxAPE cannot do yet is greyed out.
@@ -649,6 +754,7 @@ int main(int argc, char* argv[])
     testSettingsFile(path);
     testMachineInSettingsFile(path);
     testDialog(prefix.isEmpty() ? QString() : prefix + "general.png");
+    testSoundPage(prefix.isEmpty() ? QString() : prefix + "sound.png");
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");
     testProfiles(folder.path(), prefix.isEmpty() ? QString() : prefix + "profile.png");
 
@@ -673,8 +779,10 @@ int main(int argc, char* argv[])
     QAction* memory = actionNamed(window, "Memory");
     CHECK(general && general->isEnabled());
     CHECK(display && display->isEnabled());
-    CHECK(sound && !sound->isEnabled());
+    CHECK(sound && sound->isEnabled());
     CHECK(memory && memory->isEnabled());
+    QAction* input = actionNamed(window, "Input");
+    CHECK(input && !input->isEnabled());
     CHECK(emulator.machine() == tuxape::stockMachine(tuxape::CpcModel::Cpc6128));
 
     Settings settings;
@@ -770,6 +878,15 @@ int main(int argc, char* argv[])
     window.applySettings(settings);
     CHECK(window.menuBar()->isVisibleTo(&window));
     CHECK(window.screen()->sizeHint() == QSize(768, 540));
+
+    // The Sound settings reach the machine: no sound made when none is
+    // wanted, mono and the volume when it is.
+    CHECK(emulator.soundOn());
+    settings = window.settings();
+    settings.soundOn = false;
+    window.applySettings(settings);
+    CHECK(!emulator.soundOn());
+    CHECK(!emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.audio().enabled(); }));
 
     // A ROM image that cannot be read is named, and its place left empty.
     tuxape::MachineConfig broken = settings.machine;

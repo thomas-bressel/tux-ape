@@ -79,8 +79,30 @@ void Emulator::stop()
 void Emulator::setAudioOutput(AudioOutput* output)
 {
     withMachine([&](Cpc& cpc) {
-        audio_ = output && output->isOpen() ? output : nullptr;
+        device_ = output;
+        audio_ = soundOn_ && device_ && device_->isOpen() ? device_ : nullptr;
         cpc.audio().setSampleRate(audio_ ? audio_->sampleRate() : 0);
+    });
+}
+
+void Emulator::setSound(bool on, int sampleRate, bool sixteenBit, bool stereo, int volume, double extraFrames)
+{
+    withMachine([&](Cpc& cpc) {
+        soundOn_ = on;
+        eightBit_ = !sixteenBit;
+        cpc.audio().setStereo(stereo);
+        cpc.audio().setVolume(volume);
+        if (device_) {
+            // Another sample rate means opening the device again.
+            if (on && device_->sampleRate() != sampleRate)
+                device_->open(sampleRate);
+            device_->setTargetLatency(AudioOutput::kTargetLatency + extraFrames * 0.02);
+            if (!on && device_->isOpen())
+                device_->clear();
+        }
+        audio_ = on && device_ && device_->isOpen() ? device_ : nullptr;
+        cpc.audio().setSampleRate(audio_ ? audio_->sampleRate() : 0);
+        cpc.audio().samples().clear();
     });
 }
 
@@ -101,17 +123,24 @@ void Emulator::playSound()
     }
     audioSilenced_ = false;
 
+    // "8 bit": 256 levels instead of 65536, as a sound card of the time
+    // would have had.
+    if (eightBit_)
+        for (int16_t& sample : samples)
+            sample = static_cast<int16_t>(sample & ~0xFF);
+
+    const double target = audio_->targetLatency();
     double queued = audio_->queue(samples.data(), samples.size());
     samples.clear();
     // After a stall the backlog would play late for ever: start afresh.
-    if (queued > AudioOutput::kTargetLatency * 4) {
+    if (queued > target * 4) {
         audio_->clear();
-        queued = AudioOutput::kTargetLatency;
+        queued = target;
     }
     // The emulator's clock and the sound card's never agree exactly. Make
     // slightly more or fewer samples to keep the queue at its target length;
     // the half percent this takes at most is inaudible.
-    const double error = std::clamp((queued - AudioOutput::kTargetLatency) / AudioOutput::kTargetLatency, -1.0, 1.0);
+    const double error = std::clamp((queued - target) / target, -1.0, 1.0);
     cpc_.audio().setSampleRate(audio_->sampleRate() * (1.0 - 0.005 * error));
 }
 
