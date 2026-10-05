@@ -30,6 +30,10 @@ public:
     // Puts a disc image in a drive, reporting problems to the user.
     // Returns false if it could not be done.
     bool insertDiscFile(int drive, const QString& path);
+    // Reads or writes a snapshot of the machine, reporting problems to the
+    // user. Return false if it could not be done.
+    bool loadSnapshotFile(const QString& path);
+    bool saveSnapshotFile(const QString& path);
 
 protected:
     void closeEvent(QCloseEvent* event) override;
@@ -45,6 +49,8 @@ private:
     QFrame* driveLed_[2] = {};
     int litDrive_ = -1;
     QString discFolder_;  // where the last disc image was opened
+    QString snapshotFolder_;  // where the last snapshot was read or written
+    QString snapshotPath_;    // the file "Update Snapshot" writes to
 
     QAction* runAction_ = nullptr;
     QAction* pauseAction_ = nullptr;
@@ -52,6 +58,9 @@ private:
     QAction* pasteAction_ = nullptr;
     QAction* driveSetupAction_ = nullptr;
     QAction* swapAction_ = nullptr;
+    QAction* loadSnapshotAction_ = nullptr;
+    QAction* saveSnapshotAction_ = nullptr;
+    QAction* updateSnapshotAction_ = nullptr;
     struct DriveActions {
         QAction* format = nullptr;
         QAction* flip = nullptr;
@@ -84,6 +93,9 @@ private:
     // Deals with unsaved changes before a disc leaves its drive. Returns
     // false if the user chose to cancel.
     bool saveBeforeLeaving(int drive);
+    // Snapshots.
+    void chooseSnapshot();
+    void saveSnapshotAs();
     void updateDiscActions();
     void updateDriveLights();
     void report(const QString& error);

@@ -17,6 +17,7 @@
 #include "core/files.h"
 #include "core/screen_text.h"
 #include "core/setup.h"
+#include "core/snapshot.h"
 
 namespace {
 
@@ -29,6 +30,8 @@ void usage(const char* program)
                  "  --rom-dir DIR          folder holding the ROM images\n"
                  "  --disc FILE            disc image for drive A:\n"
                  "  --fast-disc            no waiting for the disc drive\n"
+                 "  --snapshot FILE        load this snapshot once the machine has started\n"
+                 "  --save-snapshot FILE   save a snapshot at the end\n"
                  "  --frames N             frames to run before typing (default 150)\n"
                  "  --type TEXT            text to type, in WinAPE Auto-Type syntax\n"
                  "  --after N              frames to run after typing (default 50)\n"
@@ -70,6 +73,8 @@ int main(int argc, char* argv[])
     std::string typed;
     std::string png;
     std::string discFile;
+    std::string snapshotFile;
+    std::string saveSnapshotFile;
     bool fastDisc = false;
     bool printText = false;
     bool capture = false;
@@ -102,6 +107,10 @@ int main(int argc, char* argv[])
             typed = value();
         } else if (arg == "--disc") {
             discFile = value();
+        } else if (arg == "--snapshot") {
+            snapshotFile = value();
+        } else if (arg == "--save-snapshot") {
+            saveSnapshotFile = value();
         } else if (arg == "--fast-disc") {
             fastDisc = true;
         } else if (arg == "--png") {
@@ -141,6 +150,9 @@ int main(int argc, char* argv[])
             std::printf("%9.3f s  %s\n", static_cast<double>(cpc.microseconds()) / 1e6, name.c_str());
             return savePicture(cpc, screenshotDir / (name + ".png"));
         });
+        runner.setSnapshotSink([&](const std::string& name, const std::vector<uint8_t>& data) {
+            return writeFile(screenshotDir / (name + ".sna"), data);
+        });
         const bool ok = runner.run(cslFile);
         std::printf("%d picture(s) saved in %s\n", runner.screenshotCount(), screenshotDir.string().c_str());
         if (!ok)
@@ -173,6 +185,14 @@ int main(int argc, char* argv[])
 
     for (int f = 0; f < frames; ++f)
         cpc.runFrame();
+    if (!snapshotFile.empty()) {
+        const auto file = readFile(snapshotFile);
+        std::string why = "cannot read the file";
+        if (!file || !loadSnapshot(cpc, *file, &why)) {
+            std::fprintf(stderr, "%s: %s\n", snapshotFile.c_str(), why.c_str());
+            return 1;
+        }
+    }
 
     AutoType autoType(cpc.keyboard());
     autoType.type(typed);
@@ -194,6 +214,15 @@ int main(int argc, char* argv[])
     if (!png.empty() && !savePicture(cpc, png)) {
         std::fprintf(stderr, "cannot write %s\n", png.c_str());
         return 1;
+    }
+    if (!saveSnapshotFile.empty()) {
+        const SnapshotMachine machine = model == CpcModel::Cpc464   ? SnapshotMachine::Cpc464
+                                        : model == CpcModel::Cpc664 ? SnapshotMachine::Cpc664
+                                                                    : SnapshotMachine::Cpc6128;
+        if (!writeFile(saveSnapshotFile, saveSnapshot(cpc, machine))) {
+            std::fprintf(stderr, "cannot write %s\n", saveSnapshotFile.c_str());
+            return 1;
+        }
     }
     return 0;
 }

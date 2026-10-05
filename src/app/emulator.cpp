@@ -28,6 +28,7 @@ QString Emulator::setupMachine(tuxape::CpcModel model)
         std::string error;
         if (!tuxape::setupStockMachine(cpc, model, tuxape::defaultRomDir(), &error))
             return QString::fromStdString(error);
+        model_ = model;
         return QString();
     });
 }

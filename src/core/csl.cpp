@@ -1,5 +1,6 @@
 #include "core/csl.h"
 
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -11,6 +12,7 @@
 #include "core/cpc.h"
 #include "core/files.h"
 #include "core/setup.h"
+#include "core/snapshot.h"
 
 namespace tuxape {
 
@@ -364,7 +366,23 @@ bool CslRunner::execute(const std::string& command, const std::vector<std::strin
         return run(path);
     }
 
-    if (command.rfind("tape_", 0) == 0 || command.rfind("snapshot", 0) == 0)
+    if (command == "snapshot_dir") {
+        snapshotDir_ = arg(0);
+        return true;
+    }
+    if (command == "snapshot_load")
+        return loadSnapshotFile(arg(0));
+    if (command == "snapshot_name") {
+        snapshotName_ = arg(0);
+        return true;
+    }
+    if (command == "snapshot") {
+        if (lower(arg(0)) == "vsync" && !execute("wait_vsyncoffon", {}))
+            return false;
+        return takeSnapshot();
+    }
+
+    if (command.rfind("tape_", 0) == 0)
         return fail("not supported yet");
     return fail("unknown instruction");
 }
@@ -480,6 +498,8 @@ void CslRunner::onSsm(uint16_t code)
     ++ssmCount_;
     if (code == 0xFFFE) {
         takeScreenshot(screenshotName_);
+    } else if (code == 0xFFFF) {
+        takeSnapshot();
     } else if (code != 0x0000 && code < 0xFF00) {
         // Any ordinary code asks for a picture named after it.
         char name[96];
@@ -487,6 +507,34 @@ void CslRunner::onSsm(uint16_t code)
                       static_cast<unsigned>(code));
         takeScreenshot(name);
     }
+}
+
+bool CslRunner::takeSnapshot()
+{
+    char generated[96];
+    std::snprintf(generated, sizeof generated, "%s_%d_FFFF", emulatorName_.c_str(),
+                  static_cast<int>(cpc_.crtc().type()));
+    const std::string name = snapshotName_.empty() ? generated : snapshotName_;
+    ++snapshotCount_;
+    if (snapshot_ && !snapshot_(name, saveSnapshot(cpc_)))
+        return fail("cannot save snapshot '" + name + "'");
+    return true;
+}
+
+bool CslRunner::loadSnapshotFile(const std::string& name)
+{
+    std::filesystem::path path;
+    for (const std::string& candidate : {name, name + ".sna"}) {
+        if (path.empty() && !snapshotDir_.empty())
+            path = find(snapshotDir_, candidate);
+        if (path.empty())
+            path = find(scriptDir_, candidate);
+    }
+    const auto file = path.empty() ? std::nullopt : readFile(path);
+    std::string why = "cannot read the file";
+    if (!file || !loadSnapshot(cpc_, *file, &why))
+        return fail("snapshot '" + name + "': " + why);
+    return true;
 }
 
 bool CslRunner::takeScreenshot(const std::string& name)

@@ -24,6 +24,8 @@
 #include "icons.h"
 #include "screenwidget.h"
 
+#include "core/snapshot.h"
+
 namespace {
 
 constexpr int kPanelHeight = 30;
@@ -35,6 +37,11 @@ const char kLedOn[] = "background-color: #ff2020;";
 QString discFilter()
 {
     return MainWindow::tr("Disc files (*.dsk);;All files (*)");
+}
+
+QString snapshotFilter()
+{
+    return MainWindow::tr("Snapshot files (*.sna);;All files (*)");
 }
 
 QChar driveLetter(int drive)
@@ -114,12 +121,20 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 
 void MainWindow::dropEvent(QDropEvent* event)
 {
-    // A dropped disc image goes into drive A:, a second one into B:.
+    // A dropped disc image goes into drive A:, a second one into B:. A
+    // snapshot is loaded.
     int drive = 0;
     for (const QUrl& url : event->mimeData()->urls()) {
-        if (!url.isLocalFile() || drive >= DiscManager::kDrives)
+        if (!url.isLocalFile())
             continue;
-        if (saveBeforeLeaving(drive) && insertDiscFile(drive, url.toLocalFile()))
+        const QString path = url.toLocalFile();
+        if (QFileInfo(path).suffix().compare(QLatin1String("sna"), Qt::CaseInsensitive) == 0) {
+            loadSnapshotFile(path);
+            continue;
+        }
+        if (drive >= DiscManager::kDrives)
+            continue;
+        if (saveBeforeLeaving(drive) && insertDiscFile(drive, path))
             ++drive;
     }
     event->acceptProposedAction();
@@ -172,9 +187,12 @@ void MainWindow::createMenus()
     addItem(tape, tr("&Press Play"));
     addItem(tape, tr("Press &Record"));
     file->addSeparator();
-    addItem(file, tr("&Load Snapshot..."), Qt::Key_F5);
-    addItem(file, tr("Save S&napshot..."), Qt::Key_F6);
-    addItem(file, tr("&Update Snapshot"), CTRL | Qt::Key_F6);
+    loadSnapshotAction_ = addItem(file, tr("&Load Snapshot..."), Qt::Key_F5, [this] { chooseSnapshot(); });
+    saveSnapshotAction_ = addItem(file, tr("Save S&napshot..."), Qt::Key_F6, [this] { saveSnapshotAs(); });
+    // Writes again to the snapshot last loaded or saved.
+    updateSnapshotAction_ =
+        addItem(file, tr("&Update Snapshot"), CTRL | Qt::Key_F6, [this] { saveSnapshotFile(snapshotPath_); });
+    updateSnapshotAction_->setEnabled(false);
     file->addSeparator();
     addItem(file, tr("Playbac&k Session..."));
     addItem(file, tr("&Record Session..."));
@@ -269,8 +287,8 @@ void MainWindow::createControlPanel()
     addButton(IconId::Disc, tr("Change Disc (F2)"), driveSetupAction_);
     addButton(IconId::Cartridge, tr("Change Cartridge (CTRL+F3)"), nullptr);
     addButton(IconId::Tape, tr("Tape Control"), nullptr);
-    addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), nullptr);
-    addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), nullptr);
+    addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
+    addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Settings, tr("Settings (F12)"), nullptr);
     addButton(IconId::Pokes, tr("Pokes (CTRL+F8)"), nullptr);
@@ -396,6 +414,71 @@ void MainWindow::chooseDisc(int drive)
         this, tr("Insert Disc Image in Drive %1:").arg(driveLetter(drive)), discFolder_, discFilter());
     if (!path.isEmpty() && saveBeforeLeaving(drive))
         insertDiscFile(drive, path);
+    screen_->setFocus();
+}
+
+bool MainWindow::loadSnapshotFile(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        report(tr("Cannot read %1:\n%2").arg(QDir::toNativeSeparators(path), file.errorString()));
+        return false;
+    }
+    const QByteArray bytes = file.readAll();
+    std::string error;
+    const bool ok = emulator_->withMachine([&](tuxape::Cpc& cpc) {
+        return tuxape::loadSnapshot(
+            cpc, {reinterpret_cast<const uint8_t*>(bytes.constData()), static_cast<size_t>(bytes.size())}, &error);
+    });
+    if (!ok) {
+        report(tr("Cannot load %1:\n%2").arg(QDir::toNativeSeparators(path), QString::fromStdString(error)));
+        return false;
+    }
+    snapshotPath_ = path;
+    snapshotFolder_ = QFileInfo(path).absolutePath();
+    updateSnapshotAction_->setEnabled(true);
+    return true;
+}
+
+bool MainWindow::saveSnapshotFile(const QString& path)
+{
+    using tuxape::CpcModel;
+    using tuxape::SnapshotMachine;
+    const CpcModel model = emulator_->model();
+    const SnapshotMachine machine = model == CpcModel::Cpc464   ? SnapshotMachine::Cpc464
+                                    : model == CpcModel::Cpc664 ? SnapshotMachine::Cpc664
+                                                                : SnapshotMachine::Cpc6128;
+    const std::vector<uint8_t> bytes =
+        emulator_->withMachine([&](tuxape::Cpc& cpc) { return tuxape::saveSnapshot(cpc, machine); });
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size()))
+               != static_cast<qint64>(bytes.size())) {
+        report(tr("Cannot write %1:\n%2").arg(QDir::toNativeSeparators(path), file.errorString()));
+        return false;
+    }
+    snapshotPath_ = path;
+    snapshotFolder_ = QFileInfo(path).absolutePath();
+    updateSnapshotAction_->setEnabled(true);
+    return true;
+}
+
+void MainWindow::chooseSnapshot()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load Snapshot"), snapshotFolder_, snapshotFilter());
+    if (!path.isEmpty())
+        loadSnapshotFile(path);
+    screen_->setFocus();
+}
+
+void MainWindow::saveSnapshotAs()
+{
+    QString path = QFileDialog::getSaveFileName(this, tr("Save Snapshot"), snapshotFolder_, snapshotFilter());
+    if (!path.isEmpty()) {
+        if (QFileInfo(path).suffix().isEmpty())
+            path += QLatin1String(".sna");
+        saveSnapshotFile(path);
+    }
     screen_->setFocus();
 }
 

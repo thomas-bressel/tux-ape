@@ -14,6 +14,7 @@ add_library(tuxape_core STATIC
     psg.cpp
     screen_text.cpp
     setup.cpp
+    snapshot.cpp
     version.cpp
 )
 

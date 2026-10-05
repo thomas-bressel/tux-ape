@@ -116,6 +116,35 @@ void Crtc::write(uint8_t value, bool early)
         c9MatchAtEnd_ = true;
 }
 
+void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, uint8_t vsc, bool hsync, bool vsync)
+{
+    hcc_ = hcc;
+    vcc_ = vcc & 0x7F;
+    vlc_ = vlc & 0x1F;
+    hsc_ = hsc & 0x0F;
+    vsc_ = vsc & 0x0F;
+    hsync_ = hsync;
+    vsync_ = vsync;
+    hsyncCut_ = previousHsyncCut_ = HsyncCut::None;
+    // What a snapshot does not hold is set to what an undisturbed frame
+    // would have at this place.
+    hDisp_ = hcc_ < reg_[1];
+    vDisp_ = vcc_ < reg_[6];
+    maRow_ = static_cast<uint16_t>((startAddress() + vcc_ * reg_[1]) & 0x3FFF);
+    ma_ = static_cast<uint16_t>((maRow_ + hcc_) & 0x3FFF);
+    inAdjust_ = false;
+    vtac_ = 0;
+    lastLine_ = onLastLine();
+    adjust_ = lastLine_ && hcc_ < 3;
+    adjustRunning_ = adjustUndecided_ = false;
+    c9Enabled_ = hcc_ >= 1;
+    vsyncAllowed_ = hcc_ >= 2;
+    c4CountArmed_ = vlc_ == reg_[9];
+    c9MatchAtEnd_ = false;
+    r7Match_ = vcc_ == reg_[7];
+    vsyncFresh_ = false;
+}
+
 uint8_t Crtc::readStatus() const
 {
     switch (type_) {

@@ -8,6 +8,7 @@
 #include "check.h"
 #include "core/cpc.h"
 #include "core/csl.h"
+#include "core/files.h"
 #include "core/screen_text.h"
 #include "core/setup.h"
 
@@ -129,9 +130,52 @@ void testScript()
 
 }  // namespace
 
+// A script saves the machine, lets it move on and brings it back.
+void testSnapshots()
+{
+    Cpc cpc;
+    if (!setupStockMachine(cpc, CpcModel::Cpc6128, defaultRomDir(), nullptr))
+        return;
+    const fs::path dir = fs::temp_directory_path() / "tuxape_csl_test";
+    fs::create_directories(dir);
+    write(dir / "snap.csl",
+          "reset\n"
+          "wait 3000000\n"
+          "key_delay 40000 40000 400000\n"
+          "key_output 'a=77\\(RET)'\n"
+          "wait 1000000\n"
+          "snapshot_name 'state'\n"
+          "snapshot\n"
+          "key_output 'a=1\\(RET)'\n"
+          "wait 1000000\n"
+          "snapshot_load 'state'\n"
+          "key_output 'PRINT a*2\\(RET)'\n"
+          "wait 1000000\n");
+
+    CslRunner runner(cpc);
+    std::string saved;
+    runner.setSnapshotSink([&](const std::string& name, const std::vector<uint8_t>& data) {
+        saved = name;
+        return writeFile(dir / (name + ".sna"), data);
+    });
+    const bool ok = runner.run(dir / "snap.csl");
+    if (!ok)
+        std::printf("script error: %s\n", runner.error().c_str());
+    CHECK(ok);
+    CHECK(saved == "state");
+    CHECK_EQ(runner.snapshotCount(), 1);
+    CHECK(readScreenText(cpc).find("154") != std::string::npos);
+
+    write(dir / "missing.csl", "snapshot_load 'nowhere'\n");
+    CslRunner other(cpc);
+    CHECK(!other.run(dir / "missing.csl"));
+    CHECK(other.error().find("nowhere") != std::string::npos);
+}
+
 int main()
 {
     testSsmCodes();
     testScript();
+    testSnapshots();
     return checkSummary("csl");
 }

@@ -32,6 +32,10 @@ public:
     ~CslRunner();
 
     void setScreenshotSink(ScreenshotSink sink) { screenshot_ = std::move(sink); }
+    // Receives the snapshots a script asks for, as a name without extension
+    // and the file's contents.
+    using SnapshotSink = std::function<bool(const std::string& name, const std::vector<uint8_t>& data)>;
+    void setSnapshotSink(SnapshotSink sink) { snapshot_ = std::move(sink); }
     // Prefix of the names given to pictures requested by SSM codes, which
     // come out as <prefix>_<crtc>_<code>.
     void setEmulatorName(std::string name) { emulatorName_ = std::move(name); }
@@ -48,10 +52,15 @@ public:
     bool run(const std::filesystem::path& script);
     const std::string& error() const { return error_; }
     int screenshotCount() const { return screenshotCount_; }
+    int snapshotCount() const { return snapshotCount_; }
 
 private:
     Cpc& cpc_;
     ScreenshotSink screenshot_;
+    SnapshotSink snapshot_;
+    std::filesystem::path snapshotDir_;
+    std::string snapshotName_;
+    int snapshotCount_ = 0;
     std::string emulatorName_ = "TUXAPE";
     std::filesystem::path romDir_;
     std::filesystem::path discDir_;
@@ -80,6 +89,8 @@ private:
     bool typeKeys(std::string_view text);
     bool waitForSsm(int code);
     bool takeScreenshot(const std::string& name);
+    bool takeSnapshot();
+    bool loadSnapshotFile(const std::string& name);
     void onSsm(uint16_t code);
     std::filesystem::path find(const std::filesystem::path& dir, const std::string& name) const;
 };

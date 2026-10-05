@@ -38,6 +38,10 @@ public:
 
     void tick();
 
+    // Puts back the counters and sync outputs taken from a snapshot. The
+    // registers themselves go through select() and write().
+    void restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, uint8_t vsc, bool hsync, bool vsync);
+
     // Outputs.
     bool hsync() const { return hsync_; }
     bool vsync() const { return vsync_; }

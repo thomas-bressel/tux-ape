@@ -54,6 +54,11 @@ public:
     uint8_t selectedPen() const { return pen_; }            // 0-15, or 16 for the border
     uint8_t ink(int pen) const { return ink_[pen]; }        // hardware colour number, 0-31
     uint8_t interruptCounter() const { return r52_; }       // R52
+    uint8_t romAndMode() const { return rmr_ & 0x0F; }      // as last written to the register
+
+    // Puts back a state taken from a snapshot. `pen` is 0-15 or 16 for the
+    // border, `inks` the 17 hardware colour numbers.
+    void restore(uint8_t pen, const uint8_t* inks, uint8_t romAndMode, uint8_t interruptCounter, bool interrupt);
     uint32_t colour(int hardwareColour) const { return colours_[hardwareColour & 31]; }
 
 private:

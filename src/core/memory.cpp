@@ -109,6 +109,15 @@ void Memory::selectUpperRom(uint8_t number)
     remap();
 }
 
+uint8_t* Memory::ramPage(int page)
+{
+    if (page == 0)
+        return ram_.data();
+    if (page < 0 || page > kMaxPages || pageOffset_[page - 1] < 0)
+        return nullptr;
+    return &ram_[static_cast<size_t>(pageOffset_[page - 1])];
+}
+
 void Memory::selectRamBank(uint8_t value, uint8_t portHigh)
 {
     if (expansion_ == RamExpansion::None && !siliconDisc_)

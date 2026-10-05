@@ -32,6 +32,7 @@ public:
 
     // Fits a stock machine. Returns an error message, or an empty string.
     QString setupMachine(tuxape::CpcModel model);
+    tuxape::CpcModel model() const { return model_; }
 
     void start();
     void stop();
@@ -92,6 +93,8 @@ private:
     };
 
     tuxape::Cpc cpc_;
+
+    tuxape::CpcModel model_ = tuxape::CpcModel::Cpc6128;
     tuxape::KeyMap keyMap_;
     tuxape::AutoType autoType_;
     // How many PC keys currently hold each CPC key down.

@@ -51,6 +51,12 @@ public:
     uint8_t read(uint16_t addr) const { return readMap_[addr >> 14][addr & 0x3FFF]; }
     void write(uint16_t addr, uint8_t value) { writeMap_[addr >> 14][addr & 0x3FFF] = value; }
 
+    // The 64K of one RAM page: 0 is the base RAM, 1 and up the expansion
+    // pages as the banking register numbers them. Null where none is fitted.
+    static constexpr int kRamPages = 65;
+    uint8_t* ramPage(int page);
+    const uint8_t* ramPage(int page) const { return const_cast<Memory*>(this)->ramPage(page); }
+
     // The first 64K, which is what the video circuitry always reads.
     const uint8_t* baseRam() const { return ram_.data(); }
     uint8_t* baseRam() { return ram_.data(); }

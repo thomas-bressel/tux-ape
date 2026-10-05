@@ -134,6 +134,20 @@ void GateArray::write(uint8_t value)
     }
 }
 
+void GateArray::restore(uint8_t pen, const uint8_t* inks, uint8_t romAndMode, uint8_t interruptCounter, bool interrupt)
+{
+    pen_ = pen > kBorder ? kBorder : pen;
+    for (int i = 0; i < 17; ++i) {
+        ink_[i] = inks[i] & 0x1F;
+        rgb_[i] = colours_[ink_[i]];
+    }
+    inkChanged_ = false;
+    rmr_ = romAndMode & 0x0F;
+    mode_ = rmr_ & 3;
+    r52_ = interruptCounter % 52;
+    interrupt_ = interrupt;
+}
+
 void GateArray::acknowledgeInterrupt()
 {
     // Clearing bit 5 guarantees the next interrupt is at least 32 lines away.
