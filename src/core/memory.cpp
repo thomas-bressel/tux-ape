@@ -1,5 +1,7 @@
 #include "core/memory.h"
 
+#include "core/asic.h"
+
 #include <algorithm>
 
 namespace tuxape {
@@ -102,10 +104,37 @@ void Memory::setUpperRom(int slot, std::span<const uint8_t> image)
     remap();
 }
 
+void Memory::setCartridge(std::span<const uint8_t> pages, bool discRom)
+{
+    // Address lines a cartridge does not use bring its pages round again:
+    // it is filled out to a power of two, with FF where it has nothing.
+    size_t count = 0;
+    if (!pages.empty())
+        for (count = 1; count * kBankSize < pages.size();)
+            count *= 2;
+    cartridge_.assign(count * kBankSize, 0xFF);
+    std::copy_n(pages.begin(), std::min(pages.size(), cartridge_.size()), cartridge_.begin());
+    discRom_ = discRom;
+    rmr2_ = 0;
+    remap();
+}
+
+void Memory::setRmr2(uint8_t value)
+{
+    rmr2_ = value & 0x1F;
+    remap();
+}
+
+void Memory::writeRegister(uint16_t addr, uint8_t value)
+{
+    asic_->write(addr, value);
+}
+
 void Memory::reset()
 {
     lowerEnabled_ = upperEnabled_ = true;
     upperSelected_ = 0;
+    rmr2_ = 0;
     ramConfig_ = 0xC0;
     ramPage_ = 0;
     remap();
@@ -166,6 +195,26 @@ void Memory::remap()
         uint8_t* bank = block < 4 ? &ram_[static_cast<size_t>(block) * kBankSize]
                                   : &ram_[static_cast<size_t>(offset) + static_cast<size_t>(block - 4) * kBankSize];
         readMap_[q] = writeMap_[q] = bank;
+    }
+    registersMapped_ = false;
+    if (!cartridge_.empty()) {
+        const size_t pages = cartridge_.size() / kBankSize;
+        auto page = [&](unsigned number) { return &cartridge_[(number & (pages - 1)) * kBankSize]; };
+        const int where = rmr2_ >> 3;
+        if (lowerEnabled_)
+            readMap_[where == 3 ? 0 : where] = page(rmr2_ & 7);
+        if (where == 3 && asic_) {
+            readMap_[1] = asic_->page();
+            registersMapped_ = true;
+        }
+        if (upperEnabled_) {
+            const int slot = upperSelected_ & romSlotMask_;
+            if (upperSelected_ <= romSlotMask_ && upperPresent_[slot])
+                readMap_[3] = &upperRom_[static_cast<size_t>(slot) * kBankSize];
+            else
+                readMap_[3] = page(upperSelected_ & 0x80 ? upperSelected_ & 0x1F : upperSelected_ == 7 && discRom_ ? 3 : 1);
+        }
+        return;
     }
     if (lowerEnabled_)
         readMap_[0] = lowerRom_.data();

@@ -6,6 +6,8 @@
 
 namespace tuxape {
 
+class Asic;
+
 // RAM fitted beyond the first 64K, as offered by WinAPE's memory settings.
 enum class RamExpansion : uint8_t {
     None,       // 64K machine (CPC464, CPC664, 464 Plus)
@@ -41,6 +43,18 @@ public:
     // 32-slot ROM board.
     void setRomSlotLimit(int count) { romSlotMask_ = count > 16 ? 31 : 15; }
 
+    // The Plus: a cartridge takes the place of the ROMs. Its page 0 is the
+    // lower ROM, or the page RMR2 names, shown where RMR2 says; the upper
+    // ROM is page 1 (BASIC), page 3 for ROM 7 on a machine with a disc
+    // drive (AMSDOS), or any page: ROM numbers 128 and up name it. A ROM
+    // fitted on an expansion board still shows in its slot. No pages takes
+    // the cartridge out.
+    void setCartridge(std::span<const uint8_t> pages, bool discRom);
+    bool hasCartridge() const { return !cartridge_.empty(); }
+    void setRmr2(uint8_t value);
+    // The ASIC, whose page of registers RMR2 can show at &4000-&7FFF.
+    void setAsic(Asic* asic) { asic_ = asic; }
+
     void reset();
     void clearRam();
 
@@ -53,7 +67,13 @@ public:
     void selectRamBank(uint8_t value, uint8_t portHigh);
 
     uint8_t read(uint16_t addr) const { return readMap_[addr >> 14][addr & 0x3FFF]; }
-    void write(uint16_t addr, uint8_t value) { writeMap_[addr >> 14][addr & 0x3FFF] = value; }
+    void write(uint16_t addr, uint8_t value)
+    {
+        if (registersMapped_ && (addr & 0xC000) == 0x4000)
+            writeRegister(addr, value);
+        else
+            writeMap_[addr >> 14][addr & 0x3FFF] = value;
+    }
 
     // The 64K of one RAM page: 0 is the base RAM, 1 and up the expansion
     // pages as the banking register numbers them. Null where none is fitted.
@@ -91,7 +111,14 @@ private:
     const uint8_t* readMap_[4] = {};
     uint8_t* writeMap_[4] = {};
 
+    std::vector<uint8_t> cartridge_;  // whole pages, a power of two of them
+    bool discRom_ = false;
+    uint8_t rmr2_ = 0;
+    Asic* asic_ = nullptr;
+    bool registersMapped_ = false;
+
     void remap();
+    void writeRegister(uint16_t addr, uint8_t value);
 };
 
 }  // namespace tuxape

@@ -5,7 +5,17 @@ namespace tuxape {
 Cpc::Cpc()
     : cpu_(*this)
 {
+    asic_.attach(&gateArray_);
+    memory_.setAsic(&asic_);
     reset();
+}
+
+void Cpc::setCartridge(const Cartridge* cartridge, bool discRom)
+{
+    plus_ = cartridge != nullptr && cartridge->pages() > 0;
+    memory_.setCartridge(plus_ ? std::span<const uint8_t>(cartridge->data) : std::span<const uint8_t>(), discRom);
+    gateArray_.setPlus(plus_);
+    asic_.reset();
 }
 
 void Cpc::reset()
@@ -18,6 +28,7 @@ void Cpc::reset()
     psg_.reset();
     fdc_.reset();
     tape_.setMotor(false, microseconds());
+    asic_.reset();
 }
 
 void Cpc::coldReset()
@@ -65,12 +76,10 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
     const uint8_t high = static_cast<uint8_t>(port >> 8);
 
     if (!(port & 0x8000)) {
-        if ((value & 0xC0) == 0xC0) {
+        if ((value & 0xC0) == 0xC0)
             memory_.selectRamBank(value, high);
-        } else if (port & 0x4000) {
-            gateArray_.write(value);
-            memory_.setRomEnables(gateArray_.lowerRomEnabled(), gateArray_.upperRomEnabled());
-        }
+        else if (port & 0x4000)
+            gateArrayWrite(value, high);
     }
     if (!(port & 0x2000))
         memory_.selectUpperRom(value);
@@ -88,12 +97,33 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
     }
 }
 
+void Cpc::gateArrayWrite(uint8_t value, uint8_t portHigh)
+{
+    if ((value & 0xC0) == 0xC0) {
+        memory_.selectRamBank(value, portHigh);
+    } else if (plus_ && asic_.unlocked() && (value & 0xE0) == 0xA0) {
+        // Unlocked, the ASIC keeps half of the Gate Array's third register
+        // for itself: RMR2.
+        asic_.setRmr2(value);
+        memory_.setRmr2(value);
+    } else {
+        gateArray_.write(value);
+        memory_.setRomEnables(gateArray_.lowerRomEnabled(), gateArray_.upperRomEnabled());
+        if (plus_ && (value & 0xC0) == 0x40)
+            asic_.setHardwareColour(gateArray_.selectedPen(), value & 0x1F);
+    }
+}
+
 void Cpc::crtcWrite(uint16_t port, uint8_t value, bool early)
 {
     if (port & 0x4000)
         return;
     switch ((port >> 8) & 3) {
-    case 0: crtc_.select(value); break;
+    case 0:
+        crtc_.select(value);
+        if (plus_)
+            asic_.sequence(value);
+        break;
     case 1: {
         const bool hsync = crtc_.hsync();
         crtc_.write(value, early);

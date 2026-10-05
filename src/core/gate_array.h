@@ -52,6 +52,18 @@ public:
     // What a hardware colour (0-31) looks like on such a monitor, 0xAARRGGBB.
     static uint32_t monitorColour(int hardwareColour, MonitorKind kind, bool linear, int brightness);
 
+    // The Plus. Its ASIC keeps a palette of 12-bit colours (green, red and
+    // blue from the top) which takes the place of the 27 colours: pens 0
+    // to 15, the border (16), and colours 1 to 15 of the sprites (17-31).
+    // Nothing of it applies to a machine that is not a Plus.
+    void setPlus(bool plus);
+    bool plus() const { return plus_; }
+    void setPlusColour(int index, uint16_t grb);
+    uint32_t spriteColour(int number) const { return spriteRgb_[number & 15]; }
+    // The 12-bit colour the ASIC keeps for one of the CPC's.
+    static uint16_t plusColour(int hardwareColour);
+    static uint32_t monitorColour12(uint16_t grb, MonitorKind kind, int brightness);
+
     // State, named as in the WinAPE register window.
     uint8_t mode() const { return mode_; }                  // mode being displayed
     uint8_t requestedMode() const { return rmr_ & 3; }      // takes effect at the next HSYNC
@@ -72,6 +84,11 @@ private:
     uint8_t ink_[17] = {};
     uint32_t rgb_[17] = {};  // ink_ translated through colours_
     uint32_t colours_[32] = {};
+    MonitorKind monitorKind_ = MonitorKind::Colour;
+    int brightness_ = 0;
+    bool plus_ = false;
+    uint16_t plus12_[32] = {};
+    uint32_t spriteRgb_[16] = {};
 
     // Colours as they were before an ink change made during the current
     // microsecond; the change only shows part-way through the character.

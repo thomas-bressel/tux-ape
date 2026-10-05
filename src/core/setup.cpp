@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdlib>
 
+#include "core/cartridge.h"
 #include "core/cpc.h"
 #include "core/files.h"
 
@@ -61,12 +62,24 @@ MachineConfig stockMachine(CpcModel model)
         config.upperRoms[0] = "BASIC1-1";
         config.upperRoms[7] = "AMSDOS";
         break;
+    case CpcModel::Plus464:
+        config.ram = RamExpansion::None;
+        config.cartridge = "CPC_PLUS.CPR";
+        config.plus = true;
+        break;
+    case CpcModel::Plus6128:
+        config.ram = RamExpansion::Internal;
+        config.cartridge = "CPC_PLUS.CPR";
+        config.plus = true;
+        break;
     }
     return config;
 }
 
 CpcModel modelOf(const MachineConfig& config)
 {
+    if (config.plus && !config.cartridge.empty())
+        return config.ram == RamExpansion::None ? CpcModel::Plus464 : CpcModel::Plus6128;
     const std::string firmware = lowered(std::filesystem::path(config.lowerRom).stem().string());
     if (firmware.find("464") != std::string::npos)
         return CpcModel::Cpc464;
@@ -142,6 +155,20 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
         memory.setUpperRom(slot, fitted ? load(config.upperRoms[static_cast<size_t>(slot)]) : std::vector<uint8_t>());
     }
 
+    // A Plus: the cartridge. The 464 Plus has no disc drive, and so no
+    // AMSDOS in its ROM 7.
+    std::optional<Cartridge> cartridge;
+    if (config.plus && !config.cartridge.empty()) {
+        std::filesystem::path file = findRom(config.cartridge, romDir);
+        if (file.empty())
+            file = findRom(config.cartridge + ".cpr", romDir);
+        const auto image = file.empty() ? std::nullopt : readFile(file);
+        cartridge = image ? Cartridge::parseCpr(*image) : std::nullopt;
+        if (!cartridge)
+            missing += (missing.empty() ? "" : ", ") + (file.empty() ? config.cartridge : file.string());
+    }
+    cpc.setCartridge(cartridge ? &*cartridge : nullptr, config.ram != RamExpansion::None);
+
     if (missing.empty())
         return true;
     if (error)
@@ -153,6 +180,8 @@ bool setupStockMachine(Cpc& cpc, CpcModel model, const std::filesystem::path& ro
 {
     if (!applyMachine(cpc, stockMachine(model), romDir, error))
         return false;
+    if (model == CpcModel::Plus464 || model == CpcModel::Plus6128)
+        cpc.crtc().setType(CrtcType::AsicPlus);
     cpc.coldReset();
     return true;
 }

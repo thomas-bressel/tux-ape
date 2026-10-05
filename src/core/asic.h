@@ -1,0 +1,92 @@
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+
+namespace tuxape {
+
+class GateArray;
+
+// The ASIC of the Plus machines (464 Plus, 6128 Plus, GX4000), which holds
+// their Gate Array and CRTC and adds to them: a palette of 4096 colours,
+// sixteen hardware sprites, a screen that can be split and scrolled by the
+// pixel, an interrupt on any line, and three sound channels fed from
+// memory. A program has all that once it has sent the ASIC its unlocking
+// sequence, and reaches it through a page of registers it asks to see at
+// &4000-&7FFF.
+class Asic {
+public:
+    Asic();
+
+    // Where the palette's colours go.
+    void attach(GateArray* gateArray) { gateArray_ = gateArray; }
+
+    void reset();
+
+    // The lock. Every byte written to the CRTC's register select port
+    // comes through here.
+    void sequence(uint8_t value);
+    bool unlocked() const { return unlocked_; }
+
+    // RMR2, which the Gate Array's port takes once the ASIC is unlocked:
+    // bits 2-0, the cartridge page that is the lower ROM; bits 4-3, where
+    // it shows (&0000, &4000, &8000) or, 11, the page of registers shown at
+    // &4000 with the lower ROM at &0000.
+    void setRmr2(uint8_t value) { rmr2_ = value & 0x1F; }
+    uint8_t rmr2() const { return rmr2_; }
+
+    // The page of registers. What a program reads there is kept as a
+    // picture of the page; what it writes goes through write().
+    static constexpr int kPageSize = 0x4000;
+    const uint8_t* page() const { return page_.data(); }
+    void write(uint16_t address, uint8_t value);
+
+    // A colour set the way a CPC does, through the Gate Array: the ASIC
+    // puts its own 12-bit colour for it in the palette.
+    void setHardwareColour(int pen, int hardwareColour);
+    // The palette: pens 0-15, the border (16), sprite colours 1-15 (17-31).
+    // Twelve bits: green, red, blue from the top.
+    uint16_t colour(int index) const { return palette_[index & 31]; }
+
+    // ---- Sprites ----
+    struct Sprite {
+        int16_t x = 0;       // in mode 2 pixels from the left of the screen
+        int16_t y = 0;       // in lines from its top
+        uint8_t magX = 0;    // 0: not shown; 1, 2, 4: its pixels' width
+        uint8_t magY = 0;
+    };
+    const Sprite& sprite(int n) const { return sprites_[n & 15]; }
+    // One of the 16 x 16 pixels of a sprite: 0 lets the screen show.
+    uint8_t spritePixel(int n, int x, int y) const { return page_[static_cast<size_t>((n & 15) << 8 | (y & 15) << 4 | (x & 15))]; }
+    // False while no sprite is shown: the picture needs no second look.
+    bool spritesShown() const { return spritesShown_; }
+
+    // ---- The raster ----
+    uint8_t rasterInterruptLine() const { return pri_; }  // 0: the CPC's own interrupts
+    uint8_t splitLine() const { return splt_; }           // 0: no split
+    uint16_t splitAddress() const { return ssa_; }
+    uint8_t scroll() const { return sscr_; }              // bit 7 border, bits 6-4 lines, bits 3-0 pixels
+    uint8_t interruptVector() const { return ivr_; }
+
+private:
+    GateArray* gateArray_ = nullptr;
+
+    bool unlocked_ = false;
+    int sequenceAt_ = 0;
+    uint8_t previous_ = 0;
+    uint8_t rmr2_ = 0;
+
+    std::array<uint8_t, kPageSize> page_ = {};
+    std::array<uint16_t, 32> palette_ = {};
+    std::array<Sprite, 16> sprites_ = {};
+    bool spritesShown_ = false;
+    uint8_t pri_ = 0, splt_ = 0, sscr_ = 0, ivr_ = 0;
+    uint16_t ssa_ = 0;
+    uint8_t dcsr_ = 0;
+
+    void setColour(int index, uint16_t grb);
+    void showDcsr();
+};
+
+}  // namespace tuxape

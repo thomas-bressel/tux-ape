@@ -4,7 +4,9 @@
 #include <functional>
 #include <vector>
 
+#include "core/asic.h"
 #include "core/audio.h"
+#include "core/cartridge.h"
 #include "core/crtc.h"
 #include "core/fdc.h"
 #include "core/gate_array.h"
@@ -69,6 +71,14 @@ public:
     Keyboard& keyboard() { return keyboard_; }
     Fdc& fdc() { return fdc_; }
     TapeDeck& tape() { return tape_; }
+
+    // A Plus machine: a cartridge in place of the ROMs, and the ASIC with
+    // what it adds. `discRom` is for a machine with a disc drive, where ROM
+    // 7 is the cartridge's AMSDOS. Without a cartridge the machine is a CPC
+    // again. Neither resets the machine.
+    void setCartridge(const Cartridge* cartridge, bool discRom = true);
+    bool plus() const { return plus_; }
+    Asic& asic() { return asic_; }
     // Sound output. Set its sample rate to start receiving samples.
     AudioMixer& audio() { return audio_; }
 
@@ -109,6 +119,11 @@ public:
         waitForGateArray();
         advance(1);
         const uint8_t v = ioRead(port);
+        // The Gate Array inside the ASIC does not look at which way the
+        // data goes: read from, it takes what is left on the bus, the last
+        // byte of the instruction, as if it were written.
+        if (plus_ && (port & 0xC000) == 0x4000)
+            gateArrayWrite(memory_.read(static_cast<uint16_t>(cpu_.pc - 1)), static_cast<uint8_t>(port >> 8));
         advance(1);
         return v;
     }
@@ -189,6 +204,8 @@ private:
     Keyboard keyboard_;
     Fdc fdc_;
     TapeDeck tape_;
+    Asic asic_;
+    bool plus_ = false;
     AudioMixer audio_;
 
     uint64_t clk_ = 0;
@@ -238,6 +255,7 @@ private:
     uint8_t ioRead(uint16_t port);
     void ioWrite(uint16_t port, uint8_t value);  // every device but the CRTC
     void crtcWrite(uint16_t port, uint8_t value, bool early = false);
+    void gateArrayWrite(uint8_t value, uint8_t portHigh);
     uint8_t portB();
     void ssmOpcode(uint8_t op);
     void updatePsgBus();

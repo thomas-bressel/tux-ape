@@ -26,7 +26,8 @@ void usage(const char* program)
 {
     std::fprintf(stderr,
                  "usage: %s [options]\n"
-                 "  --model 464|664|6128   machine to emulate (default 6128)\n"
+                 "  --model 464|664|6128|464plus|6128plus\n"
+                 "                         machine to emulate (default 6128)\n"
                  "  --crtc 0-4             CRTC type (default 0)\n"
                  "  --rom-dir DIR          folder holding the ROM images\n"
                  "  --disc FILE            disc image for drive A:\n"
@@ -96,7 +97,11 @@ int main(int argc, char* argv[])
         };
         if (arg == "--model") {
             const std::string m = value();
-            model = m == "464" ? CpcModel::Cpc464 : m == "664" ? CpcModel::Cpc664 : CpcModel::Cpc6128;
+            model = m == "464"        ? CpcModel::Cpc464
+                    : m == "664"      ? CpcModel::Cpc664
+                    : m == "464plus"  ? CpcModel::Plus464
+                    : m == "6128plus" ? CpcModel::Plus6128
+                                      : CpcModel::Cpc6128;
         } else if (arg == "--crtc") {
             crtcType = std::atoi(value());
         } else if (arg == "--rom-dir") {

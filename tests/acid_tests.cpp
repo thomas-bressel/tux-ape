@@ -70,6 +70,16 @@ const Program kPrograms[] = {
       "vsync r8 test (r8=3)",
       "vsync r8 htot/2 test",
       "R8 - count lines"}},
+    // The Plus: its ASIC's lock, the cartridge and register page it maps,
+    // and what its registers read back.
+    {"asiclock", "plus/asic1.dsk", "LOCK", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 12000, 1, {}},
+    // One check of "RMR2 configs" reads a place of the register page with
+    // nothing behind it and wants what was left on the data bus.
+    {"asicrom", "plus/asic1.dsk", "ROM", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 12000, 3, {"RMR2 configs (bit 3,4)"}},
+    // "sprite ram mask" keeps 8K of results, which runs over the firmware's
+    // keyboard workspace: the keys this runner presses to turn the pages
+    // spoil a few of them.
+    {"asictest", "plus/asic1.dsk", "TEST", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 80000, 22, {"sprite ram mask"}},
 };
 
 struct Verdict {
@@ -82,7 +92,6 @@ std::vector<Verdict> run(const Program& program, const std::filesystem::path& fo
 {
     std::vector<Verdict> verdicts;
     Cpc cpc;
-    cpc.crtc().setType(program.crtc);
     const auto image = readFile(folder / program.disc);
     auto disc = image ? Disc::fromDsk(*image) : std::nullopt;
     if (!disc || !setupStockMachine(cpc, program.model, defaultRomDir(), nullptr)) {
@@ -90,6 +99,8 @@ std::vector<Verdict> run(const Program& program, const std::filesystem::path& fo
         ++g_failures;
         return verdicts;
     }
+    cpc.crtc().setType(program.crtc);
+    const bool plus = program.model == CpcModel::Plus464 || program.model == CpcModel::Plus6128;
     cpc.fdc().setFast(true);
     cpc.fdc().drive(0).disc = std::make_unique<Disc>(std::move(*disc));
 
@@ -114,10 +125,11 @@ std::vector<Verdict> run(const Program& program, const std::filesystem::path& fo
         line.clear();
     });
 
-    for (int frame = 0; frame < 150; ++frame)
+    // A Plus starts on its cartridge's menu: f1 is BASIC.
+    for (int frame = 0; frame < (plus ? 400 : 150); ++frame)
         cpc.runFrame();
     AutoType keys(cpc.keyboard());
-    keys.type(std::string("RUN\"") + program.run + "\n~PAUSE 300~" + program.key);
+    keys.type(std::string(plus ? "~F1~~PAUSE 100~" : "") + "RUN\"" + program.run + "\n~PAUSE 300~" + program.key);
     while (keys.active()) {
         keys.frame();
         cpc.runFrame();

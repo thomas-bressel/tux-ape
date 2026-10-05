@@ -13,7 +13,7 @@ namespace tuxape {
 
 class Cpc;
 
-enum class CpcModel { Cpc464, Cpc664, Cpc6128 };
+enum class CpcModel { Cpc464, Cpc664, Cpc6128, Plus464, Plus6128 };
 
 // What is fitted to the machine: the choices of WinAPE's Memory settings.
 struct MachineConfig {
@@ -28,6 +28,11 @@ struct MachineConfig {
     bool rom32 = false;           // a ROM board of 32 slots, not 16
     bool disableAllRoms = false;  // fit none of the ROMs named above
     bool onlyLower0And7 = false;  // fit only the firmware, slot 0 and slot 7
+    // A Plus machine: the cartridge (a CPR file, looked for like a ROM
+    // image) is its firmware, and the ASIC's features are there. The ROMs
+    // named above are then those of an expansion board.
+    std::string cartridge;
+    bool plus = false;
 
     bool operator==(const MachineConfig&) const = default;
 };

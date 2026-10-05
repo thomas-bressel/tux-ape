@@ -113,12 +113,65 @@ uint32_t GateArray::monitorColour(int hardwareColour, MonitorKind kind, bool lin
     return 0xFF000000 | adjusted(r) << 16 | adjusted(g) << 8 | adjusted(b);
 }
 
+uint16_t GateArray::plusColour(int hardwareColour)
+{
+    // The CPC's three levels are 0, 6 and 15 of the ASIC's sixteen.
+    static constexpr int kLevel12[3] = {0x0, 0x6, 0xF};
+    const uint8_t* l = kLevels[hardwareColour & 31];
+    return static_cast<uint16_t>(kLevel12[l[1]] << 8 | kLevel12[l[0]] << 4 | kLevel12[l[2]]);
+}
+
+uint32_t GateArray::monitorColour12(uint16_t grb, MonitorKind kind, int brightness)
+{
+    const int g4 = grb >> 8 & 0xF, r4 = grb >> 4 & 0xF, b4 = grb & 0xF;
+    int r = r4 * 17, g = g4 * 17, b = b4 * 17;
+    if (kind != MonitorKind::Colour) {
+        const int luma = (g4 * 9 + r4 * 3 + b4) * 255 / (13 * 15);
+        r = b = kind == MonitorKind::Green ? 0 : luma;
+        g = luma;
+    }
+    const int shift = brightness * 128 / 100;
+    auto adjusted = [shift](int value) { return static_cast<uint32_t>(value + shift < 0 ? 0 : value + shift > 255 ? 255 : value + shift); };
+    if (kind == MonitorKind::Green)
+        return 0xFF000000 | adjusted(g) << 8;
+    return 0xFF000000 | adjusted(r) << 16 | adjusted(g) << 8 | adjusted(b);
+}
+
 void GateArray::setMonitor(MonitorKind kind, bool linear, int brightness)
 {
+    monitorKind_ = kind;
+    brightness_ = brightness;
     for (int c = 0; c < 32; ++c)
         colours_[c] = monitorColour(c, kind, linear, brightness);
     for (int i = 0; i < 17; ++i)
-        rgb_[i] = colours_[ink_[i]];
+        rgb_[i] = plus_ ? monitorColour12(plus12_[i], kind, brightness) : colours_[ink_[i]];
+    for (int i = 1; i < 16; ++i)
+        spriteRgb_[i] = monitorColour12(plus12_[16 + i], kind, brightness);
+}
+
+void GateArray::setPlus(bool plus)
+{
+    plus_ = plus;
+    for (int i = 0; i < 17; ++i)
+        rgb_[i] = plus_ ? monitorColour12(plus12_[i], monitorKind_, brightness_) : colours_[ink_[i]];
+}
+
+void GateArray::setPlusColour(int index, uint16_t grb)
+{
+    if (!plus_)
+        return;
+    index &= 31;
+    plus12_[index] = grb;
+    const uint32_t rgb = monitorColour12(grb, monitorKind_, brightness_);
+    if (index > 16) {
+        spriteRgb_[index - 16] = rgb;
+        return;
+    }
+    if (!inkChanged_) {
+        std::memcpy(rgbBefore_, rgb_, sizeof rgb_);
+        inkChanged_ = true;
+    }
+    rgb_[index] = rgb;
 }
 
 void GateArray::write(uint8_t value)
@@ -152,6 +205,9 @@ void GateArray::restore(uint8_t pen, const uint8_t* inks, uint8_t romAndMode, ui
         ink_[i] = inks[i] & 0x1F;
         rgb_[i] = colours_[ink_[i]];
     }
+    if (plus_)
+        for (int i = 0; i < 17; ++i)
+            setPlusColour(i, plusColour(ink_[i]));
     inkChanged_ = false;
     rmr_ = romAndMode & 0x0F;
     mode_ = rmr_ & 3;
