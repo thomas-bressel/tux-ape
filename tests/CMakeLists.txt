@@ -59,6 +59,11 @@ target_link_libraries(cpc_boot PRIVATE tuxape_core)
 add_test(NAME cpc_boot COMMAND cpc_boot)
 set_tests_properties(cpc_boot PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(core_speed core_speed.cpp)
+target_link_libraries(core_speed PRIVATE tuxape_core)
+add_test(NAME core_speed COMMAND core_speed)
+set_tests_properties(core_speed PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(machine_setup machine_setup.cpp)
 target_link_libraries(machine_setup PRIVATE tuxape_core)
 add_test(NAME machine_setup COMMAND machine_setup)

@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <memory>
 #include <string>
 #include <vector>
@@ -37,6 +38,8 @@ void usage(const char* program)
                  "  --after N              frames to run after typing (default 50)\n"
                  "  --tap N                press SPACE every N frames while running on,\n"
                  "                         for programs that wait for a key between pages\n"
+                 "  --bench SECONDS        then run that many emulated seconds, sound included,\n"
+                 "                         and say how fast the emulation goes\n"
                  "  --png FILE             save the final picture\n"
                  "  --text                 print the final screen as text\n"
                  "  --capture              print everything the program printed\n"
@@ -70,6 +73,7 @@ int main(int argc, char* argv[])
     int frames = 150;
     int after = 50;
     int tap = 0;
+    int benchSeconds = 0;
     std::string typed;
     std::string png;
     std::string discFile;
@@ -103,6 +107,8 @@ int main(int argc, char* argv[])
             after = std::atoi(value());
         } else if (arg == "--tap") {
             tap = std::atoi(value());
+        } else if (arg == "--bench") {
+            benchSeconds = std::atoi(value());
         } else if (arg == "--type") {
             typed = value();
         } else if (arg == "--disc") {
@@ -204,6 +210,23 @@ int main(int argc, char* argv[])
         if (tap > 0)
             cpc.keyboard().set(CpcKey::Space, f % tap < 3);
         cpc.runFrame();
+    }
+
+    if (benchSeconds > 0) {
+        // Processor time, not time on the clock: what else the host is
+        // doing does not count.
+        cpc.audio().setSampleRate(44100);
+        const uint64_t emulatedStart = cpc.microseconds();
+        const std::clock_t cpuStart = std::clock();
+        while (cpc.microseconds() - emulatedStart < static_cast<uint64_t>(benchSeconds) * 1000000) {
+            cpc.runFrame();
+            cpc.audio().samples().clear();
+        }
+        const double cpu = static_cast<double>(std::clock() - cpuStart) / CLOCKS_PER_SEC;
+        const double emulated = static_cast<double>(cpc.microseconds() - emulatedStart) / 1e6;
+        std::printf("%.1f emulated seconds in %.2f s of processor time: %.1f times the speed of a CPC,\n"
+                    "or %.1f %% of one core at normal speed\n",
+                    emulated, cpu, emulated / cpu, 100.0 * cpu / emulated);
     }
 
     if (capture)

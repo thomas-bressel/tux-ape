@@ -6,6 +6,10 @@
 #include <chrono>
 #include <cstring>
 
+#ifdef __linux__
+#include <pthread.h>
+#endif
+
 using tuxape::Cpc;
 using tuxape::Monitor;
 
@@ -216,8 +220,12 @@ void Emulator::publishFrame()
     lastFrameNumber_ = number;
     {
         std::lock_guard lock(frameMutex_);
-        std::memcpy(frame_.bits(), cpc_.monitor().frame(),
-                    static_cast<size_t>(Monitor::kWidth) * Monitor::kHeight * sizeof(uint32_t));
+        const size_t size = static_cast<size_t>(Monitor::kWidth) * Monitor::kHeight * sizeof(uint32_t);
+        // A picture that has not changed is not drawn again: a screen that
+        // stands still costs the user interface nothing.
+        if (std::memcmp(frame_.constBits(), cpc_.monitor().frame(), size) == 0)
+            return;
+        std::memcpy(frame_.bits(), cpc_.monitor().frame(), size);
     }
     // One notification is enough until the GUI has collected the picture.
     if (!framePending_.exchange(true))
@@ -226,6 +234,11 @@ void Emulator::publishFrame()
 
 void Emulator::threadMain()
 {
+#ifdef __linux__
+    // So that the emulation and the user interface can be told apart in a
+    // process viewer.
+    pthread_setname_np(pthread_self(), "tuxape-emu");
+#endif
     using Clock = std::chrono::steady_clock;
     using std::chrono::duration;
     using std::chrono::duration_cast;
