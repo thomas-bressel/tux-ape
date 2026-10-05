@@ -158,19 +158,6 @@ void draw(QPainter& p, IconId id)
         p.resetTransform();
         break;
     }
-    case IconId::Pokes: {
-        // A star: cheats.
-        QPolygonF star;
-        for (int i = 0; i < 10; ++i) {
-            const qreal radius = (i % 2) ? 3.6 : 8.2;
-            const qreal a = -M_PI / 2 + i * M_PI / 5;
-            star << QPointF(10 + radius * std::cos(a), 10.5 + radius * std::sin(a));
-        }
-        p.setPen(outline(kYellow.darker(150)));
-        p.setBrush(kYellow);
-        p.drawPolygon(star);
-        break;
-    }
     case IconId::FullScreen:
         p.setPen(outline());
         p.setBrush(kBlue);

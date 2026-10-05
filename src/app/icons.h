@@ -17,7 +17,6 @@ enum class IconId {
     LoadSnapshot,
     SaveSnapshot,
     Settings,
-    Pokes,
     FullScreen,
     Help,
 };

@@ -204,8 +204,6 @@ void MainWindow::createMenus()
     addItem(file, tr("Record &WAV..."));
     addItem(file, tr("Record &YM..."));
     file->addSeparator();
-    addItem(file, tr("Po&kes..."), CTRL | Qt::Key_F8);
-    file->addSeparator();
     addItem(file, tr("Aut&o Type..."), CTRL | Qt::Key_F5, [this] { autoType(); });
     pasteAction_ = addItem(file, tr("&Paste"), CTRL | Qt::Key_F11, [this] { paste(); });
     pasteAction_->setEnabled(!QApplication::clipboard()->text().isEmpty());
@@ -298,7 +296,6 @@ void MainWindow::createControlPanel()
     addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Settings, tr("Settings (F12)"), setupAction_);
-    addButton(IconId::Pokes, tr("Pokes (CTRL+F8)"), nullptr);
     addButton(IconId::FullScreen, tr("Toggle Full Screen (F10)"), fullScreenAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Help, tr("Help (F1)"), nullptr);
