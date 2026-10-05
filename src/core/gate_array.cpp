@@ -57,6 +57,7 @@ constexpr PenTable kPenTable{};
 
 constexpr int kBorder = 16;
 constexpr uint32_t kBlack = 0xFF000000;
+constexpr int kHsyncPulse = 6;  // longest the Gate Array's own HSYNC pulse gets, in microseconds
 
 }  // namespace
 
@@ -175,22 +176,27 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
     }
 
     if (hsync) {
-        // Two microseconds into the HSYNC the monitor's sync pulse starts
-        // and the requested screen mode takes effect. Shorter pulses do
-        // neither.
-        if (hsyncAge_ == 2) {
+        // Of the CRTC's HSYNC the Gate Array makes a pulse of its own, six
+        // microseconds at most. Two microseconds in, it starts the sync
+        // pulse sent to the monitor; when its pulse ends, the requested
+        // screen mode takes effect: a mode asked for during the first six
+        // microseconds of a long HSYNC is still in time (Compendium 9.3.2,
+        // Shaker "Gate Array moderisation").
+        if (hsyncAge_ == 2)
             monitor.hsync();
+        if (hsyncAge_ == kHsyncPulse)
             mode_ = rmr_ & 3;
-        }
         if (hsyncAge_ < 0xFF)
             ++hsyncAge_;
     } else if (prevHsync_ && crtc.previousHsyncCut() == Crtc::HsyncCut::Never) {
         // R3 was cleared just in time: there has been no pulse.
         hsyncAge_ = 0;
     } else if (prevHsync_) {
-        // A pulse of exactly two microseconds still sets the mode; one that
-        // R3 ended during its second character does not.
-        if (hsyncAge_ == 2 && crtc.previousHsyncCut() == Crtc::HsyncCut::None)
+        // A shorter HSYNC sets the mode as it ends, provided it lasted two
+        // microseconds; one that R3 cut short during its second character
+        // does not (9.3.4.1).
+        const bool longEnough = hsyncAge_ > 2 || (hsyncAge_ == 2 && crtc.previousHsyncCut() == Crtc::HsyncCut::None);
+        if (longEnough && hsyncAge_ <= kHsyncPulse)
             mode_ = rmr_ & 3;
         hsyncAge_ = 0;
         // The end of every HSYNC, however short, advances the interrupt
@@ -267,6 +273,12 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
     }
     blankedBefore_ = hsync_ && cut == Crtc::HsyncCut::None;
     lateBlanking_ = false;
+    // A pulse that R3 ended during its third character or later has lasted
+    // long enough to set the mode, and the picture that comes back within
+    // that character is already in the new one (9.3.4.2).
+    if ((cut == Crtc::HsyncCut::AfterQuarter || cut == Crtc::HsyncCut::AtStart) && hsyncAge_ >= 3
+        && hsyncAge_ <= kHsyncPulse)
+        mode_ = rmr_ & 3;
     if (vsyncBlack_) {
         blackFrom = 0;
         blackTo = Monitor::kCellWidth;

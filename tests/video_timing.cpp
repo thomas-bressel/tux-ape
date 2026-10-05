@@ -181,11 +181,14 @@ void testCrtcTiming(CrtcType type, int outCMicrosecond)
     CHECK_EQ(outi.x - outN.x, 2 * 16);
 }
 
-// The screen mode is taken two microseconds into the HSYNC, and not at all
-// if the HSYNC is shorter than that.
+// The screen mode asked for is taken when the Gate Array's own HSYNC pulse
+// ends: six microseconds into a long HSYNC, at the end of a shorter one, and
+// not at all if the HSYNC lasts less than two microseconds (Compendium
+// 9.3.2; on a real machine the Shaker's "Gate Array moderisation" screen
+// shows the last write that is still in time).
 void testModeChange()
 {
-    for (int width : {1, 2, 14}) {
+    for (int width : {1, 2, 4, 6, 14}) {
         Crtc crtc;
         GateArray ga;
         Monitor monitor;
@@ -210,14 +213,32 @@ void testModeChange()
             tick();
         // That tick was the first microsecond of the HSYNC.
         CHECK(crtc.hsync());
-        CHECK_EQ(ga.mode(), 0);
-        tick();
-        CHECK_EQ(ga.mode(), 0);
-        tick();
-        CHECK_EQ(ga.mode(), width >= 2 ? 1 : 0);
+        const int taken = width < 2 ? -1 : 46 + (width < 6 ? width : 6);  // character at which the mode shows
+        while (crtc.hcc() != 60) {
+            CHECK_EQ(ga.mode(), taken >= 0 && crtc.hcc() >= taken ? 1 : 0);
+            tick();
+        }
         while (crtc.hcc() != 20)
             tick();
         CHECK_EQ(ga.mode(), width >= 2 ? 1 : 0);
+
+        // A mode asked for during the pulse is still in time; once the pulse
+        // has ended it waits for the next line.
+        if (width == 14) {
+            while (crtc.hcc() != 51)
+                tick();
+            ga.write(0x80 | 0x0C | 2);  // during the sixth microsecond
+            tick();
+            CHECK_EQ(ga.mode(), 2);
+            ga.write(0x80 | 0x0C | 0);  // during the seventh
+            while (crtc.hcc() != 45) {
+                tick();
+                CHECK_EQ(ga.mode(), 2);
+            }
+            while (crtc.hcc() != 52)
+                tick();
+            CHECK_EQ(ga.mode(), 0);
+        }
     }
 }
 
