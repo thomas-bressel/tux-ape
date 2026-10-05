@@ -20,6 +20,10 @@ add_executable(cpc_timing cpc_timing.cpp)
 target_link_libraries(cpc_timing PRIVATE tuxape_core)
 add_test(NAME cpc_timing COMMAND cpc_timing)
 
+add_executable(csl csl.cpp)
+target_link_libraries(csl PRIVATE tuxape_core)
+add_test(NAME csl COMMAND csl)
+
 add_executable(video_timing video_timing.cpp)
 target_link_libraries(video_timing PRIVATE tuxape_core)
 add_test(NAME video_timing COMMAND video_timing)

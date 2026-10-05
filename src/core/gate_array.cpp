@@ -83,7 +83,7 @@ void GateArray::reset()
     vsyncLines_ = 0;
     vsyncSequence_ = vsyncBlack_ = false;
     interrupt_ = false;
-    prevHsync_ = prevVsync_ = delayedHsync_ = false;
+    prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
 }
 
 void GateArray::setMonitor(MonitorKind kind, bool linear)
@@ -141,10 +141,9 @@ void GateArray::acknowledgeInterrupt()
     interrupt_ = false;
 }
 
-void GateArray::tick(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor)
+void GateArray::sync(const Crtc& crtc, Monitor& monitor)
 {
-    const bool plusAsic = crtc.type() == CrtcType::AsicPlus;
-    const bool asic = plusAsic || crtc.type() == CrtcType::PreAsic;
+    const bool asic = crtc.type() == CrtcType::AsicPlus || crtc.type() == CrtcType::PreAsic;
 
     // A discrete Gate Array reacts to the CRTC's HSYNC at once, a character
     // ahead of the picture it is still drawing. The ASICs keep the two in
@@ -199,9 +198,15 @@ void GateArray::tick(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor
     }
     prevHsync_ = hsync;
     prevVsync_ = vsync;
+    hsync_ = hsync;
+}
+
+void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor)
+{
+    const bool plusAsic = crtc.type() == CrtcType::AsicPlus;
 
     if (uint32_t* out = monitor.cell()) {
-        if (hsync || vsyncBlack_) {
+        if (hsync_ || vsyncBlack_) {
             for (int i = 0; i < Monitor::kCellWidth; ++i)
                 out[i] = kBlack;
         } else {

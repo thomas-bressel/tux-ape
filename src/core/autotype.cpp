@@ -68,8 +68,9 @@ constexpr NamedKey kNamed[] = {
     {"F5", CpcKey::F5}, {"F6", CpcKey::F6}, {"F7", CpcKey::F7}, {"F8", CpcKey::F8}, {"F9", CpcKey::F9},
 };
 
-// Finds the key, and whether SHIFT is needed, that produces a character.
-bool keyForChar(char c, CpcKey& key, bool& shift)
+}  // namespace
+
+bool cpcKeyForChar(char c, CpcKey& key, bool& shift)
 {
     const unsigned char u = static_cast<unsigned char>(c);
     if (std::isalpha(u) && u < 128) {
@@ -92,6 +93,8 @@ bool keyForChar(char c, CpcKey& key, bool& shift)
     return false;
 }
 
+namespace {
+
 bool namedKey(std::string_view name, CpcKey& key)
 {
     std::string upper(name);
@@ -105,7 +108,7 @@ bool namedKey(std::string_view name, CpcKey& key)
     }
     // A single character names the key that carries it.
     bool shift;
-    return name.size() == 1 && keyForChar(name[0], key, shift);
+    return name.size() == 1 && cpcKeyForChar(name[0], key, shift);
 }
 
 }  // namespace
@@ -135,7 +138,7 @@ void AutoType::addChar(char c)
 {
     CpcKey key;
     bool shift;
-    if (keyForChar(c, key, shift))
+    if (cpcKeyForChar(c, key, shift))
         steps_.push_back({Step::Stroke, key, shift, 0});
 }
 

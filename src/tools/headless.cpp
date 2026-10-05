@@ -1,6 +1,8 @@
 // Runs the emulator without a window: boots a machine, optionally types
-// text, then saves a screenshot and/or prints the screen as text. Meant for
-// automated checks and for debugging on machines without a display.
+// text, then saves a screenshot and/or prints the screen as text. It can
+// also play a CSL script, saving the pictures the script or the emulated
+// program asks for. Meant for automated checks and for debugging on machines
+// without a display.
 
 #include <cstdio>
 #include <cstdlib>
@@ -11,6 +13,7 @@
 
 #include "core/autotype.h"
 #include "core/cpc.h"
+#include "core/csl.h"
 #include "core/files.h"
 #include "core/screen_text.h"
 #include "core/setup.h"
@@ -33,8 +36,23 @@ void usage(const char* program)
                  "                         for programs that wait for a key between pages\n"
                  "  --png FILE             save the final picture\n"
                  "  --text                 print the final screen as text\n"
-                 "  --capture              print everything the program printed\n",
+                 "  --capture              print everything the program printed\n"
+                 "  --csl FILE             play a CSL script instead of the above\n"
+                 "  --screenshot-dir DIR   where the script's pictures go (default .)\n",
                  program);
+}
+
+// Saves the monitor's picture with its scanlines doubled, which gives it
+// the right proportions.
+bool savePicture(tuxape::Cpc& cpc, const std::filesystem::path& path)
+{
+    using tuxape::Monitor;
+    const uint32_t* frame = cpc.monitor().frame();
+    std::vector<uint32_t> doubled(static_cast<size_t>(Monitor::kWidth) * Monitor::kHeight * 2);
+    for (int y = 0; y < Monitor::kHeight * 2; ++y)
+        std::memcpy(&doubled[static_cast<size_t>(y) * Monitor::kWidth], frame + (y / 2) * Monitor::kWidth,
+                    Monitor::kWidth * sizeof(uint32_t));
+    return tuxape::writePng(path, doubled.data(), Monitor::kWidth, Monitor::kHeight * 2);
 }
 
 }  // namespace
@@ -55,6 +73,8 @@ int main(int argc, char* argv[])
     bool fastDisc = false;
     bool printText = false;
     bool capture = false;
+    std::string cslFile;
+    std::filesystem::path screenshotDir = ".";
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -90,6 +110,10 @@ int main(int argc, char* argv[])
             printText = true;
         } else if (arg == "--capture") {
             capture = true;
+        } else if (arg == "--csl") {
+            cslFile = value();
+        } else if (arg == "--screenshot-dir") {
+            screenshotDir = value();
         } else {
             usage(argv[0]);
             return 2;
@@ -102,6 +126,23 @@ int main(int argc, char* argv[])
     if (!setupStockMachine(cpc, model, romDir, &error)) {
         std::fprintf(stderr, "%s\n", error.c_str());
         return 1;
+    }
+
+    if (!cslFile.empty()) {
+        CslRunner runner(cpc);
+        runner.setRomDir(romDir);
+        if (!discFile.empty())
+            runner.setFallbackDisc(discFile);
+        std::error_code ec;
+        std::filesystem::create_directories(screenshotDir, ec);
+        runner.setScreenshotSink([&](const std::string& name) {
+            return savePicture(cpc, screenshotDir / (name + ".png"));
+        });
+        const bool ok = runner.run(cslFile);
+        std::printf("%d picture(s) saved in %s\n", runner.screenshotCount(), screenshotDir.string().c_str());
+        if (!ok)
+            std::fprintf(stderr, "%s\n", runner.error().c_str());
+        return ok ? 0 : 1;
     }
 
     // Everything printed goes through the firmware's TXT OUTPUT entry.
@@ -147,17 +188,9 @@ int main(int argc, char* argv[])
     if (printText)
         std::fputs(readScreenText(cpc).c_str(), stdout);
 
-    if (!png.empty()) {
-        // Double the scanlines so the picture has the right proportions.
-        const uint32_t* frame = cpc.monitor().frame();
-        std::vector<uint32_t> doubled(static_cast<size_t>(Monitor::kWidth) * Monitor::kHeight * 2);
-        for (int y = 0; y < Monitor::kHeight * 2; ++y)
-            std::memcpy(&doubled[static_cast<size_t>(y) * Monitor::kWidth], frame + (y / 2) * Monitor::kWidth,
-                        Monitor::kWidth * sizeof(uint32_t));
-        if (!writePng(png, doubled.data(), Monitor::kWidth, Monitor::kHeight * 2)) {
-            std::fprintf(stderr, "cannot write %s\n", png.c_str());
-            return 1;
-        }
+    if (!png.empty() && !savePicture(cpc, png)) {
+        std::fprintf(stderr, "cannot write %s\n", png.c_str());
+        return 1;
     }
     return 0;
 }

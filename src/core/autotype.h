@@ -9,6 +9,11 @@
 
 namespace tuxape {
 
+// Finds the key that carries a character on the CPC's UK keyboard, and
+// whether SHIFT is needed with it. Returns false for characters the
+// keyboard cannot type.
+bool cpcKeyForChar(char c, CpcKey& key, bool& shift);
+
 // Types text into the emulated machine by pressing keys on its keyboard,
 // using WinAPE's Auto-Type syntax:
 //

@@ -148,6 +148,23 @@ uint8_t Cpc::portB() const
     return value;
 }
 
+void Cpc::ssmOpcode(uint8_t op)
+{
+    // The opcodes the SSM convention allows: those with no function at all.
+    const bool allowed = op <= 0x3F || (op >= 0x7F && op <= 0x9F) || op >= 0xC0
+                         || ((op & 0xE4) == 0xA4);
+    // The second half must be the very next instruction.
+    const uint16_t at = static_cast<uint16_t>(cpu_.pc - 2);
+    if (allowed && ssmLow_ >= 0 && at == ssmNextPc_) {
+        const uint16_t code = static_cast<uint16_t>(op << 8 | ssmLow_);
+        ssmLow_ = -1;
+        ssmHook_(code);
+        return;
+    }
+    ssmLow_ = allowed ? op : -1;
+    ssmNextPc_ = cpu_.pc;
+}
+
 void Cpc::syncSound()
 {
     // The sound chip is only brought up to date when something is about to

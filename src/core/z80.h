@@ -50,6 +50,9 @@ inline constexpr FlagTables flagTables{};
 //   bool    irq()                           level of the INT line
 //   uint8_t irqAck()                        interrupt acknowledge   6 T-states,
 //                                           returns the data bus value
+// and may provide:
+//   void    unusedEd(uint8_t op)            called when an ED-prefixed opcode
+//                                           that does nothing is executed
 template <class Bus>
 class Z80 {
 public:
@@ -959,6 +962,7 @@ private:
                     break;
                 }
                 default:  // ED 77, ED 7F: no operation
+                    notifyUnusedEd(op);
                     break;
                 }
                 break;
@@ -971,6 +975,13 @@ private:
             return;
         }
         // Every other ED opcode does nothing for the length of two fetches.
+        notifyUnusedEd(op);
+    }
+
+    void notifyUnusedEd(uint8_t op)
+    {
+        if constexpr (requires(Bus& bus, uint8_t o) { bus.unusedEd(o); })
+            bus_.unusedEd(op);
     }
 
     // LDI, CPI, INI, OUTI and their decrementing and repeating forms.

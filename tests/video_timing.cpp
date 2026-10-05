@@ -197,7 +197,8 @@ void testModeChange()
         }
         auto tick = [&] {
             crtc.tick();
-            ga.tick(crtc, ram.data(), monitor);
+            ga.sync(crtc, monitor);
+            ga.render(crtc, ram.data(), monitor);
         };
         // Go to the start of a line, then ask for mode 1.
         do

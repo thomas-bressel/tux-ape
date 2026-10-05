@@ -3,6 +3,7 @@ add_library(tuxape_core STATIC
     autotype.cpp
     cpc.cpp
     crtc.cpp
+    csl.cpp
     disc.cpp
     fdc.cpp
     files.cpp

@@ -47,6 +47,12 @@ public:
     void setExecHook(ExecHook hook) { execHook_ = std::move(hook); }
     void watchAddress(uint16_t addr, bool watch = true);
 
+    // "SSM" codes: a program can signal the emulator by executing two
+    // do-nothing opcodes in a row, ED ll ED hh (the convention comes from the
+    // Logon System Shaker tests). `hook` receives hh * 256 + ll.
+    using SsmHook = std::function<void(uint16_t code)>;
+    void setSsmHook(SsmHook hook) { ssmHook_ = std::move(hook); }
+
     // T-states since power on.
     uint64_t clock() const { return clk_; }
     // The same in microseconds, which is what the slower peripherals count in.
@@ -125,7 +131,15 @@ public:
 
     void tick(int tstates) { advance(tstates); }
 
-    bool irq() const { return gateArray_.interruptRequested(); }
+    // The Z80 looks at INT as its last T-state begins, so a request raised
+    // just as an instruction ends is only seen after the next one.
+    bool irq() const { return gateArray_.interruptRequested() && interruptRaisedAt_ + 1 < clk_; }
+
+    void unusedEd(uint8_t op)
+    {
+        if (ssmHook_)
+            ssmOpcode(op);
+    }
 
     uint8_t irqAck()
     {
@@ -155,8 +169,13 @@ private:
 
     uint64_t clk_ = 0;
     uint64_t soundClk_ = 0;  // microsecond the sound generators have reached
-    uint64_t videoClk_ = 0;  // start of the next microsecond of video to draw
+    uint64_t videoClk_ = 0;  // start of the microsecond of video in progress
+    uint64_t interruptRaisedAt_ = 0;
     uint64_t runUntil_ = 0;
+
+    SsmHook ssmHook_;
+    int ssmLow_ = -1;        // first half of a code, or -1
+    uint16_t ssmNextPc_ = 0;  // where the second half must sit
 
     ExecHook execHook_;
     std::vector<uint8_t> watched_;  // one flag per address; empty when nothing is watched
@@ -166,9 +185,17 @@ private:
     {
         clk_ += tstates;
         while (videoClk_ + 4 <= clk_) {
-            crtc_.tick();
-            gateArray_.tick(crtc_, memory_.baseRam(), monitor_);
+            // The microsecond that has just ended is drawn last, so that it
+            // shows everything the CPU did during it...
+            gateArray_.render(crtc_, memory_.baseRam(), monitor_);
             videoClk_ += 4;
+            // ...and the CRTC moves on at once: what the CPU reads during
+            // the new microsecond (VSYNC through the PPI, say) is current.
+            crtc_.tick();
+            const bool pending = gateArray_.interruptRequested();
+            gateArray_.sync(crtc_, monitor_);
+            if (!pending && gateArray_.interruptRequested())
+                interruptRaisedAt_ = videoClk_;
         }
     }
 
@@ -180,6 +207,7 @@ private:
     void ioWrite(uint16_t port, uint8_t value);  // every device but the CRTC
     void crtcWrite(uint16_t port, uint8_t value);
     uint8_t portB() const;
+    void ssmOpcode(uint8_t op);
     void updatePsgBus();
     void syncSound();
 };

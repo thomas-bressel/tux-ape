@@ -26,9 +26,13 @@ public:
     // function, RAM banking, belongs to the memory manager.
     void write(uint8_t value);
 
-    // One microsecond of video: follows the CRTC, raises interrupts, and
-    // draws 16 pixels on the monitor.
-    void tick(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor);
+    // A microsecond of video is handled in two steps. At its start, once
+    // the CRTC has moved on, sync() follows the CRTC's sync signals: monitor
+    // sync, screen mode, interrupts. At its end render() draws 16 pixels,
+    // with whatever the CPU changed meanwhile, and fetches the next
+    // character from video memory.
+    void sync(const Crtc& crtc, Monitor& monitor);
+    void render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor);
 
     bool interruptRequested() const { return interrupt_; }
     void acknowledgeInterrupt();
@@ -75,6 +79,7 @@ private:
     bool prevHsync_ = false;
     bool prevVsync_ = false;
     bool delayedHsync_ = false;  // the CRTC's HSYNC one microsecond ago
+    bool hsync_ = false;         // HSYNC as the Gate Array sees it now
 };
 
 }  // namespace tuxape
