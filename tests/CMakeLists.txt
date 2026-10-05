@@ -16,6 +16,15 @@ add_executable(z80_interrupts z80_interrupts.cpp)
 target_link_libraries(z80_interrupts PRIVATE tuxape_core)
 add_test(NAME z80_interrupts COMMAND z80_interrupts)
 
+add_executable(cpc_timing cpc_timing.cpp)
+target_link_libraries(cpc_timing PRIVATE tuxape_core)
+add_test(NAME cpc_timing COMMAND cpc_timing)
+
+add_executable(cpc_boot cpc_boot.cpp)
+target_link_libraries(cpc_boot PRIVATE tuxape_core)
+add_test(NAME cpc_boot COMMAND cpc_boot)
+set_tests_properties(cpc_boot PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(z80_sst z80_sst.cpp)
 target_link_libraries(z80_sst PRIVATE tuxape_core)
 if(EXISTS ${TUXAPE_TEST_ROMS}/sst)

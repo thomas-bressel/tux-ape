@@ -24,6 +24,7 @@ endif()
 # The emulation core has no dependency on Qt or on the host system, so it can
 # be tested headless and reused by other front ends.
 add_subdirectory(src/core)
+add_subdirectory(src/tools)
 
 if(TUXAPE_BUILD_APP)
     add_subdirectory(src/app)

@@ -1,26 +1,15 @@
 // Interrupt behaviour of the Z80 core: response in the three modes, NMI,
 // HALT, the one-instruction delay after EI, and the NMOS quirk of LD A,I.
 
-#include <cstdio>
 #include <initializer_list>
 
+#include "check.h"
 #include "core/z80.h"
 #include "test_bus.h"
 
 namespace {
 
 using Cpu = tuxape::Z80<TestBus>;
-
-int failures = 0;
-
-#define CHECK_EQ(got, want)                                                                         \
-    do {                                                                                            \
-        const long long g = (got), w = (want);                                                      \
-        if (g != w) {                                                                               \
-            std::printf("%s:%d: %s = %llx, want %llx\n", __FILE__, __LINE__, #got, g, w);           \
-            ++failures;                                                                             \
-        }                                                                                           \
-    } while (0)
 
 void load(TestBus& bus, uint16_t addr, std::initializer_list<uint8_t> bytes)
 {
@@ -221,10 +210,5 @@ int main()
     testLdAIParityLostOnInterrupt();
     testPrefixNotInterruptible();
 
-    if (failures) {
-        std::printf("%d check(s) failed\n", failures);
-        return 1;
-    }
-    std::printf("all interrupt checks passed\n");
-    return 0;
+    return checkSummary("z80_interrupts");
 }
