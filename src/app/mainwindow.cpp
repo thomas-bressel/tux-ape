@@ -233,7 +233,8 @@ void MainWindow::createMenus()
     recordSessionAction_->setCheckable(true);
     file->addSeparator();
     addItem(file, tr("Save Screens&hot..."), CTRL | Qt::Key_F7, [this] { saveScreenshot(); });
-    addItem(file, tr("R&ecord AVI..."));
+    recordAviAction_ = addItem(file, tr("R&ecord AVI..."), {}, [this] { toggleAviRecording(); });
+    recordAviAction_->setCheckable(true);
     recordWavAction_ = addItem(file, tr("Record &WAV..."), {}, [this] { toggleWavRecording(); });
     recordYmAction_ = addItem(file, tr("Record &YM..."), {}, [this] { toggleYmRecording(); });
     // Ticked while the recording runs.
@@ -633,6 +634,23 @@ void MainWindow::toggleWavRecording()
     recordWavAction_->setChecked(emulator_->recordingWav());
 }
 
+void MainWindow::toggleAviRecording()
+{
+    if (emulator_->recordingAvi()) {
+        emulator_->stopAviRecording();
+    } else {
+        QString path = QFileDialog::getSaveFileName(this, tr("Record AVI"), recordingFolder_, tr("AVI Files (*.avi)"));
+        if (!path.isEmpty()) {
+            if (QFileInfo(path).suffix().isEmpty())
+                path += QLatin1String(".avi");
+            recordingFolder_ = QFileInfo(path).absolutePath();
+            if (!emulator_->startAviRecording(path))
+                report(tr("Cannot write %1.").arg(QDir::toNativeSeparators(path)));
+        }
+    }
+    recordAviAction_->setChecked(emulator_->recordingAvi());
+}
+
 void MainWindow::toggleYmRecording()
 {
     if (emulator_->recordingYm()) {
@@ -839,6 +857,7 @@ void MainWindow::updateStats(int speedPercent, int framesPerSecond)
     if (emulator_->isPaused())
         return;
     QString text = tr("%1%  FPS: %2").arg(speedPercent).arg(framesPerSecond);
+    recordAviAction_->setChecked(emulator_->recordingAvi());
     // A session playing: where it is, and how long it is.
     if (emulator_->playingSession()) {
         const auto [played, total] = emulator_->playbackPosition();

@@ -96,6 +96,7 @@ private:
     QAction* cartridgeAction_ = nullptr;
     QAction* recordWavAction_ = nullptr;
     QAction* recordYmAction_ = nullptr;
+    QAction* recordAviAction_ = nullptr;
     QAction* recordSessionAction_ = nullptr;
     QAction* playSessionAction_ = nullptr;
     QString sessionPath_;  // the file the session being recorded goes to
@@ -163,6 +164,7 @@ private:
     // recording starts; chosen again, the entry ends it.
     void toggleWavRecording();
     void toggleYmRecording();
+    void toggleAviRecording();
     // File > Record Session and Playback Session, each ended by choosing
     // its entry again.
     void toggleSessionRecording();

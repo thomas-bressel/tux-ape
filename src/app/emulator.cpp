@@ -179,16 +179,34 @@ void Emulator::setPaused(bool paused)
 
 // ---- recording -------------------------------------------------------------------
 
+// With the sound off the mixer is at rest: it is set running for a
+// recording, and stopped when the last recording ends. Both are called
+// with the machine's lock held. The first gives the rate of the samples.
+int Emulator::startMixerForRecording()
+{
+    const int rate = audio_ ? audio_->sampleRate() : 44100;
+    if (!cpc_.audio().enabled()) {
+        cpc_.audio().setSampleRate(rate);
+        recordingOwnsMixer_ = true;
+    }
+    return rate;
+}
+
+void Emulator::stopMixerForRecording()
+{
+    if (!recordingOwnsMixer_ || wav_.active() || avi_.active())
+        return;
+    recordingOwnsMixer_ = false;
+    cpc_.audio().setSampleRate(0);
+    cpc_.audio().samples().clear();
+}
+
 bool Emulator::startWavRecording(const QString& path)
 {
-    return withMachine([&](Cpc& cpc) {
-        // With the sound off the mixer is at rest: it runs for the file.
-        wavOwnsMixer_ = !cpc.audio().enabled();
-        const int rate = audio_ ? audio_->sampleRate() : 44100;
-        if (!wav_.start(path.toStdString(), rate))
+    return withMachine([&](Cpc&) {
+        if (!wav_.start(path.toStdString(), audio_ ? audio_->sampleRate() : 44100))
             return false;
-        if (wavOwnsMixer_)
-            cpc.audio().setSampleRate(rate);
+        startMixerForRecording();
         recordingWav_ = true;
         return true;
     });
@@ -201,11 +219,28 @@ void Emulator::stopWavRecording()
             return;
         wav_.write(cpc.audio().samples());
         wav_.stop();
-        if (wavOwnsMixer_) {
-            cpc.audio().setSampleRate(0);
-            cpc.audio().samples().clear();
-        }
+        stopMixerForRecording();
         recordingWav_ = false;
+    });
+}
+
+bool Emulator::startAviRecording(const QString& path)
+{
+    return withMachine([&](Cpc&) {
+        if (!avi_.start(path, audio_ ? audio_->sampleRate() : 44100))
+            return false;
+        startMixerForRecording();
+        recordingAvi_ = true;
+        return true;
+    });
+}
+
+void Emulator::stopAviRecording()
+{
+    withMachine([&](Cpc&) {
+        avi_.stop();
+        stopMixerForRecording();
+        recordingAvi_ = false;
     });
 }
 
@@ -605,6 +640,14 @@ void Emulator::threadMain()
         }
         cpc_.runFrame();
         ym_.frame(cpc_.psg());
+        if (avi_.active()) {
+            avi_.addFrame(cpc_.monitor().frame(), cpc_.audio().samples());
+            // It ends by itself when its file is as large as one can be.
+            if (!avi_.active()) {
+                stopMixerForRecording();
+                recordingAvi_ = false;
+            }
+        }
         // A breakpoint, the end of a step, or a break instruction: the
         // machine has stopped short of the frame's end, and stays there.
         const bool stop = stopRequested_ || cpc_.breakInstructionHit();

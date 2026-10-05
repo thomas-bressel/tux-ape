@@ -2,7 +2,8 @@
 // without a display (QT_QPA_PLATFORM=offscreen).
 //
 //   gui_tools [prefix]   also saves pictures of the two windows as
-//                        <prefix>screenshot.png and <prefix>autotype.png
+//                        <prefix>screenshot.png and <prefix>autotype.png,
+//                        and the film it records as <prefix>film.avi
 
 #include <QAction>
 #include <QApplication>
@@ -303,6 +304,56 @@ int main(int argc, char* argv[])
         CHECK(frames > 50);
         CHECK(tune.size() > 34 + frames * 16);
     }
+    // A film of the screen with its sound: an AVI file of JPEG pictures.
+    QAction* recordAvi = actionNamed(window, "Record AVI...");
+    CHECK(recordAvi && recordAvi->isEnabled() && recordAvi->isCheckable() && !recordAvi->isChecked());
+    const QString aviPath = folder.filePath("film.avi");
+    CHECK(emulator.startAviRecording(aviPath));
+    CHECK(emulator.recordingAvi());
+    emulator.autoType(QStringLiteral("SOUND 1,100,20,15~RETURN~"));
+    QTest::qWait(300);
+    recordAvi->trigger();
+    CHECK(!emulator.recordingAvi() && !recordAvi->isChecked());
+    {
+        QFile avi(aviPath);
+        CHECK(avi.open(QIODevice::ReadOnly));
+        const QByteArray data = avi.readAll();
+        auto quad = [&](qsizetype at) {
+            return static_cast<uint32_t>(static_cast<uint8_t>(data[at]) | static_cast<uint8_t>(data[at + 1]) << 8
+                                         | static_cast<uint8_t>(data[at + 2]) << 16)
+                   | static_cast<uint32_t>(static_cast<uint8_t>(data[at + 3])) << 24;
+        };
+        CHECK(data.startsWith("RIFF") && data.mid(8, 8) == "AVI LIST" && data.mid(20, 8) == "hdrlavih");
+        CHECK_EQ(quad(4), data.size() - 8);
+        CHECK_EQ(quad(32), 312 * 64);  // microseconds to a frame
+        const uint32_t frames = quad(48);
+        CHECK(frames > 20);
+        CHECK_EQ(quad(64), 768);
+        CHECK_EQ(quad(68), 540);
+        // The first picture, where the list of pictures starts, is a JPEG
+        // of the screen at its usual size.
+        const qsizetype movi = data.indexOf("movi");
+        CHECK(movi > 0 && data.mid(movi + 4, 4) == "00dc");
+        const QImage first = QImage::fromData(data.mid(movi + 12, quad(movi + 8)), "JPEG");
+        CHECK(first.size() == QSize(768, 540));
+        // Sound goes with it, and the index lists every piece.
+        CHECK(data.indexOf("01wb", movi) > 0);
+        const qsizetype index = data.lastIndexOf("idx1");
+        CHECK(index > movi);
+        CHECK(quad(index + 4) >= frames * 16);
+        CHECK_EQ(index + 8 + quad(index + 4), data.size());
+        // The first entry leads to the first picture.
+        CHECK(data.mid(index + 8, 4) == "00dc");
+        CHECK_EQ(movi + quad(index + 16), movi + 4);
+        // As many pictures in the index as the header says.
+        uint32_t pictures = 0;
+        for (qsizetype at = index + 8; at < data.size(); at += 16)
+            pictures += data.mid(at, 4) == "00dc" ? 1 : 0;
+        CHECK_EQ(pictures, frames);
+    }
+    if (!prefix.isEmpty())
+        QFile::copy(aviPath, prefix + "film.avi");
+    CHECK(!emulator.startAviRecording(folder.filePath("missing/film.avi")));
     CHECK(!emulator.startWavRecording(folder.filePath("missing/sound.wav")));
     CHECK(!emulator.startYmRecording(folder.filePath("missing/tune.ym")));
 

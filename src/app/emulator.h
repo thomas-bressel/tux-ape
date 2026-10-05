@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QString>
 
+#include "avirecorder.h"
 #include "hostjoystick.h"
 
 #include "core/autotype.h"
@@ -129,6 +130,10 @@ public:
     bool startYmRecording(const QString& path);
     bool stopYmRecording();
     bool recordingYm() const { return recordingYm_; }
+    // The picture and the sound together, as an AVI file.
+    bool startAviRecording(const QString& path);
+    void stopAviRecording();
+    bool recordingAvi() const { return recordingAvi_; }
 
     // ---- Sessions ----
     // Records what the keyboard and the joysticks do, from the machine's
@@ -239,9 +244,13 @@ private:
 
     tuxape::WavRecorder wav_;
     tuxape::YmRecorder ym_;
+    AviRecorder avi_;
     std::atomic<bool> recordingWav_{false};
     std::atomic<bool> recordingYm_{false};
-    bool wavOwnsMixer_ = false;  // the mixer runs for the recording alone
+    std::atomic<bool> recordingAvi_{false};
+    bool recordingOwnsMixer_ = false;  // the mixer runs for a recording alone
+    int startMixerForRecording();
+    void stopMixerForRecording();
     QString ymPath_;
 
     AudioOutput* device_ = nullptr;  // the sound device, if the host has one
