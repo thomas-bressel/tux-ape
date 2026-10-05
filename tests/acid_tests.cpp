@@ -46,9 +46,13 @@ struct Program {
 //   address left over from the fourth and restarts the machine.
 // - crtctest, as shipped, tests against the Plus ASIC's CRTC whatever key
 //   is pressed, and needs a 64K machine (it writes &FF to port &0000, which
-//   on a 6128 switches its own code out). Its I/O decode test cannot pass:
-//   it records the wrong register. The other failures are the interlace
-//   modes of R8 and one case of VSYNC during vertical adjustment.
+//   on a 6128 switches its own code out). Two of its tests cannot pass: the
+//   I/O decode test records the wrong register, and the "htot/2" test
+//   compares what it reads (0 or 1) with &FF. The other failures are in the
+//   interlace modes of R8, emulated on this CRTC from the Compendium's
+//   description: "R8 - count lines" gets 29 of its 32 frame lengths, and
+//   the two "vsync r8" tests see the VSYNC a line away from where the
+//   program expects it.
 const Program kPrograms[] = {
     {"psg", "psg/psg.dsk", "PSG", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 12000, 20, {}},
     {"cpu", "z80tests/cpu.dsk", "CPU", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 12000, 8, {}},
@@ -65,8 +69,7 @@ const Program kPrograms[] = {
       "vsync r8 test (r8=1)",
       "vsync r8 test (r8=3)",
       "vsync r8 htot/2 test",
-      "R8 - count lines",
-      "minimum VADJ value to cause VSYNC to trigger in VADJ (VCC increment in VADJ)"}},
+      "R8 - count lines"}},
 };
 
 struct Verdict {

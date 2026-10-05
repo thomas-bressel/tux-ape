@@ -133,12 +133,20 @@ private:
     bool interlaceLine_ = false;   // on the line added to an even frame
     bool midVsync_ = false;        // a VSYNC is waiting for the middle of the line
     bool lateVsync_ = false;       // a VSYNC is waiting for the next line
+    bool parityC9_ = false;        // types 3 and 4: the lines shown are the odd ones
 
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
     void endOfLine(bool oneCharacter);
     void startRow();
     void startFrame();
     void startVsync();
+
+    // ---- Types 3 and 4 (the 6845 inside Amstrad's ASICs) -----------------
+    bool asic() const { return type_ == CrtcType::AsicPlus || type_ == CrtcType::PreAsic; }
+    void endOfLineAsic();
+    void endFrameAsic();
+    void newFrameAsic();
+    void rowStartAsic(bool oddFrame);
 
     uint8_t dispNow() const;
     bool interlace() const { return (reg_[8] & 1) != 0; }

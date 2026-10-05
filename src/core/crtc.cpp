@@ -27,7 +27,7 @@ void Crtc::reset()
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
     c9Enabled_ = c4CountArmed_ = c9MatchAtEnd_ = false;
     vsyncAllowed_ = r7Match_ = vsyncFresh_ = false;
-    parityFrame_ = parityR6_ = false;
+    parityFrame_ = parityR6_ = parityC9_ = false;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
     c9Out_ = 0;
 }
@@ -107,8 +107,10 @@ void Crtc::write(uint8_t value, bool early)
                     vsyncFresh_ = true;
                 }
             }
-        } else if (old != reg_[7] && vcc_ == reg_[7] && !vsync_) {
-            // Making R7 equal to the current row starts a VSYNC straight away.
+        } else if (!asic() && old != reg_[7] && vcc_ == reg_[7] && !vsync_) {
+            // Making R7 equal to the current row starts a VSYNC straight
+            // away. Not on the ASICs, which only look at R7 as a row
+            // begins (16.4.4).
             startVsync();
         }
         break;
@@ -237,6 +239,8 @@ void Crtc::tick()
         hcc_ = 0;
         if (type0)
             lineStart0();
+        else if (asic())
+            endOfLineAsic();
         else
             endOfLine(oneCharacter);
     } else {
@@ -278,13 +282,13 @@ void Crtc::tick()
         // by R0 changing so that the line carries on.
         if (hcc_ == reg_[0] && c9AtR9())
             c9MatchAtEnd_ = true;
-        // The VSYNC of an even frame, held back to the middle of the line.
-        if (midVsync_ && hcc_ == reg_[0] / 2) {
-            midVsync_ = false;
-            if (!vsync_) {
-                startVsync();
-                vsyncFresh_ = true;
-            }
+    }
+    // The VSYNC of an even frame, held back to the middle of the line.
+    if (midVsync_ && hcc_ == reg_[0] / 2) {
+        midVsync_ = false;
+        if (!vsync_) {
+            startVsync();
+            vsyncFresh_ = true;
         }
     }
 
@@ -307,8 +311,9 @@ void Crtc::tick()
     if (hcc_ == reg_[1]) {
         hDisp_ = false;
         // The address reached at the end of a row's last line becomes the
-        // start of the next row.
-        if (c9AtR9())
+        // start of the next row. On the ASICs the lines added after the
+        // last row keep its address (11.2.6).
+        if (c9AtR9() && !(asic() && (inAdjust_ || interlaceLine_)))
             maRow_ = ma_;
     }
 
@@ -398,6 +403,109 @@ void Crtc::startVsync()
     vsc_ = 0;
 }
 
+// ---- CRTC 3 and 4 ----------------------------------------------------------
+
+// The 6845 of the ASICs counts lines in the plainest way of the five
+// (Compendium 10.3.4, 11.2.6, 12.5, 16.4.4, 19.8.4): a row ends when C9 has
+// reached R9 or gone past it, the lines of the vertical adjustment and of
+// the interlace are added to the last row without C4 moving, and R7 is only
+// looked at as a row begins.
+void Crtc::endOfLineAsic()
+{
+    if (vsync_) {
+        if (vsyncFresh_) {
+            // Started in the middle of the line: the count begins here.
+            vsyncFresh_ = false;
+            vsc_ = 0;
+        } else {
+            vsc_ = (vsc_ + 1) & 0x0F;
+            if (vsc_ == reg_[3] >> 4)
+                vsync_ = false;
+        }
+    }
+    if (lateVsync_) {
+        lateVsync_ = false;
+        if (!vsync_)
+            startVsync();
+    }
+
+    if (interlaceLine_) {
+        newFrameAsic();
+    } else if (inAdjust_) {
+        // The adjustment ends when the next line would be number R5, or
+        // further if R5 was brought down meanwhile.
+        if (((vlc_ + 1) & 0x1F) >= reg_[5])
+            endFrameAsic();
+        else
+            vlc_ = (vlc_ + 1) & 0x1F;
+    } else if (vlc_ >= reg_[9]) {
+        if (vcc_ == reg_[4]) {
+            if (reg_[5] != 0) {
+                inAdjust_ = true;
+                vlc_ = 0;
+            } else {
+                endFrameAsic();
+            }
+        } else {
+            vcc_ = (vcc_ + 1) & 0x7F;
+            // With an odd number of lines to share between two frames, rows
+            // of even lines and rows of odd lines follow each other.
+            if (reg_[9] & 1)
+                parityC9_ = !parityC9_;
+            vlc_ = interlaceVideo() ? parityC9_ : 0;
+            rowStartAsic(parityFrame_);
+        }
+    } else if (interlaceVideo()) {
+        vlc_ = ((vlc_ + 2) | (parityC9_ ? 1 : 0)) & 0x1F;
+    } else {
+        vlc_ = (vlc_ + 1) & 0x1F;
+    }
+}
+
+// The frame has run its lines. With an interlace mode set, an even frame
+// gets one more line: C4 stays where it is and C9 is 0 (19.6.4).
+void Crtc::endFrameAsic()
+{
+    if (interlace() && !parityFrame_) {
+        inAdjust_ = false;
+        interlaceLine_ = true;
+        vlc_ = 0;
+    } else {
+        newFrameAsic();
+    }
+}
+
+void Crtc::newFrameAsic()
+{
+    inAdjust_ = interlaceLine_ = false;
+    vcc_ = 0;
+    // The parity changes with every frame, whatever R8 holds. A VSYNC on
+    // row 0 is dealt with before it does (19.7.3).
+    const bool before = parityFrame_;
+    parityFrame_ = !parityFrame_;
+    parityC9_ = parityFrame_;
+    vlc_ = interlaceVideo() ? parityC9_ : 0;
+    vDisp_ = true;
+    maRow_ = startAddress();
+    rowStartAsic(before);
+}
+
+void Crtc::rowStartAsic(bool oddFrame)
+{
+    if (vcc_ == reg_[6])
+        vDisp_ = false;
+    // Nothing remembers that C4 = R7 has been seen already: with a frame of
+    // one row the VSYNC starts again as soon as it has ended (16.3).
+    if (vcc_ != reg_[7] || vsync_)
+        return;
+    if (interlace() && !oddFrame)
+        midVsync_ = true;
+    else if (interlaceVideo() && oddFrame && (reg_[9] & 1) && (vcc_ & 1))
+        lateVsync_ = true;
+    else
+        startVsync();
+}
+
 // ---- CRTC 0 ----------------------------------------------------------------
 
 // R5 is looked at up to the third character of the last line, no later
@@ -432,6 +540,10 @@ void Crtc::decideAdjustment0()
 // of Shaker B test 1 on a real CRTC 0 need (R9 = 5 and 6, both parities).
 bool Crtc::c9AtR9() const
 {
+    // The ASICs cannot run past R9: lowering it below C9 ends the row
+    // (10.3.4).
+    if (asic())
+        return vlc_ >= reg_[9];
     if (type_ != CrtcType::HD6845S)
         return vlc_ == reg_[9];
     if (extraLine_)
