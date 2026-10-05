@@ -131,7 +131,16 @@ public:
 
     void tick(int tstates) { advance(tstates); }
 
-    bool irq() const { return gateArray_.interruptRequested(); }
+    // The Gate Array's clock runs half a microsecond ahead of the place
+    // where this model moves the picture on, and the Z80 looks at INT as its
+    // last T-state begins. Put together, an instruction ending one T-state
+    // short of a microsecond already sees the interrupt that the end of an
+    // HSYNC raises there (Compendium 27.7.2, the two ADD HL,DE in a row).
+    bool irq()
+    {
+        runVideo(clk_ + 1);
+        return gateArray_.interruptRequested();
+    }
 
     void unusedEd(uint8_t op)
     {
@@ -144,6 +153,12 @@ public:
         advance(3);
         waitForGateArray();
         advance(1);
+        // The acknowledge takes bit 5 off the line counter. An HSYNC ending
+        // within the half microsecond that follows has, for the Gate Array,
+        // already ended and been counted (Compendium 27.7.1; which comes
+        // first is what the Shaker's "killer" test measures, instruction by
+        // instruction).
+        runVideo(clk_ + 2);
         gateArray_.acknowledgeInterrupt();
         advance(2);
         return 0xFF;  // nothing drives the data bus
@@ -181,7 +196,14 @@ private:
     void advance(unsigned tstates)
     {
         clk_ += tstates;
-        while (videoClk_ + 4 <= clk_) {
+        runVideo(clk_);
+    }
+
+    // Brings the picture, the CRTC and the Gate Array up to a moment given
+    // in T-states.
+    void runVideo(uint64_t until)
+    {
+        while (videoClk_ + 4 <= until) {
             // The microsecond that has just ended is drawn last, so that it
             // shows everything the CPU did during it...
             gateArray_.render(crtc_, memory_.baseRam(), monitor_);

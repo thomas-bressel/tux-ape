@@ -186,6 +186,128 @@ void testHaltAndInterrupt()
     CHECK_EQ((cpc.clock() - start) / 4 - 1, 5);
 }
 
+// A machine idling on NOPs, stopped at the microsecond where the Gate Array
+// raises an interrupt request, interrupts enabled or not.
+struct Idle {
+    Cpc cpc;
+    uint64_t request = 0;  // when the next request is raised, in T-states
+
+    explicit Idle(bool enabled)
+    {
+        auto& cpu = cpc.cpu();
+        cpc.memory().setRomEnables(false, false);
+        const uint8_t crtc[] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7};
+        for (uint8_t r = 0; r < sizeof crtc; ++r) {
+            cpc.out(0xBC00, r);
+            cpc.out(0xBD00, crtc[r]);
+        }
+        for (uint32_t a = 0; a < 0x10000; ++a)
+            cpc.memory().write(static_cast<uint16_t>(a), 0x00);
+        cpu.pc = 0x4000;
+        cpu.sp = 0x8000;
+        cpu.setHl(0x9000);
+        cpu.im = 1;
+        cpu.iff1 = cpu.iff2 = true;
+        // Take one interrupt to know where the requests fall: one every 52
+        // lines from there on.
+        int guard = 0;
+        while (!cpc.irq() && ++guard < 100000)
+            cpu.step();
+        request = cpc.clock() + 52 * 64 * 4;
+        cpu.step();
+        cpu.pc = 0x4000;
+        cpu.iff1 = cpu.iff2 = enabled;
+    }
+
+    // Idles until `tstates` before `moment`, then runs one instruction.
+    void runAt(uint64_t moment, unsigned tstates, std::initializer_list<uint8_t> code)
+    {
+        auto& cpu = cpc.cpu();
+        while (cpc.clock() + tstates < moment) {
+            if (cpu.pc >= 0x7000)
+                cpu.pc = 0x4000;
+            cpu.step();
+        }
+        CHECK_EQ(cpc.clock() + tstates, moment);
+        uint16_t addr = cpu.pc;
+        for (uint8_t byte : code)
+            cpc.memory().write(addr++, byte);
+        cpu.step();
+    }
+};
+
+// The Gate Array raises its request half a microsecond before the place
+// where the CRTC moves on in this model, and the Z80 looks at the line as
+// its last T-state begins: so an instruction can end one T-state short of
+// that place and still be the one interrupted (Compendium 27.7.2, checked
+// by the Shaker's "killer" tests on a real CRTC 0 machine).
+void testInterruptAgainstInstructionEnd()
+{
+    struct {
+        const char* name;
+        std::initializer_list<uint8_t> code;
+        unsigned before;  // T-states from its start to the request
+        bool taken;       // interrupted right after it?
+    } const cases[] = {
+        {"NOP ending on the request", {0x00}, 4, true},
+        {"ADD HL,DE ending 1 T before", {0x19}, 12, true},
+        {"CP (HL) ending 1 T before", {0xBE}, 8, true},
+        {"DEC HL ending 2 T before", {0x2B}, 8, false},
+        {"LD A,I ending 3 T before", {0xED, 0x57}, 12, false},
+        {"NOP ending 4 T before", {0x00}, 8, false},
+    };
+    for (const auto& c : cases) {
+        Idle idle(true);
+        idle.runAt(idle.request, c.before, c.code);
+        const bool taken = idle.cpc.cpu().interruptDue();
+        if (taken != c.taken) {
+            std::printf("%s: interrupt %s\n", c.name, taken ? "taken at once" : "left for later");
+            ++g_failures;
+        }
+    }
+}
+
+// A request left pending is acknowledged when interrupts come back on, and
+// the acknowledge takes bit 5 off the Gate Array's line counter. When that
+// falls together with the end of an HSYNC, which of the two comes first
+// depends on where the interrupted instruction really ends (Compendium
+// 27.7.1): the counter is left at 0 (next interrupt in 52 lines) or at 32
+// (in 20 lines).
+void testAcknowledgeAgainstHsync()
+{
+    struct {
+        const char* name;
+        std::initializer_list<uint8_t> code;
+        int counter;
+    } const cases[] = {
+        {"CP (HL)", {0xBE}, 0},
+        {"ADD A,E", {0x83}, 0},
+        {"DEC HL", {0x2B}, 32},
+        {"LD A,I", {0xED, 0x57}, 32},
+    };
+    for (const auto& c : cases) {
+        Idle idle(false);
+        auto& cpu = idle.cpc.cpu();
+        // 32 lines after the request the counter goes from 31 to 32. An EI
+        // and the instruction come in the microseconds just before, placed
+        // so that an instruction of seven T-states ends 9 T-states short.
+        const uint64_t count32 = idle.request + 32 * 64 * 4;
+        const unsigned length = c.code.size() == 2 ? 12 : c.code.begin()[0] == 0x83 ? 4 : 8;
+        idle.runAt(count32, 8 + length + 4, {0xFB});
+        CHECK_EQ(idle.cpc.gateArray().interruptCounter(), 31);
+        CHECK(!cpu.interruptDue());  // not straight after the EI
+        idle.runAt(count32, 8 + length, c.code);
+        CHECK(cpu.interruptDue());
+        cpu.step();
+        CHECK_EQ(cpu.pc, 0x0038);
+        if (idle.cpc.gateArray().interruptCounter() != c.counter) {
+            std::printf("%s: line counter at %d after the acknowledge, want %d\n", c.name,
+                        idle.cpc.gateArray().interruptCounter(), c.counter);
+            ++g_failures;
+        }
+    }
+}
+
 }  // namespace
 
 int main()
@@ -198,5 +320,7 @@ int main()
         }
     }
     testHaltAndInterrupt();
+    testInterruptAgainstInstructionEnd();
+    testAcknowledgeAgainstHsync();
     return checkSummary("cpc_timing");
 }
