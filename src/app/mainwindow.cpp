@@ -222,7 +222,7 @@ void MainWindow::createMenus()
     addItem(settings, tr("&Display"), {}, [this] { showSetup(SetupDialog::Display); });
     addItem(settings, tr("&Sound"), {}, [this] { showSetup(SetupDialog::Sound); });
     addItem(settings, tr("&Memory"), {}, [this] { showSetup(SetupDialog::Memory); });
-    addItem(settings, tr("&Input"));
+    addItem(settings, tr("&Input"), {}, [this] { showSetup(SetupDialog::Input); });
     addItem(settings, tr("&Other"));
     settings->addSeparator();
     addItem(settings, tr("&Normal Speed (100%)"), SHIFT | Qt::Key_F3, [this] { setSpeed(100); });
@@ -367,6 +367,7 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setVerticalHold(settings.verticalHold);
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
                         settings.soundVolume, settings.soundBufferSync / 10.0);
+    emulator_->setJoystickEnabled(settings.joystick);
     applyWindowOptions();
 }
 
@@ -395,10 +396,18 @@ void MainWindow::showSetup(int page)
     settings_.machine = emulator_->machine();
     SetupDialog dialog(settings_, this);
     dialog.setPreview(emulator_->frame());
+    const tuxape::KeyMap keysBefore = emulator_->keyMap();
+    dialog.setKeyMap(keysBefore);
     dialog.showPage(static_cast<SetupDialog::Page>(page));
     if (dialog.exec() != QDialog::Accepted)
         return;
     applySettings(dialog.settings());
+    // The keyboard layout is kept as it now is, for the next run too.
+    if (!(dialog.keyMap() == keysBefore)) {
+        emulator_->setKeyMap(dialog.keyMap());
+        if (!Settings::saveKeyMap(dialog.keyMap()))
+            report(tr("Cannot save the keyboard layout to %1.").arg(QDir::toNativeSeparators(Settings::keyMapFile())));
+    }
     if (!settings_.save())
         report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
 }

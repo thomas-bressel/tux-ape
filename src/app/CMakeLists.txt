@@ -14,6 +14,8 @@ add_library(tuxape_app STATIC
     discmanager.h
     emulator.cpp
     emulator.h
+    hostjoystick.cpp
+    hostjoystick.h
     hostkeys.cpp
     hostkeys.h
     icons.cpp

@@ -6,6 +6,7 @@
 
 namespace tuxape {
 class IniFile;
+class KeyMap;
 }
 
 // What the user chose in the Setup window, kept from one run to the next in
@@ -47,6 +48,11 @@ struct Settings {
     int soundVolume = 15;       // 0 to 15
     int soundBufferSync = 0;    // tenths of a frame of extra sound kept in hand, 0 to 20
 
+    // The Input page. The keyboard layout itself is kept in a file of its
+    // own, in WinAPE's .kbd format.
+    bool joystick = true;       // the host's joystick or game pad is the CPC's
+    QString keyboardFile;       // the layout last loaded or saved, for the record
+
     // Values out of range are brought back into it; a missing file or key
     // leaves the default.
     void load();
@@ -65,7 +71,8 @@ struct Settings {
         WindowedPart = 64,
         FullScreenPart = 128,
         SoundPart = 256,
-        AllParts = 511,
+        InputPart = 512,
+        AllParts = 1023,
     };
     void read(const tuxape::IniFile& ini);
     void write(tuxape::IniFile& ini, unsigned parts = AllParts) const;
@@ -80,6 +87,12 @@ struct Settings {
     // the program, and the user's own, beside the settings file.
     static QString profileFolder();
     static QString userProfileFolder();
+
+    // The keyboard layout in use, kept beside the settings file. Loading
+    // leaves the layout alone if there is no such file yet.
+    static QString keyMapFile();
+    static bool loadKeyMap(tuxape::KeyMap& map);
+    static bool saveKeyMap(const tuxape::KeyMap& map);
 
     bool operator==(const Settings&) const = default;
 

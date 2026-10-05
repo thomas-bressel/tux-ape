@@ -4,9 +4,10 @@
 //
 //   gui_setup [prefix]   also saves pictures of the Setup window's pages
 //                        as <prefix>general.png, <prefix>display.png,
-//                        <prefix>sound.png, <prefix>memory.png and
-//                        <prefix>profile.png
+//                        <prefix>sound.png, <prefix>memory.png,
+//                        <prefix>input.png and <prefix>profile.png
 
+#include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -30,7 +31,9 @@
 #include "check.h"
 #include "core/inifile.h"
 #include "core/screen_text.h"
+#include "core/keymap.h"
 #include "emulator.h"
+#include "hostjoystick.h"
 #include "mainwindow.h"
 #include "screenwidget.h"
 #include "settings.h"
@@ -361,26 +364,25 @@ void testProfiles(const QString& folder, const QString& picture)
     partsDialog.show();
     CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::RamPart | Settings::RomsPart);
     auto* tree = partsDialog.findChild<QTreeWidget*>("tvSettings");
-    CHECK(tree && tree->topLevelItemCount() == 4);
-    if (tree && tree->topLevelItemCount() == 4) {
-        CHECK(tree->topLevelItem(3)->text(0) == "Sound");
-        tree->topLevelItem(3)->setCheckState(0, Qt::Checked);
+    CHECK(tree && tree->topLevelItemCount() == 5);
+    if (tree && tree->topLevelItemCount() == 5) {
+        CHECK(tree->topLevelItem(2)->text(0) == "Input");
+        CHECK(tree->topLevelItem(4)->text(0) == "Sound");
+        tree->topLevelItem(4)->setCheckState(0, Qt::Checked);
         CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::RamPart | Settings::RomsPart | Settings::SoundPart);
-        tree->topLevelItem(3)->setCheckState(0, Qt::Unchecked);
+        tree->topLevelItem(4)->setCheckState(0, Qt::Unchecked);
         CHECK(tree->topLevelItem(0)->text(0) == "Display");
         CHECK(tree->topLevelItem(1)->text(0) == "General");
-        CHECK(tree->topLevelItem(2)->text(0) == "Memory");
+        CHECK(tree->topLevelItem(3)->text(0) == "Memory");
         CHECK(tree->topLevelItem(0)->checkState(0) == Qt::Unchecked);
         CHECK(tree->topLevelItem(1)->checkState(0) == Qt::PartiallyChecked);
-        CHECK(tree->topLevelItem(2)->checkState(0) == Qt::Checked);
+        CHECK(tree->topLevelItem(3)->checkState(0) == Qt::Checked);
         // Ticking a group ticks all of it.
-        tree->topLevelItem(0)->setCheckState(0, Qt::Checked);
-        tree->topLevelItem(1)->setCheckState(0, Qt::Checked);
-        tree->topLevelItem(3)->setCheckState(0, Qt::Checked);
+        for (int group : {0, 1, 2, 4})
+            tree->topLevelItem(group)->setCheckState(0, Qt::Checked);
         CHECK_EQ(partsDialog.parts(), Settings::AllParts);
-        tree->topLevelItem(0)->setCheckState(0, Qt::Unchecked);
-        tree->topLevelItem(2)->setCheckState(0, Qt::Unchecked);
-        tree->topLevelItem(3)->setCheckState(0, Qt::Unchecked);
+        for (int group : {0, 2, 3, 4})
+            tree->topLevelItem(group)->setCheckState(0, Qt::Unchecked);
         CHECK_EQ(partsDialog.parts(), Settings::CrtcPart | Settings::SpeedPart | Settings::FastDiscPart);
         if (!picture.isEmpty()) {
             QApplication::processEvents();
@@ -654,6 +656,152 @@ void testSoundPage(const QString& picture)
     }
 }
 
+// The Input page: the CPC's keyboard to click on, the PC keys of the key
+// clicked, the joystick, and layouts in WinAPE's .kbd files.
+void testInputPage(const QString& folder, const QString& picture)
+{
+    using tuxape::CpcKey;
+    using tuxape::KeyMap;
+
+    // Every key of the standard layout has a name to show, and no two keys
+    // share one.
+    const KeyMap standard;
+    for (int state = 0; state < 2; ++state)
+        for (int key = 0; key < tuxape::kCpcKeyCount; ++key)
+            for (int alternative = 0; alternative < KeyMap::kAlternatives; ++alternative) {
+                const uint8_t pcKey = standard.pcKey(state != 0, static_cast<CpcKey>(key), alternative);
+                CHECK(pcKey == 0 || tuxape::pcKeyName(pcKey) != nullptr);
+            }
+    QStringList names;
+    for (const uint8_t pcKey : tuxape::namedPcKeys())
+        names << QString::fromLatin1(tuxape::pcKeyName(pcKey));
+    CHECK(names.size() > 80);
+    CHECK_EQ(names.removeDuplicates(), 0);
+    CHECK(tuxape::pcKeyName(0) == nullptr);
+    CHECK(QString::fromLatin1(tuxape::pcKeyName(tuxape::PcNum4)) == "Num 4");
+
+    Settings settings;
+    CHECK(settings.joystick);  // as in WinAPE
+    SetupDialog dialog(settings);
+    dialog.showPage(SetupDialog::Input);
+    dialog.show();
+    auto* tabs = dialog.findChild<QTabWidget*>("PageControl");
+    auto* load = dialog.findChild<QPushButton*>("bLoadKeys");
+    auto* save = dialog.findChild<QPushButton*>("bSaveKeys");
+    auto* joystick = dialog.findChild<QCheckBox*>("ckJoystick");
+    auto* mouse = dialog.findChild<QCheckBox*>("ckAMXMouse");
+    QComboBox* off[3] = {dialog.findChild<QComboBox*>("cbKey1"), dialog.findChild<QComboBox*>("cbKey2"),
+                         dialog.findChild<QComboBox*>("cbKey3")};
+    QComboBox* on[3] = {dialog.findChild<QComboBox*>("cbKeyNL1"), dialog.findChild<QComboBox*>("cbKeyNL2"),
+                        dialog.findChild<QComboBox*>("cbKeyNL3")};
+    auto* escape = dialog.findChild<QAbstractButton*>("k66");
+    auto* shift = dialog.findChild<QAbstractButton*>("k21");
+    auto* shift2 = dialog.findChild<QAbstractButton*>("j21");
+    auto* letterA = dialog.findChild<QAbstractButton*>("k69");
+    auto* joyUp = dialog.findChild<QAbstractButton*>("k72");
+    const bool found = tabs && load && save && joystick && mouse && off[0] && off[1] && off[2] && on[0] && on[1]
+                       && on[2] && escape && shift && shift2 && letterA && joyUp;
+    CHECK(found);
+    if (!found)
+        return;
+    CHECK_EQ(tabs->currentIndex(), SetupDialog::Input);
+    CHECK(joystick->isChecked());
+    CHECK(!mouse->isEnabled());
+    // Load and Save belong to this page.
+    CHECK(load->isVisible() && save->isVisible());
+    dialog.showPage(SetupDialog::General);
+    CHECK(!load->isVisible() && !save->isVisible());
+    dialog.showPage(SetupDialog::Input);
+    // The whole keyboard is there: 73 keys, the second SHIFT, and the
+    // joystick's four directions and three buttons.
+    CHECK_EQ(dialog.findChild<QWidget*>("pKeyboard")->findChildren<QAbstractButton*>().size(), 81);
+
+    // Nothing clicked: nothing to change.
+    CHECK_EQ(dialog.selectedCpcKey(), -1);
+    CHECK(!off[0]->isEnabled() && !on[0]->isEnabled());
+    CHECK(dialog.keyMap() == standard);
+
+    // A key clicked shows the PC keys that press it.
+    letterA->click();
+    CHECK_EQ(dialog.selectedCpcKey(), static_cast<int>(CpcKey::A));
+    CHECK(letterA->isChecked() && !escape->isChecked());
+    CHECK(off[0]->isEnabled() && on[2]->isEnabled());
+    CHECK(off[0]->currentText() == "A" && on[0]->currentText() == "A");
+    CHECK(off[1]->currentText().isEmpty() && on[1]->currentText().isEmpty());
+    // The two SHIFT keys are one.
+    shift2->click();
+    CHECK(shift->isChecked() && shift2->isChecked() && !letterA->isChecked());
+    CHECK(off[0]->currentText() == "Left Shift" && off[1]->currentText() == "Right Shift");
+    // The joystick is on the numeric keypad when Num Lock is off.
+    joyUp->click();
+    CHECK(off[0]->currentText() == "Num 8" && off[1]->currentText() == "Num 7" && off[2]->currentText() == "Num 9");
+    CHECK(on[0]->currentText().isEmpty());
+
+    // Choosing a PC key changes the layout, for that Num Lock state only.
+    const int home = on[0]->findText("Home");
+    CHECK(home > 0);
+    on[0]->setCurrentIndex(home);
+    emit on[0]->activated(home);
+    CHECK_EQ(dialog.keyMap().pcKey(true, CpcKey::JoyUp, 0), tuxape::PcHome);
+    CHECK_EQ(dialog.keyMap().pcKey(false, CpcKey::JoyUp, 0), tuxape::PcNum8);
+    CHECK(!(dialog.keyMap() == standard));
+    escape->click();
+    joyUp->click();
+    CHECK(on[0]->currentText() == "Home");
+    // ...and choosing the empty line takes it away.
+    on[0]->setCurrentIndex(0);
+    emit on[0]->activated(0);
+    CHECK(dialog.keyMap() == standard);
+
+    // WinAPE's own layout file is the standard layout; a layout saved is
+    // read back the same.
+    off[2]->setCurrentIndex(off[2]->findText("Page Up"));
+    emit off[2]->activated(off[2]->currentIndex());
+    const KeyMap changed = dialog.keyMap();
+    const QString path = folder + "/mine.kbd";
+    CHECK(dialog.saveKeyboard(path));
+    CHECK(dialog.settings().keyboardFile == path);
+    CHECK(dialog.loadKeyboard(QStringLiteral(TUXAPE_WINAPE_DIR "/default.kbd")));
+    CHECK(dialog.keyMap() == standard);
+    CHECK(off[2]->currentText() == "Num 9");  // the lists follow
+    CHECK(dialog.loadKeyboard(path));
+    CHECK(dialog.keyMap() == changed);
+    CHECK(!dialog.loadKeyboard(folder + "/missing.kbd"));
+    CHECK(!dialog.loadKeyboard(QStringLiteral(TUXAPE_WINAPE_DIR "/WinAPE.ini")));  // not a layout
+    CHECK(dialog.keyMap() == changed);
+
+    // The settings side: the joystick switch and the name of the layout,
+    // and the layout in use kept beside the settings file.
+    joystick->setChecked(false);
+    Settings result = dialog.settings();
+    CHECK(!result.joystick);
+    CHECK(result.save());
+    tuxape::IniFile ini;
+    CHECK(ini.load(Settings::file().toStdString()));
+    CHECK(ini.get("Configuration", "Joystick Enabled") == "false");
+    CHECK(QString::fromStdString(ini.get("Configuration", "Keyboard File")) == path);
+    Settings again;
+    again.load();
+    CHECK(again == result);
+    KeyMap kept;
+    CHECK(!Settings::loadKeyMap(kept));  // nothing saved yet
+    CHECK(kept == standard);
+    CHECK(Settings::saveKeyMap(changed));
+    CHECK(Settings::loadKeyMap(kept));
+    CHECK(kept == changed);
+    QFile::remove(Settings::keyMapFile());
+    QFile::remove(Settings::file());
+
+    if (!picture.isEmpty()) {
+        SetupDialog fresh((Settings()));
+        fresh.showPage(SetupDialog::Input);
+        fresh.show();
+        fresh.selectCpcKey(static_cast<int>(CpcKey::JoyFire2));
+        QApplication::processEvents();
+        CHECK(fresh.grab().save(picture));
+    }
+}
+
 void testDialog(const QString& picture)
 {
     Settings settings;
@@ -696,8 +844,9 @@ void testDialog(const QString& picture)
     CHECK(tabs->isTabEnabled(1));
     CHECK(tabs->isTabEnabled(2));
     CHECK(tabs->isTabEnabled(3));
-    CHECK(!tabs->isTabEnabled(4));
-    dialog.showPage(SetupDialog::Input);
+    CHECK(tabs->isTabEnabled(4));
+    CHECK(!tabs->isTabEnabled(5));
+    dialog.showPage(SetupDialog::Other);
     CHECK_EQ(tabs->currentIndex(), 0);
 
     // What TuxAPE cannot do yet is greyed out.
@@ -756,6 +905,7 @@ int main(int argc, char* argv[])
     testDialog(prefix.isEmpty() ? QString() : prefix + "general.png");
     testSoundPage(prefix.isEmpty() ? QString() : prefix + "sound.png");
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");
+    testInputPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "input.png");
     testProfiles(folder.path(), prefix.isEmpty() ? QString() : prefix + "profile.png");
 
     Emulator emulator;
@@ -782,7 +932,9 @@ int main(int argc, char* argv[])
     CHECK(sound && sound->isEnabled());
     CHECK(memory && memory->isEnabled());
     QAction* input = actionNamed(window, "Input");
-    CHECK(input && !input->isEnabled());
+    QAction* other = actionNamed(window, "Other");
+    CHECK(input && input->isEnabled());
+    CHECK(other && !other->isEnabled());
     CHECK(emulator.machine() == tuxape::stockMachine(tuxape::CpcModel::Cpc6128));
 
     Settings settings;
@@ -887,6 +1039,44 @@ int main(int argc, char* argv[])
     window.applySettings(settings);
     CHECK(!emulator.soundOn());
     CHECK(!emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.audio().enabled(); }));
+
+    // The joystick: the host's stick and buttons hold the CPC's joystick
+    // lines, together with whatever the keyboard holds.
+    using tuxape::CpcKey;
+    auto pressed = [&](CpcKey key) {
+        return emulator.withMachine([key](tuxape::Cpc& cpc) { return cpc.keyboard().pressed(key); });
+    };
+    auto stick = [&](unsigned bits) { emulator.withMachine([&](tuxape::Cpc&) { emulator.applyJoystick(bits); }); };
+    CHECK(emulator.joystickEnabled());
+    emulator.releaseAllKeys();
+    stick(HostJoystick::Up | HostJoystick::Fire1);
+    CHECK(pressed(CpcKey::JoyUp) && pressed(CpcKey::JoyFire2));  // the main button is the firmware's "fire 2"
+    CHECK(!pressed(CpcKey::JoyDown) && !pressed(CpcKey::JoyFire1));
+    emulator.pcKeyEvent(tuxape::PcNum8, false, true);  // the keypad's "up" as well
+    stick(HostJoystick::Right);
+    CHECK(pressed(CpcKey::JoyUp) && pressed(CpcKey::JoyRight) && !pressed(CpcKey::JoyFire2));
+    emulator.pcKeyEvent(tuxape::PcNum8, false, false);
+    CHECK(!pressed(CpcKey::JoyUp));
+    settings = window.settings();
+    settings.joystick = false;
+    window.applySettings(settings);
+    CHECK(!emulator.joystickEnabled());
+    CHECK(!pressed(CpcKey::JoyRight));  // let go with the switch
+    CHECK_EQ(HostJoystick::directions(0, 0), 0u);
+    CHECK_EQ(HostJoystick::directions(-32768, 4000), static_cast<unsigned>(HostJoystick::Left));
+    CHECK_EQ(HostJoystick::directions(20000, -20000), static_cast<unsigned>(HostJoystick::Right | HostJoystick::Up));
+    CHECK_EQ(HostJoystick::directions(0, 32767), static_cast<unsigned>(HostJoystick::Down));
+
+    // Another keyboard layout takes effect at once.
+    tuxape::KeyMap swapped;
+    swapped.setPcKey(false, CpcKey::A, 0, tuxape::PcQ);
+    swapped.setPcKey(false, CpcKey::Q, 0, tuxape::PcA);
+    emulator.setKeyMap(swapped);
+    CHECK(emulator.keyMap() == swapped);
+    emulator.pcKeyEvent(tuxape::PcQ, false, true);
+    CHECK(pressed(CpcKey::A) && !pressed(CpcKey::Q));
+    emulator.pcKeyEvent(tuxape::PcQ, false, false);
+    emulator.setKeyMap(tuxape::KeyMap());
 
     // A ROM image that cannot be read is named, and its place left empty.
     tuxape::MachineConfig broken = settings.machine;

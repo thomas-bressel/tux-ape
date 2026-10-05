@@ -3,10 +3,15 @@
 #include <QDialog>
 #include <QImage>
 
+#include <QList>
+
+#include "core/keymap.h"
 #include "settings.h"
 
+class QAbstractButton;
 class QCheckBox;
 class QComboBox;
+class QPushButton;
 class QLabel;
 class QRadioButton;
 class QSlider;
@@ -42,6 +47,17 @@ public:
     // monitor chosen there. It must have been made with the settings the
     // window was opened with.
     void setPreview(const QImage& frame);
+
+    // The keyboard layout the Input page shows and changes.
+    void setKeyMap(const tuxape::KeyMap& map);
+    const tuxape::KeyMap& keyMap() const { return keyMap_; }
+    // Clicks a key of the Input page's CPC keyboard, for its PC keys to be
+    // shown; -1 for none.
+    void selectCpcKey(int key);
+    int selectedCpcKey() const { return selectedKey_; }
+    // Reads or writes the layout as a .kbd file. False if it cannot be done.
+    bool loadKeyboard(const QString& path);
+    bool saveKeyboard(const QString& path);
 
     // The ROM named in a row of the Memory page's list: row 0 is the
     // firmware ROM, row 1 upper ROM 0, and so on. Empty for none.
@@ -82,6 +98,15 @@ private:
     QSlider* soundBufferSync_ = nullptr;
     QLabel* soundBufferSyncLabel_ = nullptr;
 
+    tuxape::KeyMap keyMap_;
+    QString keyboardFile_;
+    int selectedKey_ = -1;
+    QList<QAbstractButton*> keyButtons_;
+    QComboBox* keyCombos_[2][3] = {};  // Num Lock off then on; first, second, third key
+    QCheckBox* joystick_ = nullptr;
+    QPushButton* loadKeys_ = nullptr;
+    QPushButton* saveKeys_ = nullptr;
+
     QRadioButton* ram_[4] = {};
     QCheckBox* siliconDisc_ = nullptr;
     QLabel* totalRam_ = nullptr;
@@ -95,6 +120,8 @@ private:
     QWidget* createGeneralPage();
     QWidget* createDisplayPage();
     QWidget* createSoundPage();
+    QWidget* createInputPage();
+    void showKeyBindings();
     void updateSoundOptions();
     QWidget* createMemoryPage();
     void updatePreview();

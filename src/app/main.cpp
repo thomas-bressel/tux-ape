@@ -54,6 +54,11 @@ int main(int argc, char* argv[])
     if (audio.open(44100))
         emulator.setAudioOutput(&audio);
 
+    // The keyboard layout as the user left it, if it was ever changed.
+    tuxape::KeyMap keys;
+    if (Settings::loadKeyMap(keys))
+        emulator.setKeyMap(keys);
+
     MainWindow window(&emulator);
     window.applySettings(settings);
     window.show();

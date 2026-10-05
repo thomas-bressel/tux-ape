@@ -10,6 +10,8 @@
 #include <QObject>
 #include <QString>
 
+#include "hostjoystick.h"
+
 #include "core/autotype.h"
 #include "core/cpc.h"
 #include "core/keymap.h"
@@ -95,6 +97,17 @@ public:
     // scan code (see keymap.h).
     void pcKeyEvent(uint8_t pcKey, bool numLock, bool pressed);
     void releaseAllKeys();
+    // Which PC keys press which CPC keys.
+    void setKeyMap(const tuxape::KeyMap& map);
+    tuxape::KeyMap keyMap();
+    // WinAPE's "Enable Joystick": the host's joystick or game pad moves the
+    // CPC's first joystick.
+    void setJoystickEnabled(bool enabled);
+    bool joystickEnabled() const { return joystickEnabled_; }
+    // What the host's stick and buttons are doing (HostJoystick bits),
+    // handed to the CPC's joystick. Called for each frame; also the way in
+    // for tests.
+    void applyJoystick(unsigned bits);
 
     // Types text on the CPC keyboard (WinAPE Auto-Type syntax).
     void autoType(const QString& text);
@@ -134,6 +147,9 @@ private:
     int keyHolds_[tuxape::kCpcKeyCount] = {};
     // PC keys that are down, with the Num Lock state they went down in.
     bool pcDown_[2][256] = {};
+    HostJoystick joystick_;
+    std::atomic<bool> joystickEnabled_{false};
+    unsigned joystickBits_ = 0;  // what the host's joystick holds down
 
     std::thread thread_;
     std::mutex machineMutex_;

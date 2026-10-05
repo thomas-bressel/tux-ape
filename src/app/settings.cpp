@@ -7,7 +7,9 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 
+#include "core/files.h"
 #include "core/inifile.h"
+#include "core/keymap.h"
 
 namespace {
 
@@ -133,6 +135,10 @@ void Settings::read(const tuxape::IniFile& ini)
                               : 0;
         soundBufferSync = std::clamp(whole * 10 + tenth, 0, 20);
     }
+
+    joystick = ini.getBool(kConfiguration, "Joystick Enabled", joystick);
+    if (ini.has(kConfiguration, "Keyboard File"))
+        keyboardFile = QString::fromStdString(ini.get(kConfiguration, "Keyboard File"));
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -176,6 +182,10 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.set(kConfiguration, "Sound Frame Delay",
                 std::to_string(soundBufferSync / 10) + "." + std::to_string(soundBufferSync % 10));
     }
+    if (parts & InputPart) {
+        ini.setBool(kConfiguration, "Joystick Enabled", joystick);
+        ini.set(kConfiguration, "Keyboard File", keyboardFile.toStdString());
+    }
 }
 
 bool Settings::loadProfile(const QString& path)
@@ -209,4 +219,21 @@ QString Settings::profileFolder()
 QString Settings::userProfileFolder()
 {
     return QFileInfo(file()).absolutePath() + "/Profile";
+}
+
+QString Settings::keyMapFile()
+{
+    return QFileInfo(file()).absolutePath() + "/TuxAPE.kbd";
+}
+
+bool Settings::loadKeyMap(tuxape::KeyMap& map)
+{
+    const auto data = tuxape::readFile(keyMapFile().toStdString());
+    return data && map.load(*data);
+}
+
+bool Settings::saveKeyMap(const tuxape::KeyMap& map)
+{
+    QDir().mkpath(QFileInfo(keyMapFile()).absolutePath());
+    return tuxape::writeFile(keyMapFile().toStdString(), map.save());
 }

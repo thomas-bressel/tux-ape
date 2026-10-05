@@ -27,7 +27,15 @@ enum PcKey : uint8_t {
     PcNumEnter = 0x9C, PcRightControl = 0x9D, PcNumDivide = 0xB5, PcRightAlt = 0xB8,
     PcHome = 0xC7, PcUp, PcPageUp, PcLeft = 0xCB, PcRight = 0xCD, PcEnd = 0xCF,
     PcDown = 0xD0, PcPageDown, PcInsert, PcDelete,
+    PcF1 = 0x3B, PcF2, PcF3, PcF4, PcF5, PcF6, PcF7, PcF8, PcF9, PcF10,
+    PcNumLock = 0x45, PcScrollLock = 0x46, PcF11 = 0x57, PcF12 = 0x58,
 };
+
+// A name for a PC key, for lists the user chooses from ("A", "Left Shift",
+// "Num 4"...); null for a code that is no key of a PC keyboard.
+const char* pcKeyName(uint8_t pcKey);
+// The PC keys that have a name, in the order such a list shows them.
+std::span<const uint8_t> namedPcKeys();
 
 // Which PC keys press which CPC keys. Each CPC key can be reached by up to
 // three PC keys, and there is one full set for each state of Num Lock, so
@@ -56,6 +64,8 @@ public:
     // .kbd file format.
     bool load(std::span<const uint8_t> file);
     std::vector<uint8_t> save() const;
+
+    bool operator==(const KeyMap& other) const;
 
 private:
     uint8_t table_[2][kCpcKeyCount][kAlternatives];

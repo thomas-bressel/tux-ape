@@ -14,6 +14,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSlider>
@@ -27,6 +28,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
+#include "core/files.h"
 #include "core/gate_array.h"
 #include "core/setup.h"
 #include "core/version.h"
@@ -164,7 +166,7 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     tabs_->addTab(createDisplayPage(), tr("Display"));
     tabs_->addTab(createSoundPage(), tr("Sound"));
     tabs_->addTab(createMemoryPage(), tr("Memory"));
-    addEmptyPage(tr("Input"));
+    tabs_->addTab(createInputPage(), tr("Input"));
     addEmptyPage(tr("Other"));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
@@ -172,10 +174,44 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
+    // The keyboard layout's Load and Save sit beside OK, on the Input page
+    // only.
+    loadKeys_ = new QPushButton(style()->standardIcon(QStyle::SP_DialogOpenButton), tr("Load"));
+    loadKeys_->setObjectName("bLoadKeys");
+    saveKeys_ = new QPushButton(style()->standardIcon(QStyle::SP_DialogSaveButton), tr("Save"));
+    saveKeys_->setObjectName("bSaveKeys");
+    connect(loadKeys_, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Load Keyboard Layout"), keyboardFile_,
+                                                          tr("Keyboard layouts (*.kbd);;All files (*)"));
+        if (!path.isEmpty() && !loadKeyboard(path))
+            QMessageBox::warning(this, windowTitle(), tr("%1 is not a keyboard layout.").arg(QDir::toNativeSeparators(path)));
+    });
+    connect(saveKeys_, &QPushButton::clicked, this, [this] {
+        QString path = QFileDialog::getSaveFileName(this, tr("Save Keyboard Layout"), keyboardFile_,
+                                                    tr("Keyboard layouts (*.kbd);;All files (*)"));
+        if (path.isEmpty())
+            return;
+        if (QFileInfo(path).suffix().isEmpty())
+            path += ".kbd";
+        if (!saveKeyboard(path))
+            QMessageBox::warning(this, windowTitle(), tr("Cannot write %1.").arg(QDir::toNativeSeparators(path)));
+    });
+    auto* bottomRow = new QHBoxLayout;
+    bottomRow->addWidget(loadKeys_);
+    bottomRow->addWidget(saveKeys_);
+    bottomRow->addStretch(1);
+    bottomRow->addWidget(buttons);
+    auto showKeyButtons = [this](int page) {
+        loadKeys_->setVisible(page == Input);
+        saveKeys_->setVisible(page == Input);
+    };
+    connect(tabs_, &QTabWidget::currentChanged, this, showKeyButtons);
+    showKeyButtons(tabs_->currentIndex());
+
     auto* layout = new QVBoxLayout(this);
     layout->addLayout(profileRow);
     layout->addWidget(tabs_, 1);
-    layout->addWidget(buttons);
+    layout->addLayout(bottomRow);
     resize(640, 400);
 
     setSettings(settings);
@@ -568,6 +604,198 @@ void SetupDialog::updateSoundOptions()
     soundBufferSync_->setEnabled(on);
 }
 
+QWidget* SetupDialog::createInputPage()
+{
+    using tuxape::CpcKey;
+    auto* page = new QWidget;
+
+    // ---- The CPC's keyboard and joystick, to click on ----
+    constexpr int kUnit = 28;    // width of an ordinary key
+    constexpr int kRow = 26;     // height of a row of keys
+    auto* keyboard = new QWidget;
+    keyboard->setObjectName("pKeyboard");
+    QFont keyFont = font();
+    keyFont.setPointSizeF(keyFont.pointSizeF() * 0.72);
+    auto addKey = [&](const QString& text, CpcKey key, double x, int row, double width, int rows = 1,
+                      const char* name = nullptr) {
+        auto* button = new QToolButton(keyboard);
+        button->setText(text);
+        button->setFont(keyFont);
+        button->setCheckable(true);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setGeometry(qRound(x * kUnit), row * kRow, qRound(width * kUnit) - 1, rows * kRow - 1);
+        button->setObjectName(name ? QString::fromLatin1(name) : QStringLiteral("k%1").arg(static_cast<int>(key)));
+        button->setProperty("cpcKey", static_cast<int>(key));
+        connect(button, &QToolButton::clicked, this, [this, key] { selectCpcKey(static_cast<int>(key)); });
+        keyButtons_.append(button);
+    };
+    struct Key {
+        const char* text;
+        CpcKey key;
+        double width;
+    };
+    static const Key rows[5][16] = {
+        {{"ESC", CpcKey::Escape, 1},    {"!\n1", CpcKey::Num1, 1},  {"\"\n2", CpcKey::Num2, 1}, {"#\n3", CpcKey::Num3, 1},
+         {"$\n4", CpcKey::Num4, 1},    {"%\n5", CpcKey::Num5, 1},  {"&&\n6", CpcKey::Num6, 1},  {"'\n7", CpcKey::Num7, 1},
+         {"(\n8", CpcKey::Num8, 1},    {")\n9", CpcKey::Num9, 1},  {"_\n0", CpcKey::Num0, 1},  {"=\n-", CpcKey::Minus, 1},
+         {"\u00a3\n^", CpcKey::Caret, 1}, {"CLR", CpcKey::Clr, 1},   {"DEL", CpcKey::Del, 1}},
+        {{"TAB", CpcKey::Tab, 1.5},     {"Q", CpcKey::Q, 1},        {"W", CpcKey::W, 1},        {"E", CpcKey::E, 1},
+         {"R", CpcKey::R, 1},           {"T", CpcKey::T, 1},        {"Y", CpcKey::Y, 1},        {"U", CpcKey::U, 1},
+         {"I", CpcKey::I, 1},           {"O", CpcKey::O, 1},        {"P", CpcKey::P, 1},        {"|\n@", CpcKey::At, 1},
+         {"{\n[", CpcKey::LeftBracket, 1}},
+        {{"CAPS\nLOCK", CpcKey::CapsLock, 1.75}, {"A", CpcKey::A, 1}, {"S", CpcKey::S, 1},      {"D", CpcKey::D, 1},
+         {"F", CpcKey::F, 1},           {"G", CpcKey::G, 1},        {"H", CpcKey::H, 1},        {"J", CpcKey::J, 1},
+         {"K", CpcKey::K, 1},           {"L", CpcKey::L, 1},        {"*\n:", CpcKey::Colon, 1}, {"+\n;", CpcKey::Semicolon, 1},
+         {"}\n]", CpcKey::RightBracket, 1}},
+        {{"SHIFT", CpcKey::Shift, 2.25}, {"Z", CpcKey::Z, 1},       {"X", CpcKey::X, 1},        {"C", CpcKey::C, 1},
+         {"V", CpcKey::V, 1},           {"B", CpcKey::B, 1},        {"N", CpcKey::N, 1},        {"M", CpcKey::M, 1},
+         {"<\n,", CpcKey::Comma, 1},    {">\n.", CpcKey::Period, 1}, {"?\n/", CpcKey::Slash, 1}, {"`\n\\", CpcKey::Backslash, 1}},
+        {{"CONTROL", CpcKey::Control, 2.25}, {"COPY", CpcKey::Copy, 1.75}, {"", CpcKey::Space, 8}, {"ENTER", CpcKey::Enter, 3}},
+    };
+    for (int row = 0; row < 5; ++row) {
+        double x = 0;
+        for (const Key& key : rows[row]) {
+            if (!key.text)
+                break;
+            addKey(QString::fromUtf8(key.text), key.key, x, row, key.width);
+            x += key.width;
+        }
+    }
+    // RETURN takes two rows; the second SHIFT is the same key as the first.
+    addKey(tr("RETURN"), CpcKey::Return, 13.75, 1, 1.25, 2);
+    // A narrow key for a long word.
+    QFont narrow = keyFont;
+    narrow.setPointSizeF(keyFont.pointSizeF() * 0.8);
+    narrow.setStretch(QFont::Condensed);
+    keyButtons_.last()->setFont(narrow);
+    addKey(tr("SHIFT"), CpcKey::Shift, 13.25, 3, 1.75, 1, "j21");
+    // The function keys and the cursor keys.
+    static const Key pad[5][3] = {
+        {{"f7", CpcKey::F7, 1}, {"f8", CpcKey::F8, 1}, {"f9", CpcKey::F9, 1}},
+        {{"f4", CpcKey::F4, 1}, {"f5", CpcKey::F5, 1}, {"f6", CpcKey::F6, 1}},
+        {{"f1", CpcKey::F1, 1}, {"f2", CpcKey::F2, 1}, {"f3", CpcKey::F3, 1}},
+        {{"f0", CpcKey::F0, 1}, {"\u2191", CpcKey::CursorUp, 1}, {".", CpcKey::FDot, 1}},
+        {{"\u2190", CpcKey::CursorLeft, 1}, {"\u2193", CpcKey::CursorDown, 1}, {"\u2192", CpcKey::CursorRight, 1}},
+    };
+    for (int row = 0; row < 5; ++row)
+        for (int column = 0; column < 3; ++column)
+            addKey(QString::fromUtf8(pad[row][column].text), pad[row][column].key, 15.3 + column, row, 1);
+    // The joystick.
+    auto* joystickLabel = new QLabel(tr("Joystick"), keyboard);
+    joystickLabel->setAlignment(Qt::AlignHCenter);
+    joystickLabel->setGeometry(qRound(18.8 * kUnit), 0, 3 * kUnit, kRow - 4);
+    addKey(QString::fromUtf8("\u2191"), CpcKey::JoyUp, 19.8, 1, 1);
+    addKey(QString::fromUtf8("\u2190"), CpcKey::JoyLeft, 18.8, 2, 1);
+    addKey(QString::fromUtf8("\u2192"), CpcKey::JoyRight, 20.8, 2, 1);
+    addKey(QString::fromUtf8("\u2193"), CpcKey::JoyDown, 19.8, 3, 1);
+    // The CPC's main fire button is the one its firmware calls "fire 2".
+    addKey(tr("FIRE 1"), CpcKey::JoyFire2, 18.6, 4, 1.6);
+    addKey(tr("FIRE 2"), CpcKey::JoyFire1, 20.2, 4, 1.6);
+    addKey(tr("FIRE 3"), CpcKey::JoyFire3, 19.4, 5, 1.6);
+    keyboard->setFixedSize(qRound(21.9 * kUnit), 6 * kRow);
+
+    // ---- The PC keys of the CPC key clicked ----
+    QGroupBox* boxes[2] = {new QGroupBox(tr("With Num Lock Off")), new QGroupBox(tr("With Num Lock On"))};
+    const char* const comboNames[2][3] = {{"cbKey1", "cbKey2", "cbKey3"}, {"cbKeyNL1", "cbKeyNL2", "cbKeyNL3"}};
+    for (int state = 0; state < 2; ++state) {
+        auto* grid = new QGridLayout(boxes[state]);
+        grid->setVerticalSpacing(3);
+        for (int alternative = 0; alternative < 3; ++alternative) {
+            auto* combo = new QComboBox;
+            combo->setObjectName(comboNames[state][alternative]);
+            combo->addItem(QString(), 0);
+            for (const uint8_t pcKey : tuxape::namedPcKeys())
+                combo->addItem(QString::fromLatin1(tuxape::pcKeyName(pcKey)), pcKey);
+            combo->setEnabled(false);
+            connect(combo, &QComboBox::activated, this, [this, state, alternative, combo](int index) {
+                if (selectedKey_ >= 0)
+                    keyMap_.setPcKey(state != 0, static_cast<tuxape::CpcKey>(selectedKey_), alternative,
+                                     static_cast<uint8_t>(combo->itemData(index).toInt()));
+            });
+            keyCombos_[state][alternative] = combo;
+            grid->addWidget(new QLabel(tr("Key %1:").arg(alternative + 1)), alternative, 0);
+            grid->addWidget(combo, alternative, 1);
+        }
+        grid->setColumnStretch(1, 1);
+    }
+    auto* bindings = new QHBoxLayout;
+    bindings->addWidget(boxes[1]);  // WinAPE has "Num Lock On" on the left
+    bindings->addWidget(boxes[0]);
+
+    joystick_ = new QCheckBox(tr("Enable Joystick"));
+    joystick_->setObjectName("ckJoystick");
+    joystick_->setToolTip(tr("A joystick or game pad plugged into this computer is the CPC's joystick"));
+    auto* mouse = notYet(new QCheckBox(tr("Enable AMX Mouse")));
+    mouse->setObjectName("ckAMXMouse");
+    auto* checks = new QHBoxLayout;
+    checks->addWidget(joystick_);
+    checks->addSpacing(20);
+    checks->addWidget(mouse);
+    checks->addStretch(1);
+
+    auto* layout = new QVBoxLayout(page);
+    layout->addWidget(keyboard, 0, Qt::AlignHCenter);
+    layout->addLayout(bindings);
+    layout->addLayout(checks);
+    layout->addStretch(1);
+    return page;
+}
+
+void SetupDialog::setKeyMap(const tuxape::KeyMap& map)
+{
+    keyMap_ = map;
+    showKeyBindings();
+}
+
+void SetupDialog::selectCpcKey(int key)
+{
+    selectedKey_ = key >= 0 && key < tuxape::kCpcKeyCount ? key : -1;
+    // Both SHIFT keys are one key.
+    for (QAbstractButton* button : keyButtons_)
+        button->setChecked(button->property("cpcKey").toInt() == selectedKey_);
+    showKeyBindings();
+}
+
+// The six lists show the PC keys of the CPC key clicked, or nothing.
+void SetupDialog::showKeyBindings()
+{
+    for (int state = 0; state < 2; ++state)
+        for (int alternative = 0; alternative < 3; ++alternative) {
+            QComboBox* combo = keyCombos_[state][alternative];
+            if (!combo)
+                continue;
+            combo->setEnabled(selectedKey_ >= 0);
+            const int pcKey =
+                selectedKey_ < 0 ? 0 : keyMap_.pcKey(state != 0, static_cast<tuxape::CpcKey>(selectedKey_), alternative);
+            int index = combo->findData(pcKey);
+            if (index < 0) {
+                // A key the list has no name for: shown by its number.
+                combo->addItem(tr("Key #%1").arg(pcKey, 2, 16, QLatin1Char('0')), pcKey);
+                index = combo->count() - 1;
+            }
+            combo->setCurrentIndex(index);
+        }
+}
+
+bool SetupDialog::loadKeyboard(const QString& path)
+{
+    const auto data = tuxape::readFile(path.toStdString());
+    tuxape::KeyMap map;
+    if (!data || !map.load(*data))
+        return false;
+    keyboardFile_ = path;
+    setKeyMap(map);
+    return true;
+}
+
+bool SetupDialog::saveKeyboard(const QString& path)
+{
+    if (!tuxape::writeFile(path.toStdString(), keyMap_.save()))
+        return false;
+    keyboardFile_ = path;
+    return true;
+}
+
 QWidget* SetupDialog::createMemoryPage()
 {
     auto* page = new QWidget;
@@ -764,6 +992,9 @@ void SetupDialog::setSettings(const Settings& settings)
         QStringLiteral("%1.%2").arg(settings.soundBufferSync / 10).arg(settings.soundBufferSync % 10));
     updateSoundOptions();
 
+    joystick_->setChecked(settings.joystick);
+    keyboardFile_ = settings.keyboardFile;
+
     crtcType_->setCurrentIndex(settings.crtcType);
     fastDisc_->setChecked(settings.fastDisc);
     speed_->setValue(settings.speedPercent);
@@ -823,6 +1054,8 @@ ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
     leaf(general, tr("CRTC Type"), Settings::CrtcPart, true);
     leaf(general, tr("Emulation Speed"), Settings::SpeedPart, false);
     leaf(general, tr("Fast Disc Emulation"), Settings::FastDiscPart, false);
+    auto* input = group(tr("Input"));
+    leaf(input, tr("Joystick"), Settings::InputPart, false);
     auto* memory = group(tr("Memory"));
     leaf(memory, tr("RAM"), Settings::RamPart, true);
     leaf(memory, tr("ROMs"), Settings::RomsPart, true);
@@ -982,5 +1215,8 @@ Settings SetupDialog::settings() const
     settings.soundStereo = soundChannels_[1]->isChecked();
     settings.soundVolume = soundVolume_->value();
     settings.soundBufferSync = soundBufferSync_->value();
+
+    settings.joystick = joystick_->isChecked();
+    settings.keyboardFile = keyboardFile_;
     return settings;
 }

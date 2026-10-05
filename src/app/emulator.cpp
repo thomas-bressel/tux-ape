@@ -235,8 +235,57 @@ void Emulator::releaseAllKeys()
     withMachine([this](Cpc& cpc) {
         std::memset(pcDown_, 0, sizeof pcDown_);
         std::memset(keyHolds_, 0, sizeof keyHolds_);
+        joystickBits_ = 0;
         cpc.keyboard().releaseAll();
     });
+}
+
+void Emulator::setKeyMap(const tuxape::KeyMap& map)
+{
+    // Keys held down under the old layout are let go first.
+    releaseAllKeys();
+    withMachine([&](Cpc&) { keyMap_ = map; });
+}
+
+tuxape::KeyMap Emulator::keyMap()
+{
+    return withMachine([this](Cpc&) { return keyMap_; });
+}
+
+void Emulator::setJoystickEnabled(bool enabled)
+{
+    joystickEnabled_ = enabled;
+    if (!enabled)
+        withMachine([this](Cpc&) { applyJoystick(0); });
+}
+
+// Called with the machine locked. The joystick's directions and buttons
+// hold CPC keys down like PC keys do, so that both can be used together.
+void Emulator::applyJoystick(unsigned bits)
+{
+    static constexpr struct {
+        unsigned bit;
+        tuxape::CpcKey key;
+    } kLines[] = {
+        {HostJoystick::Up, tuxape::CpcKey::JoyUp},       {HostJoystick::Down, tuxape::CpcKey::JoyDown},
+        {HostJoystick::Left, tuxape::CpcKey::JoyLeft},   {HostJoystick::Right, tuxape::CpcKey::JoyRight},
+        // The CPC's main fire button is the one its firmware calls "fire 2".
+        {HostJoystick::Fire1, tuxape::CpcKey::JoyFire2}, {HostJoystick::Fire2, tuxape::CpcKey::JoyFire1},
+        {HostJoystick::Fire3, tuxape::CpcKey::JoyFire3},
+    };
+    const unsigned changed = bits ^ joystickBits_;
+    joystickBits_ = bits;
+    for (const auto& line : kLines) {
+        if (!(changed & line.bit))
+            continue;
+        int& holds = keyHolds_[static_cast<int>(line.key)];
+        if (bits & line.bit) {
+            if (holds++ == 0)
+                cpc_.keyboard().set(line.key, true);
+        } else if (--holds == 0) {
+            cpc_.keyboard().set(line.key, false);
+        }
+    }
 }
 
 void Emulator::autoType(const QString& text)
@@ -300,6 +349,8 @@ void Emulator::threadMain()
         }
 
         machineMutex_.lock();
+        if (joystickEnabled_)
+            applyJoystick(joystick_.poll());
         autoType_.frame();
         cpc_.runFrame();
         const int every = displayEvery_;

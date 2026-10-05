@@ -1,6 +1,8 @@
 #include "core/keymap.h"
 
+#include <array>
 #include <cstring>
+#include <iterator>
 
 namespace tuxape {
 
@@ -63,6 +65,68 @@ constexpr Binding kNumLockOn[] = {
 constexpr size_t kFileSize = 2 + 2 * 10 * KeyMap::kAlternatives * 8;
 
 }  // namespace
+
+namespace {
+
+struct PcKeyName {
+    uint8_t key;
+    const char* name;
+};
+
+// Letters, digits, punctuation by its place on a UK/US keyboard, then the
+// keys around them, the cursor block and the numeric keypad.
+constexpr PcKeyName kPcKeyNames[] = {
+    {PcA, "A"}, {PcB, "B"}, {PcC, "C"}, {PcD, "D"}, {PcE, "E"}, {PcF, "F"}, {PcG, "G"}, {PcH, "H"},
+    {PcI, "I"}, {PcJ, "J"}, {PcK, "K"}, {PcL, "L"}, {PcM, "M"}, {PcN, "N"}, {PcO, "O"}, {PcP, "P"},
+    {PcQ, "Q"}, {PcR, "R"}, {PcS, "S"}, {PcT, "T"}, {PcU, "U"}, {PcV, "V"}, {PcW, "W"}, {PcX, "X"},
+    {PcY, "Y"}, {PcZ, "Z"},
+    {Pc0, "0"}, {Pc1, "1"}, {Pc2, "2"}, {Pc3, "3"}, {Pc4, "4"}, {Pc5, "5"}, {Pc6, "6"}, {Pc7, "7"},
+    {Pc8, "8"}, {Pc9, "9"},
+    {PcGrave, "` (left of 1)"}, {PcMinus, "- (right of 0)"}, {PcEquals, "= (left of Backspace)"},
+    {PcLeftBracket, "[ (right of P)"}, {PcRightBracket, "] (left of Return)"},
+    {PcSemicolon, "; (right of L)"}, {PcApostrophe, "' (two right of L)"}, {PcBackslash, "# or \\ (by Return)"},
+    {PcOem102, "\\ (right of left Shift)"}, {PcComma, ", (right of M)"}, {PcPeriod, ". (two right of M)"},
+    {PcSlash, "/ (left of right Shift)"},
+    {PcEscape, "Escape"}, {PcTab, "Tab"}, {PcCapsLock, "Caps Lock"}, {PcBackspace, "Backspace"},
+    {PcReturn, "Return"}, {PcSpace, "Space"},
+    {PcLeftShift, "Left Shift"}, {PcRightShift, "Right Shift"}, {PcLeftControl, "Left Control"},
+    {PcRightControl, "Right Control"}, {PcLeftAlt, "Left Alt"}, {PcRightAlt, "Right Alt (Alt Gr)"},
+    {PcUp, "Up"}, {PcDown, "Down"}, {PcLeft, "Left"}, {PcRight, "Right"},
+    {PcInsert, "Insert"}, {PcDelete, "Delete"}, {PcHome, "Home"}, {PcEnd, "End"},
+    {PcPageUp, "Page Up"}, {PcPageDown, "Page Down"},
+    {PcNum0, "Num 0"}, {PcNum1, "Num 1"}, {PcNum2, "Num 2"}, {PcNum3, "Num 3"}, {PcNum4, "Num 4"},
+    {PcNum5, "Num 5"}, {PcNum6, "Num 6"}, {PcNum7, "Num 7"}, {PcNum8, "Num 8"}, {PcNum9, "Num 9"},
+    {PcNumPeriod, "Num ."}, {PcNumPlus, "Num +"}, {PcNumMinus, "Num -"}, {PcNumMultiply, "Num *"},
+    {PcNumDivide, "Num /"}, {PcNumEnter, "Num Enter"},
+    {PcScrollLock, "Scroll Lock"},
+};
+
+constexpr auto kNamedPcKeys = [] {
+    std::array<uint8_t, std::size(kPcKeyNames)> keys{};
+    for (size_t i = 0; i < keys.size(); ++i)
+        keys[i] = kPcKeyNames[i].key;
+    return keys;
+}();
+
+}  // namespace
+
+const char* pcKeyName(uint8_t pcKey)
+{
+    for (const PcKeyName& entry : kPcKeyNames)
+        if (entry.key == pcKey)
+            return entry.name;
+    return nullptr;
+}
+
+std::span<const uint8_t> namedPcKeys()
+{
+    return kNamedPcKeys;
+}
+
+bool KeyMap::operator==(const KeyMap& other) const
+{
+    return std::memcmp(table_, other.table_, sizeof table_) == 0;
+}
 
 void KeyMap::setDefault()
 {
