@@ -14,4 +14,15 @@
 # Third-party reference documents (see tools/fetch-references.sh)
 /reference/
 
+# Software for the emulated machine (games, demos) is not ours to version.
+# A test fixture that must be kept can be added with `git add -f`.
+*.dsk
+*.DSK
+*.sna
+*.SNA
+*.cdt
+*.CDT
+*.cpr
+*.CPR
+
 CMakeUserPresets.json
