@@ -30,6 +30,8 @@ add_library(tuxape_app STATIC
     settings.h
     setupdialog.cpp
     setupdialog.h
+    tapedialog.cpp
+    tapedialog.h
     tooldialogs.cpp
     tooldialogs.h
 )

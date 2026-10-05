@@ -16,6 +16,7 @@ add_library(tuxape_core STATIC
     screen_text.cpp
     setup.cpp
     snapshot.cpp
+    tape.cpp
     version.cpp
 )
 

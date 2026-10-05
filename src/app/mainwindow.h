@@ -15,6 +15,7 @@ class QLabel;
 class QMenu;
 class QToolButton;
 class ScreenWidget;
+class TapeDialog;
 enum class IconId;
 
 // The emulator window, laid out like WinAPE's: the menus, the emulated
@@ -36,6 +37,9 @@ public:
     // user. Return false if it could not be done.
     bool loadSnapshotFile(const QString& path);
     bool saveSnapshotFile(const QString& path);
+    // Puts a tape (a CDT file) in the deck, rewound and with Play pressed:
+    // it runs when the CPC starts the motor.
+    bool insertTapeFile(const QString& path);
 
     // Puts the user's settings into effect. The window starts with the
     // defaults; it is for the application to load the saved ones.
@@ -72,6 +76,13 @@ private:
     QAction* updateSnapshotAction_ = nullptr;
     QAction* setupAction_ = nullptr;
     QAction* libraryAction_ = nullptr;
+    QAction* tapeControlAction_ = nullptr;
+    QAction* rewindTapeAction_ = nullptr;
+    QAction* removeTapeAction_ = nullptr;
+    QAction* playTapeAction_ = nullptr;
+    TapeDialog* tapeDialog_ = nullptr;
+    QString tapePath_;    // the file the tape in the deck came from
+    QString tapeFolder_;  // where the last tape image was opened
     QString librarySearch_;  // what the Library window was last searching for
     struct DriveActions {
         QAction* format = nullptr;
@@ -118,6 +129,11 @@ private:
     void saveScreenshot();
     void autoType();
     void showLibrary();
+    // The cassette deck.
+    void chooseTape();
+    void removeTape();
+    void showTapeControl();
+    void updateTapeActions();
     void updateDiscActions();
     void updateDriveLights();
     void report(const QString& error);

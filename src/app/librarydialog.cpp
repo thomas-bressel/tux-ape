@@ -20,7 +20,9 @@ LibraryEntry libraryEntry(const QString& path)
 {
     LibraryEntry entry;
     entry.path = path;
-    entry.kind = path.endsWith(".sna", Qt::CaseInsensitive) ? LibraryEntry::Snapshot : LibraryEntry::Disc;
+    entry.kind = path.endsWith(".sna", Qt::CaseInsensitive)   ? LibraryEntry::Snapshot
+                 : path.endsWith(".cdt", Qt::CaseInsensitive) ? LibraryEntry::Tape
+                                                              : LibraryEntry::Disc;
     const QString name = QFileInfo(path).completeBaseName().replace('_', ' ');
 
     // The title runs up to the first bracket.
@@ -54,7 +56,8 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
     QList<LibraryEntry> entries;
     QStringList seen;
     for (const QString& folder : folders) {
-        QDirIterator it(folder, {"*.dsk", "*.sna"}, QDir::Files, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.sna"}, QDir::Files,
+                        QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
         while (it.hasNext()) {
             const QString path = QDir::cleanPath(it.next());
             // A folder named twice, or inside another, gives each file once.
@@ -154,8 +157,10 @@ void LibraryDialog::fill()
     list_->clear();
     for (int i = 0; i < entries_.size(); ++i) {
         const LibraryEntry& entry = entries_[i];
-        auto* item = new QTreeWidgetItem(
-            list_, {entry.title, entry.year, entry.kind == LibraryEntry::Disc ? tr("Disc") : tr("Snapshot"), entry.details});
+        const QString kind = entry.kind == LibraryEntry::Disc   ? tr("Disc")
+                             : entry.kind == LibraryEntry::Tape ? tr("Tape")
+                                                                : tr("Snapshot");
+        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, entry.details});
         item->setData(0, Qt::UserRole, i);
         item->setToolTip(0, QDir::toNativeSeparators(entry.path));
     }
@@ -181,7 +186,7 @@ void LibraryDialog::filter()
     if (!list_->currentItem() || list_->currentItem()->isHidden())
         list_->setCurrentItem(first);
     if (folders_.isEmpty())
-        count_->setText(tr("Click Folders... to say where your disc images and snapshots are."));
+        count_->setText(tr("Click Folders... to say where your discs, tapes and snapshots are."));
     else
         count_->setText(tr("%1 of %2").arg(shown).arg(entries_.size()));
     updateButtons();
@@ -196,10 +201,10 @@ int LibraryDialog::current() const
 void LibraryDialog::updateButtons()
 {
     const int index = current();
-    const bool snapshot = index >= 0 && entries_[index].kind == LibraryEntry::Snapshot;
-    insertA_->setText(snapshot ? tr("&Load") : tr("Insert in &A:"));
+    const LibraryEntry::Kind kind = index >= 0 ? entries_[index].kind : LibraryEntry::Disc;
+    insertA_->setText(kind == LibraryEntry::Snapshot ? tr("&Load") : kind == LibraryEntry::Tape ? tr("&Insert") : tr("Insert in &A:"));
     insertA_->setEnabled(index >= 0);
-    insertB_->setEnabled(index >= 0 && !snapshot);
+    insertB_->setEnabled(index >= 0 && kind == LibraryEntry::Disc);
 }
 
 QStringList LibraryDialog::listedTitles() const
@@ -253,7 +258,7 @@ void LibraryDialog::editFolders()
     buttons->addStretch(1);
     buttons->addWidget(ok);
     auto* layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(tr("Disc images (.dsk) and snapshots (.sna) are looked for in:")));
+    layout->addWidget(new QLabel(tr("Disc images (.dsk), tapes (.cdt) and snapshots (.sna) are looked for in:")));
     layout->addWidget(list, 1);
     layout->addLayout(buttons);
     dialog.resize(480, 260);

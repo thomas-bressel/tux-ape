@@ -13,6 +13,7 @@
 #include "core/monitor.h"
 #include "core/ppi.h"
 #include "core/psg.h"
+#include "core/tape.h"
 #include "core/z80.h"
 
 namespace tuxape {
@@ -67,6 +68,7 @@ public:
     Psg& psg() { return psg_; }
     Keyboard& keyboard() { return keyboard_; }
     Fdc& fdc() { return fdc_; }
+    TapeDeck& tape() { return tape_; }
     // Sound output. Set its sample rate to start receiving samples.
     AudioMixer& audio() { return audio_; }
 
@@ -186,6 +188,7 @@ private:
     Psg psg_;
     Keyboard keyboard_;
     Fdc fdc_;
+    TapeDeck tape_;
     AudioMixer audio_;
 
     uint64_t clk_ = 0;
@@ -235,7 +238,7 @@ private:
     uint8_t ioRead(uint16_t port);
     void ioWrite(uint16_t port, uint8_t value);  // every device but the CRTC
     void crtcWrite(uint16_t port, uint8_t value, bool early = false);
-    uint8_t portB() const;
+    uint8_t portB();
     void ssmOpcode(uint8_t op);
     void updatePsgBus();
     void syncSound();

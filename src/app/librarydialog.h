@@ -12,7 +12,7 @@ class QTreeWidget;
 
 // One program of the library: an image file, and what its name says of it.
 struct LibraryEntry {
-    enum Kind { Disc, Snapshot };
+    enum Kind { Disc, Snapshot, Tape };
     QString path;
     Kind kind = Disc;
     QString title;
@@ -24,8 +24,8 @@ struct LibraryEntry {
 // TOSEC, "Gryzor (1987)(Ocean)(fr)[cr].dsk": a title, then notes in round
 // and square brackets, the year among them.
 LibraryEntry libraryEntry(const QString& path);
-// The disc images and snapshots in the folders and their sub-folders, in
-// the order of their titles.
+// The disc images, tapes and snapshots (.dsk, .cdt, .sna) in the folders and
+// their sub-folders, in the order of their titles.
 QList<LibraryEntry> scanLibrary(const QStringList& folders);
 
 // The Library window, TuxAPE's own (WinAPE has none): the programs found
@@ -49,8 +49,8 @@ public:
     bool select(const QString& title);
 
     // Closes the window on the program selected, as a double click does
-    // (drive A) or the button for drive B. False if there is none, or if it
-    // is not a disc and drive B is asked for.
+    // (a disc goes in drive A) or the button for drive B. False if there is
+    // none, or if it is not a disc and drive B is asked for.
     bool choose(int drive = 0);
     // What the window was closed on, and the drive a disc is to go in.
     const LibraryEntry* chosen() const { return chosen_ >= 0 ? &entries_[chosen_] : nullptr; }

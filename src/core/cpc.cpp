@@ -17,6 +17,7 @@ void Cpc::reset()
     ppi_.reset();
     psg_.reset();
     fdc_.reset();
+    tape_.setMotor(false, microseconds());
 }
 
 void Cpc::coldReset()
@@ -76,6 +77,7 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
     if (!(port & 0x0800)) {
         ppi_.write(high & 3, value);
         updatePsgBus();
+        tape_.setMotor(ppi_.outputC() & 0x10, microseconds());
     }
     // Disc interface: &FA7E is the motor latch, &FB7F the FDC's data port.
     if (!(port & 0x0480)) {
@@ -143,7 +145,7 @@ uint8_t Cpc::ioRead(uint16_t port)
     return value;
 }
 
-uint8_t Cpc::portB() const
+uint8_t Cpc::portB()
 {
     // Bit 7: cassette data in. Bit 6: printer busy (nothing is connected).
     // Bit 5: /EXP, low with nothing on the expansion port. Bit 4: 50 Hz
@@ -151,6 +153,8 @@ uint8_t Cpc::portB() const
     uint8_t value = 0x5E;
     if (crtc_.vsync())
         value |= 0x01;
+    if (tape_.level(microseconds()))
+        value |= 0x80;
     return value;
 }
 

@@ -25,8 +25,10 @@
 #include "librarydialog.h"
 #include "screenwidget.h"
 #include "setupdialog.h"
+#include "tapedialog.h"
 #include "tooldialogs.h"
 
+#include "core/files.h"
 #include "core/snapshot.h"
 
 namespace {
@@ -125,7 +127,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* event)
 void MainWindow::dropEvent(QDropEvent* event)
 {
     // A dropped disc image goes into drive A:, a second one into B:. A
-    // snapshot is loaded.
+    // snapshot is loaded, a tape put in the deck.
     int drive = 0;
     for (const QUrl& url : event->mimeData()->urls()) {
         if (!url.isLocalFile())
@@ -133,6 +135,10 @@ void MainWindow::dropEvent(QDropEvent* event)
         const QString path = url.toLocalFile();
         if (QFileInfo(path).suffix().compare(QLatin1String("sna"), Qt::CaseInsensitive) == 0) {
             loadSnapshotFile(path);
+            continue;
+        }
+        if (QFileInfo(path).suffix().compare(QLatin1String("cdt"), Qt::CaseInsensitive) == 0) {
+            insertTapeFile(path);
             continue;
         }
         if (drive >= DiscManager::kDrives)
@@ -186,12 +192,21 @@ void MainWindow::createMenus()
     driveSetupAction_ = addItem(file, tr("&Drive Setup..."), Qt::Key_F2, [this] { driveSetup(); });
     addItem(file, tr("Load &Cartridge..."), CTRL | Qt::Key_F3);
     QMenu* tape = file->addMenu(tr("&Tape"));
-    addItem(tape, tr("&Show Tape Control"));
-    addItem(tape, tr("&Insert Tape Image..."), CTRL | Qt::Key_F4);
-    addItem(tape, tr("Re&wind Tape"));
-    addItem(tape, tr("R&emove Tape"));
-    addItem(tape, tr("&Press Play"));
+    tapeControlAction_ = addItem(tape, tr("&Show Tape Control"), {}, [this] { showTapeControl(); });
+    addItem(tape, tr("&Insert Tape Image..."), CTRL | Qt::Key_F4, [this] { chooseTape(); });
+    auto deck = [this](auto&& act) {
+        return [this, act] {
+            emulator_->withMachine([&](tuxape::Cpc& cpc) { act(cpc.tape(), cpc.microseconds()); });
+            updateTapeActions();
+        };
+    };
+    rewindTapeAction_ =
+        addItem(tape, tr("Re&wind Tape"), {}, deck([](tuxape::TapeDeck& d, uint64_t now) { d.rewind(now); }));
+    removeTapeAction_ = addItem(tape, tr("R&emove Tape"), {}, [this] { removeTape(); });
+    playTapeAction_ = addItem(tape, tr("&Press Play"), {}, deck([](tuxape::TapeDeck& d, uint64_t now) { d.play(now); }));
     addItem(tape, tr("Press &Record"));
+    connect(tape, &QMenu::aboutToShow, this, &MainWindow::updateTapeActions);
+    updateTapeActions();
     file->addSeparator();
     loadSnapshotAction_ = addItem(file, tr("&Load Snapshot..."), Qt::Key_F5, [this] { chooseSnapshot(); });
     saveSnapshotAction_ = addItem(file, tr("Save S&napshot..."), Qt::Key_F6, [this] { saveSnapshotAs(); });
@@ -296,7 +311,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::Library, tr("Library (CTRL+L)"), libraryAction_);
     addButton(IconId::Disc, tr("Change Disc (F2)"), driveSetupAction_);
     addButton(IconId::Cartridge, tr("Change Cartridge (CTRL+F3)"), nullptr);
-    addButton(IconId::Tape, tr("Tape Control"), nullptr);
+    addButton(IconId::Tape, tr("Tape Control"), tapeControlAction_);
     addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
     addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
     row->addWidget(separator(controlPanel_));
@@ -449,8 +464,66 @@ void MainWindow::saveScreenshot()
     settings_.save();
 }
 
+// ---- the cassette deck ---------------------------------------------------------
+
+bool MainWindow::insertTapeFile(const QString& path)
+{
+    const auto data = tuxape::readFile(path.toStdString());
+    auto tape = data ? tuxape::Tape::parseCdt(*data) : std::nullopt;
+    if (!tape) {
+        report(tr("%1 is not a tape image.").arg(QDir::toNativeSeparators(path)));
+        return false;
+    }
+    emulator_->withMachine([&](tuxape::Cpc& cpc) {
+        cpc.tape().insert(std::move(*tape));
+        cpc.tape().play(cpc.microseconds());
+    });
+    tapePath_ = path;
+    tapeFolder_ = QFileInfo(path).absolutePath();
+    if (tapeDialog_)
+        tapeDialog_->setTape(tapePath_);
+    updateTapeActions();
+    return true;
+}
+
+void MainWindow::chooseTape()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Insert Tape Image"), tapeFolder_,
+                                                      tr("Tape images (*.cdt *.tzx);;All files (*)"));
+    if (!path.isEmpty())
+        insertTapeFile(path);
+}
+
+void MainWindow::removeTape()
+{
+    emulator_->withMachine([](tuxape::Cpc& cpc) { cpc.tape().eject(); });
+    tapePath_.clear();
+    if (tapeDialog_)
+        tapeDialog_->setTape(QString());
+    updateTapeActions();
+}
+
+void MainWindow::showTapeControl()
+{
+    if (!tapeDialog_) {
+        tapeDialog_ = new TapeDialog(emulator_, this);
+        tapeDialog_->setTape(tapePath_);
+        connect(tapeDialog_, &TapeDialog::openRequested, this, &MainWindow::chooseTape);
+        connect(tapeDialog_, &TapeDialog::ejectRequested, this, &MainWindow::removeTape);
+    }
+    tapeDialog_->show();
+    tapeDialog_->raise();
+}
+
+void MainWindow::updateTapeActions()
+{
+    const bool loaded = emulator_->withMachine([](tuxape::Cpc& cpc) { return cpc.tape().loaded(); });
+    for (QAction* action : {rewindTapeAction_, removeTapeAction_, playTapeAction_})
+        action->setEnabled(loaded);
+}
+
 // The Library window: the program chosen there goes into the machine, a
-// disc in its drive, a snapshot as it is.
+// disc in its drive, a tape in the deck, a snapshot as it is.
 void MainWindow::showLibrary()
 {
     LibraryDialog dialog(settings_.libraryFolders, this);
@@ -467,6 +540,8 @@ void MainWindow::showLibrary()
         return;
     if (chosen->kind == LibraryEntry::Snapshot)
         loadSnapshotFile(chosen->path);
+    else if (chosen->kind == LibraryEntry::Tape)
+        insertTapeFile(chosen->path);
     else if (saveBeforeLeaving(dialog.drive()))
         insertDiscFile(dialog.drive(), chosen->path);
 }
