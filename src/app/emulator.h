@@ -3,6 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <utility>
 
@@ -115,9 +116,31 @@ public:
     // The latest finished picture: 768 x 270, to be shown twice as tall.
     QImage frame();
 
+    // ---- For the debugger ----
+    // Breakpoints: the machine pauses just before the instruction at one of
+    // these addresses, and stopped() is sent. They can all be switched off
+    // and on together.
+    void setBreakpoints(const std::set<uint16_t>& addresses);
+    std::set<uint16_t> breakpoints() const { return breakpoints_; }
+    void setBreakpointsEnabled(bool enabled);
+    bool breakpointsEnabled() const { return breakpointsEnabled_; }
+    // ED FF in a program pauses the machine after it.
+    void setBreakInstructions(bool on);
+    bool breakInstructions() const { return breakInstructions_; }
+    // With the machine paused. One instruction, or one turn of one that
+    // repeats. The same, but a CALL or a repeating instruction is run
+    // through to the instruction after it (if the program ever gets there:
+    // the machine runs until then). And on, up to an address.
+    void stepInto();
+    void stepOver();
+    void runTo(uint16_t address);
+
 signals:
     // A new picture is available from frame().
     void frameReady();
+    // The machine has paused by itself: on a breakpoint, a break
+    // instruction, or at the end of a step.
+    void stopped();
     // Sent about once a second: achieved speed and pictures per second.
     void statsChanged(int speedPercent, int framesPerSecond);
 
@@ -160,6 +183,17 @@ private:
     std::atomic<int> displayEvery_{0};
     std::mutex wakeMutex_;
     std::condition_variable wake_;
+
+    // Debugging. All but stopRequested_ are only touched with the
+    // machine's lock held.
+    std::set<uint16_t> breakpoints_;
+    bool breakpointsEnabled_ = true;
+    bool breakInstructions_ = false;
+    int temporaryBreak_ = -1;  // the address a step over or a run-to waits for
+    int passOnce_ = -1;        // the breakpoint the machine is leaving
+    bool stopRequested_ = false;
+    void watchAddresses();
+    void leave();
 
     std::mutex frameMutex_;
     QImage frame_;

@@ -70,6 +70,9 @@ int main(int argc, char* argv[])
     CHECK_EQ(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.clock(); }), before);
     QTest::keyClick(&window, Qt::Key_F9);
     CHECK(!emulator.isPaused());
+    // Pausing brought the debugger's window up; running hid it again, and
+    // the keyboard is back with the main window.
+    CHECK(QTest::qWaitFor([&] { return window.isActiveWindow(); }, 2000));
 
     // Reset brings the banner back.
     QTest::keyClick(&window, Qt::Key_F9, Qt::ControlModifier);

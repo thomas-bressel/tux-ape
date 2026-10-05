@@ -18,6 +18,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "debuggerdialog.h"
 #include "discdialogs.h"
 #include "discmanager.h"
 #include "emulator.h"
@@ -91,6 +92,7 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
     setCentralWidget(central);
 
     connect(emulator_, &Emulator::statsChanged, this, &MainWindow::updateStats, Qt::QueuedConnection);
+    connect(emulator_, &Emulator::stopped, this, &MainWindow::machineStopped, Qt::QueuedConnection);
     connect(QApplication::clipboard(), &QClipboard::dataChanged, this,
             [this] { pasteAction_->setEnabled(!QApplication::clipboard()->text().isEmpty()); });
     connect(discs_, &DiscManager::changed, this, &MainWindow::updateDiscActions);
@@ -262,6 +264,23 @@ void MainWindow::createMenus()
     QMenu* debug = menuBar()->addMenu(tr("&Debug"));
     runAction_ = addItem(debug, tr("&Run"), Qt::Key_F9, [this] { setPaused(false); });
     pauseAction_ = addItem(debug, tr("&Pause"), Qt::Key_F7, [this] { setPaused(true); });
+    // F8 pauses too; paused, the two keys step.
+    pauseAction_->setShortcuts({QKeySequence(Qt::Key_F7), QKeySequence(Qt::Key_F8)});
+    stepAction_ = new QAction(tr("Single Step"), this);
+    stepAction_->setShortcut(Qt::Key_F7);
+    connect(stepAction_, &QAction::triggered, this, [this] { emulator_->stepInto(); });
+    stepOverAction_ = new QAction(tr("Step Over"), this);
+    stepOverAction_->setShortcut(Qt::Key_F8);
+    connect(stepOverAction_, &QAction::triggered, this, [this] {
+        // It may set the machine running, up to the instruction after a
+        // call.
+        emulator_->stepOver();
+        updateDebugActions();
+    });
+    for (QAction* action : {stepAction_, stepOverAction_}) {
+        action->setEnabled(false);
+        addAction(action);
+    }
     addItem(debug, tr("&Registers"));
     addItem(debug, tr("&Breakpoints"));
     addItem(debug, tr("&Data Areas"));
@@ -308,8 +327,8 @@ void MainWindow::createControlPanel()
 
     addButton(IconId::Run, tr("Run (F9)"), runAction_);
     addButton(IconId::Pause, tr("Pause (F7/F8)"), pauseAction_);
-    addButton(IconId::SingleStep, tr("Single Step (F7)"), nullptr);
-    addButton(IconId::StepOver, tr("Step Over (F8)"), nullptr);
+    addButton(IconId::SingleStep, tr("Single Step (F7)"), stepAction_);
+    addButton(IconId::StepOver, tr("Step Over (F8)"), stepOverAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Registers, tr("Registers"), nullptr);
     addButton(IconId::Assembler, tr("Assembler (F3)"), nullptr);
@@ -364,13 +383,49 @@ void MainWindow::showContextMenu(const QPoint& pos)
     menu.exec(screen_->mapToGlobal(pos));
 }
 
+// Paused, the machine is the debugger's: its window comes up, as WinAPE's
+// does, and goes when the machine runs again if it is set to.
 void MainWindow::setPaused(bool paused)
 {
     emulator_->setPaused(paused);
+    updateDebugActions();
+    if (paused) {
+        showDebugger();
+    } else if (debugger_ && debugger_->hideOnRun() && debugger_->isVisible()) {
+        debugger_->hide();
+        // The keyboard is the CPC's again.
+        activateWindow();
+        screen_->setFocus();
+    }
+}
+
+void MainWindow::updateDebugActions()
+{
+    const bool paused = emulator_->isPaused();
     runAction_->setEnabled(paused);
     pauseAction_->setEnabled(!paused);
+    stepAction_->setEnabled(paused);
+    stepOverAction_->setEnabled(paused);
     if (paused)
         statusLabel_->setText(tr("Paused"));
+}
+
+void MainWindow::machineStopped()
+{
+    updateDebugActions();
+    if (emulator_->isPaused())
+        showDebugger();
+}
+
+void MainWindow::showDebugger()
+{
+    if (!debugger_) {
+        debugger_ = new DebuggerDialog(emulator_, this);
+        connect(debugger_, &DebuggerDialog::runRequested, this, [this] { setPaused(false); });
+        connect(debugger_, &DebuggerDialog::runningOn, this, &MainWindow::updateDebugActions);
+    }
+    debugger_->refresh();
+    debugger_->show();
 }
 
 void MainWindow::applySettings(const Settings& settings)

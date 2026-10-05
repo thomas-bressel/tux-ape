@@ -8,6 +8,8 @@ set(CMAKE_AUTORCC ON)
 add_library(tuxape_app STATIC
     audiooutput.cpp
     audiooutput.h
+    debuggerdialog.cpp
+    debuggerdialog.h
     discdialogs.cpp
     discdialogs.h
     discmanager.cpp

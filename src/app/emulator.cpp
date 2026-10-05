@@ -1,5 +1,7 @@
 #include "emulator.h"
 
+#include "core/disasm.h"
+
 #include "audiooutput.h"
 
 #include <algorithm>
@@ -19,6 +21,18 @@ Emulator::Emulator(QObject* parent)
     , frame_(Monitor::kWidth, Monitor::kHeight, QImage::Format_RGB32)
 {
     frame_.fill(Qt::black);
+    // Called on the emulation thread, for the addresses watched: those of
+    // the breakpoints and the one a step is waiting for.
+    cpc_.setExecHook([this](uint16_t pc) {
+        if (passOnce_ == pc) {
+            passOnce_ = -1;
+            return;
+        }
+        if (temporaryBreak_ == pc || (breakpointsEnabled_ && breakpoints_.count(pc))) {
+            cpc_.stopRun();
+            stopRequested_ = true;
+        }
+    });
 }
 
 Emulator::~Emulator()
@@ -146,11 +160,95 @@ void Emulator::playSound()
 
 void Emulator::setPaused(bool paused)
 {
+    if (!paused && paused_)
+        withMachine([this](Cpc&) { leave(); });
     {
         std::lock_guard lock(wakeMutex_);
         paused_ = paused;
     }
     wake_.notify_all();
+}
+
+// ---- debugging -------------------------------------------------------------------
+
+void Emulator::watchAddresses()
+{
+    for (int address = 0; address < 0x10000; ++address)
+        cpc_.watchAddress(static_cast<uint16_t>(address), false);
+    for (const uint16_t address : breakpoints_)
+        cpc_.watchAddress(address);
+    if (temporaryBreak_ >= 0)
+        cpc_.watchAddress(static_cast<uint16_t>(temporaryBreak_));
+}
+
+// The machine is about to run on from where it stands: a breakpoint there
+// has done its work.
+void Emulator::leave()
+{
+    const uint16_t pc = cpc_.cpu().pc;
+    passOnce_ = breakpoints_.count(pc) || temporaryBreak_ == pc ? pc : -1;
+}
+
+void Emulator::setBreakpoints(const std::set<uint16_t>& addresses)
+{
+    withMachine([&](Cpc&) {
+        breakpoints_ = addresses;
+        watchAddresses();
+    });
+}
+
+void Emulator::setBreakpointsEnabled(bool enabled)
+{
+    withMachine([&](Cpc&) { breakpointsEnabled_ = enabled; });
+}
+
+void Emulator::setBreakInstructions(bool on)
+{
+    withMachine([&](Cpc& cpc) {
+        breakInstructions_ = on;
+        cpc.setBreakInstructions(on);
+    });
+}
+
+void Emulator::stepInto()
+{
+    if (!paused_)
+        return;
+    withMachine([this](Cpc& cpc) {
+        cpc.stepInstruction();
+        // The picture as it now stands, part-drawn or not.
+        publishFrame();
+    });
+    emit stopped();
+}
+
+void Emulator::stepOver()
+{
+    if (!paused_)
+        return;
+    const int next = withMachine([](Cpc& cpc) {
+        const uint16_t pc = cpc.cpu().pc;
+        const tuxape::Instruction instruction = tuxape::disassemble(pc, [&](uint16_t a) { return cpc.memory().read(a); });
+        using Flow = tuxape::Instruction::Flow;
+        const bool through = instruction.flow == Flow::Call || instruction.flow == Flow::Repeat
+                             || instruction.flow == Flow::Halt;
+        return through ? static_cast<uint16_t>(pc + instruction.length) : -1;
+    });
+    if (next < 0)
+        stepInto();
+    else
+        runTo(static_cast<uint16_t>(next));
+}
+
+void Emulator::runTo(uint16_t address)
+{
+    if (!paused_)
+        return;
+    withMachine([&](Cpc&) {
+        temporaryBreak_ = address;
+        watchAddresses();
+    });
+    setPaused(false);
 }
 
 void Emulator::setSpeedPercent(int percent)
@@ -353,14 +451,29 @@ void Emulator::threadMain()
             applyJoystick(joystick_.poll());
         autoType_.frame();
         cpc_.runFrame();
+        // A breakpoint, the end of a step, or a break instruction: the
+        // machine has stopped short of the frame's end, and stays there.
+        const bool stop = stopRequested_ || cpc_.breakInstructionHit();
+        if (stop) {
+            stopRequested_ = false;
+            if (temporaryBreak_ >= 0) {
+                temporaryBreak_ = -1;
+                watchAddresses();
+            }
+            paused_ = true;
+        }
         const int every = displayEvery_;
-        if (++unshown >= every) {
+        if (++unshown >= every || stop) {
             publishFrame();
             unshown = 0;
         }
         playSound();
         const uint64_t frames = cpc_.monitor().frameNumber();
         machineMutex_.unlock();
+        if (stop) {
+            emit stopped();
+            continue;
+        }
         // At full throttle this thread would otherwise retake the lock
         // before a waiting GUI call gets a chance.
         if (waiters_ > 0)
