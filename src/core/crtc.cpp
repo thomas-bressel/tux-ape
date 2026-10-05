@@ -20,6 +20,7 @@ void Crtc::reset()
     hcc_ = vcc_ = vlc_ = vtac_ = hsc_ = vsc_ = 0;
     ma_ = maRow_ = 0;
     hsync_ = vsync_ = false;
+    hsyncCut_ = previousHsyncCut_ = HsyncCut::None;
     hDisp_ = vDisp_ = false;
     inAdjust_ = false;
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
@@ -27,7 +28,7 @@ void Crtc::reset()
     vsyncAllowed_ = r7Match_ = vsyncFresh_ = false;
 }
 
-void Crtc::write(uint8_t value)
+void Crtc::write(uint8_t value, bool early)
 {
     if (selected_ > 15)
         return;
@@ -35,6 +36,39 @@ void Crtc::write(uint8_t value)
     reg_[selected_] = value & kWriteMask[selected_];
 
     switch (selected_) {
+    case 3:
+        // The HSYNC ends when its counter meets R3. Bringing R3 down to the
+        // counter while the pulse lasts ("R3.JIT") ends it there and then
+        // on the three discrete chips; lower still, and the counter has to
+        // go all the way round. The UM6845R also takes a width of 0 as "no
+        // HSYNC" at any moment (Compendium 14.5).
+        if (hsync_ && type_ != CrtcType::AsicPlus && type_ != CrtcType::PreAsic) {
+            const uint8_t width = reg_[3] & 0x0F;
+            const bool noPulse = width == 0 && type_ != CrtcType::MC6845;
+            if (early) {
+                // In time for this character's own decisions: a pulse about
+                // to start with a width of 0 does not, and one whose counter
+                // has just met the new width ends as it normally would.
+                if (hsc_ == 0 && noPulse) {
+                    hsync_ = false;
+                    hsyncCut_ = HsyncCut::Never;
+                } else if (hsc_ != 0 && (width == hsc_ || (noPulse && type_ == CrtcType::UM6845R))) {
+                    hsync_ = false;
+                    hsyncCut_ = HsyncCut::AtStart;
+                }
+            } else if ((width == hsc_ && (old & 0x0F) != width) || (noPulse && type_ == CrtcType::UM6845R)) {
+                hsync_ = false;
+                // The pulse outlives the write by a quarter of a character.
+                // Cut on its very first character with a width of 0, types
+                // 0 and 1 give the half character it had begun with
+                // (14.5.4).
+                if (type_ == CrtcType::MC6845)
+                    hsyncCut_ = HsyncCut::None;
+                else
+                    hsyncCut_ = hsc_ == 0 && width == 0 ? HsyncCut::SecondHalf : HsyncCut::AfterQuarter;
+            }
+        }
+        break;
     case 6:
         // The UM6845R compares R6 continuously; the others only when the row
         // changes.
@@ -117,6 +151,9 @@ bool Crtc::displayEnable() const
 
 void Crtc::tick()
 {
+    previousHsyncCut_ = hsyncCut_;
+    hsyncCut_ = HsyncCut::None;
+
     const bool type0 = type_ == CrtcType::HD6845S;
     if (hcc_ == reg_[0]) {
         hcc_ = 0;

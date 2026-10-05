@@ -86,13 +86,13 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
     }
 }
 
-void Cpc::crtcWrite(uint16_t port, uint8_t value)
+void Cpc::crtcWrite(uint16_t port, uint8_t value, bool early)
 {
     if (port & 0x4000)
         return;
     switch ((port >> 8) & 3) {
     case 0: crtc_.select(value); break;
-    case 1: crtc_.write(value); break;
+    case 1: crtc_.write(value, early); break;
     }
 }
 

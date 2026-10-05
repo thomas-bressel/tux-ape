@@ -330,6 +330,58 @@ void adjustmentLeftArmed()
     CHECK_EQ(rig.crtc.vlc(), 0);
 }
 
+void hsyncCutByR3()
+{
+    // Shaker B, "R3 JIT": R3 brought down to the HSYNC counter ends the
+    // pulse; how exactly depends on where in the character the write comes.
+    using Cut = Crtc::HsyncCut;
+    struct {
+        int at;      // characters into the pulse
+        int width;   // value written to R3's low half
+        bool early;  // an OUTI rather than an OUT (C),r
+        Cut cut;
+    } const cases[] = {
+        {0, 0, false, Cut::SecondHalf},
+        {1, 1, false, Cut::AfterQuarter},
+        {2, 2, false, Cut::AfterQuarter},
+        {0, 0, true, Cut::Never},
+        {1, 1, true, Cut::AtStart},
+        {2, 2, true, Cut::AtStart},
+    };
+    for (const auto& c : cases) {
+        Rig rig;
+        rig.set(2, 14);
+        rig.set(3, 0x8E);
+        rig.seek(5, 3, 14 + c.at);
+        CHECK(rig.crtc.hsync());
+        rig.crtc.select(3);
+        rig.crtc.write(static_cast<uint8_t>(0x80 | c.width), c.early);
+        CHECK(!rig.crtc.hsync());
+        CHECK(rig.crtc.hsyncCut() == c.cut);
+        rig.crtc.tick();
+        CHECK(rig.crtc.previousHsyncCut() == c.cut);
+        CHECK(rig.crtc.hsyncCut() == Cut::None);
+        CHECK(!rig.crtc.hsync());
+    }
+
+    // Below the counter, the pulse goes on until the counter comes round.
+    Rig rig;
+    rig.set(2, 14);
+    rig.set(3, 0x8E);
+    rig.seek(5, 3, 14 + 5);
+    rig.set(3, 0x82);
+    for (int i = 5; i < 16 + 2; ++i) {
+        CHECK(rig.crtc.hsync());
+        rig.crtc.tick();
+    }
+    CHECK(!rig.crtc.hsync());
+
+    // A width of 0 from the start means no pulse at all on this chip.
+    rig.set(3, 0x80);
+    rig.seek(5, 5, 14);
+    CHECK(!rig.crtc.hsync());
+}
+
 void oneCharacterLines()
 {
     // R0 = 0 freezes C9; C4 steps once if C9 was at R9 (Compendium 13.2.6,
@@ -387,6 +439,7 @@ int main()
     vsyncFromR7();
     twoCharacterFrames();
     adjustmentLeftArmed();
+    hsyncCutByR3();
     oneCharacterLines();
     return checkSummary("crtc0");
 }

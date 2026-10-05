@@ -29,7 +29,10 @@ public:
 
     // Bus side.
     void select(uint8_t value) { selected_ = value & 0x1F; }
-    void write(uint8_t value);
+    // `early` tells apart the two places within a character where a write
+    // can land: those of OUTI and OUT (n),A come before the chip has dealt
+    // with the HSYNC for that character, those of OUT (C),r after.
+    void write(uint8_t value, bool early = false);
     uint8_t readStatus() const;  // port &BExx
     uint8_t readData() const;    // port &BFxx
 
@@ -38,6 +41,17 @@ public:
     // Outputs.
     bool hsync() const { return hsync_; }
     bool vsync() const { return vsync_; }
+    // How a write to R3 cut the HSYNC short during the character in
+    // progress, and during the one before it.
+    enum class HsyncCut : uint8_t {
+        None,
+        AfterQuarter,  // the pulse went on for a quarter of the character
+        SecondHalf,    // the pulse was the second half of the character, no more
+        AtStart,       // the pulse ended as the character began
+        Never,         // the pulse that was to start here did not
+    };
+    HsyncCut hsyncCut() const { return hsyncCut_; }
+    HsyncCut previousHsyncCut() const { return previousHsyncCut_; }
     bool displayEnable() const;
     uint16_t ma() const { return ma_; }  // 14-bit refresh address
     uint8_t ra() const { return vlc_; }  // raster line within the character row
@@ -67,6 +81,8 @@ private:
     uint16_t ma_ = 0;
     uint16_t maRow_ = 0;  // refresh address at the start of the current row
     bool hsync_ = false;
+    HsyncCut hsyncCut_ = HsyncCut::None;
+    HsyncCut previousHsyncCut_ = HsyncCut::None;
     bool vsync_ = false;
     bool hDisp_ = false;
     bool vDisp_ = false;

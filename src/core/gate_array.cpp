@@ -170,8 +170,13 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         }
         if (hsyncAge_ < 0xFF)
             ++hsyncAge_;
+    } else if (prevHsync_ && crtc.previousHsyncCut() == Crtc::HsyncCut::Never) {
+        // R3 was cleared just in time: there has been no pulse.
+        hsyncAge_ = 0;
     } else if (prevHsync_) {
-        if (hsyncAge_ == 2)
+        // A pulse of exactly two microseconds still sets the mode; one that
+        // R3 ended during its second character does not.
+        if (hsyncAge_ == 2 && crtc.previousHsyncCut() == Crtc::HsyncCut::None)
             mode_ = rmr_ & 3;
         hsyncAge_ = 0;
         // The end of every HSYNC, however short, advances the interrupt
@@ -205,8 +210,36 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
 {
     const bool plusAsic = crtc.type() == CrtcType::AsicPlus;
 
+    // HSYNC blanks the picture. The blanking trails the pulse by a quarter
+    // of a character (a little more with the UM6845R), and where R3 cut the
+    // pulse short it stops part-way through the character (Compendium
+    // 9.3.4.2 and 14.5.4; the Shaker's "R3 JIT" screens show each case).
+    const bool discrete = crtc.type() != CrtcType::AsicPlus && crtc.type() != CrtcType::PreAsic;
+    const int lag = !discrete ? 0 : crtc.type() == CrtcType::UM6845R ? 5 : 4;
+    const Crtc::HsyncCut cut = hsync_ ? crtc.hsyncCut() : Crtc::HsyncCut::None;
+    int blackFrom = 0;
+    int blackTo = 0;
+    if (hsync_) {
+        blackFrom = blankedBefore_ ? 0 : lag;
+        blackTo = Monitor::kCellWidth;
+        switch (cut) {
+        case Crtc::HsyncCut::None: break;
+        case Crtc::HsyncCut::AfterQuarter: blackTo = 8; break;
+        case Crtc::HsyncCut::SecondHalf: blackTo = 8; break;
+        case Crtc::HsyncCut::AtStart: blackTo = blankedBefore_ ? lag : 0; break;
+        case Crtc::HsyncCut::Never: blackTo = 0; break;
+        }
+    } else if (blankedBefore_) {
+        blackTo = lag;
+    }
+    blankedBefore_ = hsync_ && cut == Crtc::HsyncCut::None;
+    if (vsyncBlack_) {
+        blackFrom = 0;
+        blackTo = Monitor::kCellWidth;
+    }
+
     if (uint32_t* out = monitor.cell()) {
-        if (hsync_ || vsyncBlack_) {
+        if (blackFrom == 0 && blackTo == Monitor::kCellWidth) {
             for (int i = 0; i < Monitor::kCellWidth; ++i)
                 out[i] = kBlack;
         } else {
@@ -227,6 +260,8 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
                     out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[right[i]];
                 }
             }
+            for (int i = blackFrom; i < blackTo; ++i)
+                out[i] = kBlack;
         }
     }
     inkChanged_ = false;

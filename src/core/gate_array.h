@@ -80,6 +80,7 @@ private:
     bool prevVsync_ = false;
     bool delayedHsync_ = false;  // the CRTC's HSYNC one microsecond ago
     bool hsync_ = false;         // HSYNC as the Gate Array sees it now
+    bool blankedBefore_ = false;  // the previous character was blanked to its end
 };
 
 }  // namespace tuxape

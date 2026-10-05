@@ -117,15 +117,23 @@ public:
         // before the wait: with OUT (C),r that is the instruction's third
         // microsecond. The CRTC inside an ASIC (types 3 and 4) samples the
         // bus later and catches it on the fourth. (Compendium, 4.4.3.)
+        //
+        // Within that microsecond the write does not always come at the
+        // same place. An I/O cycle that starts a T-state before the
+        // microsecond (OUTI, OUT (n),A) needs no extra wait and reaches the
+        // CRTC a quarter of a microsecond sooner than one that starts with
+        // it (OUT (C),r): soon enough to have a say in what the chip does
+        // with its HSYNC on that character (Compendium 14.5.4).
+        const bool early = (clk_ & 3) == 3;
         advance(2);
         const bool lateCrtc = crtc_.type() == CrtcType::AsicPlus || crtc_.type() == CrtcType::PreAsic;
         ioWrite(port, value);
         if (!lateCrtc)
-            crtcWrite(port, value);
+            crtcWrite(port, value, early);
         waitForGateArray();
         advance(1);
         if (lateCrtc)
-            crtcWrite(port, value);
+            crtcWrite(port, value, early);
         advance(1);
     }
 
@@ -226,7 +234,7 @@ private:
 
     uint8_t ioRead(uint16_t port);
     void ioWrite(uint16_t port, uint8_t value);  // every device but the CRTC
-    void crtcWrite(uint16_t port, uint8_t value);
+    void crtcWrite(uint16_t port, uint8_t value, bool early = false);
     uint8_t portB() const;
     void ssmOpcode(uint8_t op);
     void updatePsgBus();
