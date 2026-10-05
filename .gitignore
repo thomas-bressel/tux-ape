@@ -1,0 +1,14 @@
+# Build output
+/build*/
+
+# Locally unpacked Qt development files (see tools/setup-qt-local.sh)
+/.deps/
+
+# Original WinAPE distribution, kept as a reference only. It holds third-party
+# binaries and the Amstrad ROM images, which are not ours to version.
+/WinAPE20B2/
+
+# Test programs downloaded on demand (see tests/fetch-test-roms.sh)
+/tests/roms/
+
+CMakeUserPresets.json
