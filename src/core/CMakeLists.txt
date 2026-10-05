@@ -4,6 +4,7 @@ add_library(tuxape_core STATIC
     crtc.cpp
     files.cpp
     gate_array.cpp
+    keymap.cpp
     memory.cpp
     monitor.cpp
     psg.cpp

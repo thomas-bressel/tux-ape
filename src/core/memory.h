@@ -35,7 +35,7 @@ public:
     bool hasUpperRom(int slot) const { return upperPresent_[slot & (kRomSlots - 1)]; }
     // Highest ROM number the select latch can reach: 15, or 31 with a
     // 32-slot ROM board.
-    void setRomSlotLimit(int slots) { romSlotMask_ = slots > 16 ? 31 : 15; }
+    void setRomSlotLimit(int count) { romSlotMask_ = count > 16 ? 31 : 15; }
 
     void reset();
     void clearRam();

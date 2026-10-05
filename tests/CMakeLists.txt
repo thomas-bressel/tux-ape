@@ -25,9 +25,24 @@ target_link_libraries(cpc_boot PRIVATE tuxape_core)
 add_test(NAME cpc_boot COMMAND cpc_boot)
 set_tests_properties(cpc_boot PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(keymap keymap.cpp)
+target_link_libraries(keymap PRIVATE tuxape_core)
+target_compile_definitions(keymap PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")
+add_test(NAME keymap COMMAND keymap)
+
 add_executable(z80_sst z80_sst.cpp)
 target_link_libraries(z80_sst PRIVATE tuxape_core)
 if(EXISTS ${TUXAPE_TEST_ROMS}/sst)
     add_test(NAME z80_single_step COMMAND z80_sst ${TUXAPE_TEST_ROMS}/sst)
     set_tests_properties(z80_single_step PROPERTIES TIMEOUT 1200)
+endif()
+
+if(TUXAPE_BUILD_APP)
+    find_package(Qt6 REQUIRED COMPONENTS Test)
+    add_executable(gui_smoke gui_smoke.cpp)
+    target_link_libraries(gui_smoke PRIVATE tuxape_app Qt6::Test)
+    add_test(NAME gui_smoke COMMAND gui_smoke)
+    set_tests_properties(gui_smoke PROPERTIES
+        SKIP_RETURN_CODE 77
+        ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 endif()

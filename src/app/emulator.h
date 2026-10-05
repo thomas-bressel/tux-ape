@@ -1,0 +1,111 @@
+#pragma once
+
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#include <utility>
+
+#include <QImage>
+#include <QObject>
+#include <QString>
+
+#include "core/autotype.h"
+#include "core/cpc.h"
+#include "core/keymap.h"
+#include "core/setup.h"
+
+// Runs the emulated machine on its own thread, at the right speed, and hands
+// finished pictures to the user interface.
+//
+// The machine is shared between that thread and the GUI thread. Every access
+// from the GUI goes through withMachine(), which waits for the current slice
+// of emulation (at most one frame) to finish.
+class Emulator : public QObject {
+    Q_OBJECT
+
+public:
+    explicit Emulator(QObject* parent = nullptr);
+    ~Emulator() override;
+
+    // Fits a stock machine. Returns an error message, or an empty string.
+    QString setupMachine(tuxape::CpcModel model);
+
+    void start();
+    void stop();
+
+    // Runs `fn(tuxape::Cpc&)` with exclusive access to the machine.
+    template <class Fn>
+    auto withMachine(Fn&& fn)
+    {
+        MachineLock lock(*this);
+        return std::forward<Fn>(fn)(cpc_);
+    }
+
+    void setPaused(bool paused);
+    bool isPaused() const { return paused_; }
+
+    // Emulation speed, 100 being the speed of a real CPC.
+    void setSpeedPercent(int percent);
+    int speedPercent() const { return speedPercent_; }
+
+    void reset(bool cold);
+
+    // A key of the PC keyboard went down or up. `pcKey` is a DirectInput
+    // scan code (see keymap.h).
+    void pcKeyEvent(uint8_t pcKey, bool numLock, bool pressed);
+    void releaseAllKeys();
+
+    // Types text on the CPC keyboard (WinAPE Auto-Type syntax).
+    void autoType(const QString& text);
+
+    // The latest finished picture: 768 x 270, to be shown twice as tall.
+    QImage frame();
+
+signals:
+    // A new picture is available from frame().
+    void frameReady();
+    // Sent about once a second: achieved speed and pictures per second.
+    void statsChanged(int speedPercent, int framesPerSecond);
+
+private:
+    class MachineLock {
+    public:
+        explicit MachineLock(Emulator& e)
+            : emulator_(e)
+        {
+            ++emulator_.waiters_;
+            emulator_.machineMutex_.lock();
+            --emulator_.waiters_;
+        }
+        ~MachineLock() { emulator_.machineMutex_.unlock(); }
+
+    private:
+        Emulator& emulator_;
+    };
+
+    tuxape::Cpc cpc_;
+    tuxape::KeyMap keyMap_;
+    tuxape::AutoType autoType_;
+    // How many PC keys currently hold each CPC key down.
+    int keyHolds_[tuxape::kCpcKeyCount] = {};
+    // PC keys that are down, with the Num Lock state they went down in.
+    bool pcDown_[2][256] = {};
+
+    std::thread thread_;
+    std::mutex machineMutex_;
+    std::atomic<int> waiters_{0};
+    std::atomic<bool> running_{false};
+    std::atomic<bool> paused_{false};
+    std::atomic<int> speedPercent_{100};
+    std::mutex wakeMutex_;
+    std::condition_variable wake_;
+
+    std::mutex frameMutex_;
+    QImage frame_;
+    std::atomic<bool> framePending_{false};
+    uint64_t lastFrameNumber_ = 0;
+
+    void threadMain();
+    void publishFrame();
+};
