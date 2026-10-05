@@ -1,4 +1,5 @@
 add_library(tuxape_core STATIC
+    audio.cpp
     autotype.cpp
     cpc.cpp
     crtc.cpp

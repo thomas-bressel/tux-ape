@@ -1,5 +1,7 @@
 #include "emulator.h"
 
+#include "audiooutput.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cstring>
@@ -50,6 +52,45 @@ void Emulator::stop()
     }
     wake_.notify_all();
     thread_.join();
+}
+
+void Emulator::setAudioOutput(AudioOutput* output)
+{
+    withMachine([&](Cpc& cpc) {
+        audio_ = output && output->isOpen() ? output : nullptr;
+        cpc.audio().setSampleRate(audio_ ? audio_->sampleRate() : 0);
+    });
+}
+
+// Hands the frame's sound to the audio device. Called with the machine
+// locked.
+void Emulator::playSound()
+{
+    if (!audio_)
+        return;
+    std::vector<int16_t>& samples = cpc_.audio().samples();
+    // Speeded up or slowed down, the sound would only be noise.
+    if (speedPercent_ != 100) {
+        if (!audioSilenced_)
+            audio_->clear();
+        audioSilenced_ = true;
+        samples.clear();
+        return;
+    }
+    audioSilenced_ = false;
+
+    double queued = audio_->queue(samples.data(), samples.size());
+    samples.clear();
+    // After a stall the backlog would play late for ever: start afresh.
+    if (queued > AudioOutput::kTargetLatency * 4) {
+        audio_->clear();
+        queued = AudioOutput::kTargetLatency;
+    }
+    // The emulator's clock and the sound card's never agree exactly. Make
+    // slightly more or fewer samples to keep the queue at its target length;
+    // the half percent this takes at most is inaudible.
+    const double error = std::clamp((queued - AudioOutput::kTargetLatency) / AudioOutput::kTargetLatency, -1.0, 1.0);
+    cpc_.audio().setSampleRate(audio_->sampleRate() * (1.0 - 0.005 * error));
 }
 
 void Emulator::setPaused(bool paused)
@@ -164,6 +205,7 @@ void Emulator::threadMain()
         autoType_.frame();
         cpc_.runFrame();
         publishFrame();
+        playSound();
         const uint64_t frames = cpc_.monitor().frameNumber();
         machineMutex_.unlock();
         // At full throttle this thread would otherwise retake the lock

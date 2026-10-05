@@ -15,8 +15,10 @@
 #include "core/keymap.h"
 #include "core/setup.h"
 
+class AudioOutput;
+
 // Runs the emulated machine on its own thread, at the right speed, and hands
-// finished pictures to the user interface.
+// finished pictures to the user interface and sound to the audio output.
 //
 // The machine is shared between that thread and the GUI thread. Every access
 // from the GUI goes through withMachine(), which waits for the current slice
@@ -33,6 +35,11 @@ public:
 
     void start();
     void stop();
+
+    // Where the machine's sound goes; nullptr for none. The output must
+    // outlive the emulator's use of it. Sound is only played at normal
+    // speed.
+    void setAudioOutput(AudioOutput* output);
 
     // Runs `fn(tuxape::Cpc&)` with exclusive access to the machine.
     template <class Fn>
@@ -106,6 +113,10 @@ private:
     std::atomic<bool> framePending_{false};
     uint64_t lastFrameNumber_ = 0;
 
+    AudioOutput* audio_ = nullptr;
+    bool audioSilenced_ = false;
+
     void threadMain();
     void publishFrame();
+    void playSound();
 };

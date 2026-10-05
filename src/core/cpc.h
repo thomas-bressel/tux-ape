@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "core/audio.h"
 #include "core/crtc.h"
 #include "core/fdc.h"
 #include "core/gate_array.h"
@@ -51,6 +52,8 @@ public:
     Psg& psg() { return psg_; }
     Keyboard& keyboard() { return keyboard_; }
     Fdc& fdc() { return fdc_; }
+    // Sound output. Set its sample rate to start receiving samples.
+    AudioMixer& audio() { return audio_; }
 
     // ---- Z80 bus (see z80.h) -----------------------------------------------
 
@@ -130,8 +133,10 @@ private:
     Psg psg_;
     Keyboard keyboard_;
     Fdc fdc_;
+    AudioMixer audio_;
 
     uint64_t clk_ = 0;
+    uint64_t soundClk_ = 0;  // microsecond the sound generators have reached
     uint64_t videoClk_ = 0;  // start of the next microsecond of video to draw
     uint64_t runUntil_ = 0;
 
@@ -153,6 +158,7 @@ private:
     void ioWrite(uint16_t port, uint8_t value);
     uint8_t portB() const;
     void updatePsgBus();
+    void syncSound();
 };
 
 }  // namespace tuxape

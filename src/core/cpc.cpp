@@ -34,6 +34,7 @@ void Cpc::run(uint32_t microseconds)
     runUntil_ += static_cast<uint64_t>(microseconds) * 4;
     while (clk_ < runUntil_)
         cpu_.step();
+    syncSound();
 }
 
 // The CPC decodes I/O addresses one line at a time: each device answers when
@@ -114,8 +115,26 @@ uint8_t Cpc::portB() const
     return value;
 }
 
+void Cpc::syncSound()
+{
+    // The sound chip is only brought up to date when something is about to
+    // change it, and at the end of each run.
+    const uint64_t now = microseconds();
+    if (!audio_.enabled()) {
+        soundClk_ = now;
+        return;
+    }
+    while (soundClk_ + 8 <= now) {
+        psg_.tick();
+        audio_.addStep(Psg::amplitude(psg_.level(0)), Psg::amplitude(psg_.level(1)),
+                       Psg::amplitude(psg_.level(2)));
+        soundClk_ += 8;
+    }
+}
+
 void Cpc::updatePsgBus()
 {
+    syncSound();
     // Port C bits 7-6 are the PSG's BDIR and BC1; port A is its data bus.
     switch (ppi_.outputC() >> 6) {
     case 3: psg_.selectRegister(ppi_.outputA()); break;

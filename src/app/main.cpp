@@ -3,6 +3,7 @@
 #include <QMessageBox>
 #include <QTimer>
 
+#include "audiooutput.h"
 #include "core/version.h"
 #include "emulator.h"
 #include "mainwindow.h"
@@ -28,6 +29,8 @@ int main(int argc, char* argv[])
     parser.addPositionalArgument("disc", QObject::tr("Disc image to put in drive A:."), "[disc]");
     parser.process(app);
 
+    // Declared before the emulator, which uses it until it is destroyed.
+    AudioOutput audio;
     Emulator emulator;
     const QString error = emulator.setupMachine(tuxape::CpcModel::Cpc6128);
     if (!error.isEmpty()) {
@@ -37,6 +40,10 @@ int main(int argc, char* argv[])
                                   .arg(error));
         return 1;
     }
+
+    // Without a sound device the emulator runs silent.
+    if (audio.open(44100))
+        emulator.setAudioOutput(&audio);
 
     MainWindow window(&emulator);
     window.show();
