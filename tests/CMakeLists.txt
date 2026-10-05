@@ -20,6 +20,16 @@ add_executable(cpc_timing cpc_timing.cpp)
 target_link_libraries(cpc_timing PRIVATE tuxape_core)
 add_test(NAME cpc_timing COMMAND cpc_timing)
 
+# Hardware test programs checked on real machines (tests/fetch-test-roms.sh
+# --acid). The CRTC one needs over an hour of emulated time, so it runs as a
+# separate test labelled "slow": skip it with  ctest -LE slow
+add_executable(acid_tests acid_tests.cpp)
+target_link_libraries(acid_tests PRIVATE tuxape_core)
+add_test(NAME acid COMMAND acid_tests ${TUXAPE_TEST_ROMS}/acid psg cpu inout itest cpctest ppi)
+add_test(NAME acid_crtc COMMAND acid_tests ${TUXAPE_TEST_ROMS}/acid crtctest)
+set_tests_properties(acid acid_crtc PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 1800)
+set_tests_properties(acid_crtc PROPERTIES LABELS slow)
+
 add_executable(csl csl.cpp)
 target_link_libraries(csl PRIVATE tuxape_core)
 add_test(NAME csl COMMAND csl)

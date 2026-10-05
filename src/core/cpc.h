@@ -131,9 +131,7 @@ public:
 
     void tick(int tstates) { advance(tstates); }
 
-    // The Z80 looks at INT as its last T-state begins, so a request raised
-    // just as an instruction ends is only seen after the next one.
-    bool irq() const { return gateArray_.interruptRequested() && interruptRaisedAt_ + 1 < clk_; }
+    bool irq() const { return gateArray_.interruptRequested(); }
 
     void unusedEd(uint8_t op)
     {
@@ -170,7 +168,6 @@ private:
     uint64_t clk_ = 0;
     uint64_t soundClk_ = 0;  // microsecond the sound generators have reached
     uint64_t videoClk_ = 0;  // start of the microsecond of video in progress
-    uint64_t interruptRaisedAt_ = 0;
     uint64_t runUntil_ = 0;
 
     SsmHook ssmHook_;
@@ -190,12 +187,14 @@ private:
             gateArray_.render(crtc_, memory_.baseRam(), monitor_);
             videoClk_ += 4;
             // ...and the CRTC moves on at once: what the CPU reads during
-            // the new microsecond (VSYNC through the PPI, say) is current.
+            // the new microsecond (VSYNC through the PPI, say) is current,
+            // and an interrupt raised by the end of an HSYNC can be taken
+            // by an instruction that finishes at that very moment. Two
+            // sets of measurements on real machines pin this down: the
+            // Shaker's video memory test (A1) and the acid test of the
+            // interrupt position against HSYNC width.
             crtc_.tick();
-            const bool pending = gateArray_.interruptRequested();
             gateArray_.sync(crtc_, monitor_);
-            if (!pending && gateArray_.interruptRequested())
-                interruptRaisedAt_ = videoClk_;
         }
     }
 
