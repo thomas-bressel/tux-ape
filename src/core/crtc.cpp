@@ -152,13 +152,6 @@ void Crtc::tick()
                 } else {
                     adjustUndecided_ = true;
                 }
-            } else if (adjust_) {
-                // An adjustment armed on a line too short to settle it is
-                // now under way and runs to R5 (13.2.6). The Compendium
-                // does not say what sets this case apart from the single
-                // line of 13.2.5; reaching this character is what fits both
-                // and the Shaker screens A6 and A7.
-                adjustRunning_ = true;
             }
             break;
         case 3:
@@ -337,8 +330,9 @@ void Crtc::lineStart0()
             if (vcc_ != reg_[4]) {
                 // Adjustment lines: C9 runs on to R5 whatever R9 says, and
                 // reaching it ends the frame (11.2.2, 13.2.4). One that was
-                // only armed, on lines of one or two characters, gives a
-                // single line when R5 is 0 (13.2.5).
+                // only armed, by a last line of one or two characters, gives
+                // a single line when R5 is 0, however long that line is
+                // (13.2.5, Shaker B "RVNI LTD").
                 const bool reached = ((vlc_ + 1) & 0x1F) == reg_[5];
                 if (reached || (!adjustRunning_ && vlc_ == reg_[5])) {
                     newFrame0();
@@ -375,12 +369,16 @@ void Crtc::lineStart0()
         }
     } else if (c4CountArmed_) {
         // The previous line stopped on character 0 (R0 = 0). C9 is frozen,
-        // but the C4 step armed when it equalled R9 still happens, once, and
-        // an adjustment armed with it stays armed (13.2.6).
+        // but the C4 step armed when it equalled R9 still happens, once. An
+        // adjustment armed with it is then under way: when lines get longer
+        // again C9 counts on to R5 (13.2.6, Shaker A7). What sets this apart
+        // from the single line above is not spelled out in the Compendium;
+        // C9 not having gone back to 0 with the C4 step is what fits both.
         c4CountArmed_ = false;
         vcc_ = (vcc_ + 1) & 0x7F;
         rowChanged0();
         lastLine_ = false;
+        adjustRunning_ = adjust_;
     }
 
     // A VSYNC needs C4 to become equal to R7, and the previous line to have

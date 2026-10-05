@@ -296,6 +296,40 @@ void twoCharacterFrames()
     }
 }
 
+void adjustmentLeftArmed()
+{
+    // Shaker B, "RVNI LTD": R4 = 0, R9 = 2, lines of two characters. The
+    // last line of each "frame" arms an adjustment it cannot settle; the
+    // line it gives (C4 = 1) is the only one, even when R0 is raised on it.
+    Rig rig;
+    rig.seek(38, 7, 10);
+    rig.set(4, 0);
+    rig.set(9, 2);
+    rig.nextLine();
+    rig.set(0, 1);
+    static const int c4[] = {0, 0, 0, 1, 0, 0, 0, 1};
+    static const int c9[] = {0, 1, 2, 0, 0, 1, 2, 0};
+    for (int i = 0; i < 8; ++i) {
+        CHECK_EQ(rig.crtc.vcc(), c4[i]);
+        CHECK_EQ(rig.crtc.vlc(), c9[i]);
+        if (i < 7)
+            rig.nextLine();
+    }
+    rig.set(0, 43);  // on character 0 of the adjustment line
+    rig.nextLine();
+    CHECK_EQ(rig.crtc.hcc(), 0);
+    CHECK_EQ(rig.crtc.vcc(), 0);
+    CHECK_EQ(rig.crtc.vlc(), 0);
+
+    // A last line long enough to settle it (R5 = 0) has no such line after.
+    rig.nextLine();
+    rig.nextLine();
+    CHECK_EQ(rig.crtc.vlc(), 2);
+    rig.nextLine();
+    CHECK_EQ(rig.crtc.vcc(), 0);
+    CHECK_EQ(rig.crtc.vlc(), 0);
+}
+
 void oneCharacterLines()
 {
     // R0 = 0 freezes C9; C4 steps once if C9 was at R9 (Compendium 13.2.6,
@@ -352,6 +386,7 @@ int main()
     vsyncNeedsThreeCharacters();
     vsyncFromR7();
     twoCharacterFrames();
+    adjustmentLeftArmed();
     oneCharacterLines();
     return checkSummary("crtc0");
 }
