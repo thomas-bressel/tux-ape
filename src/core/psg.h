@@ -14,6 +14,9 @@ public:
     // Bus operations, selected by the BDIR and BC1 lines.
     void selectRegister(uint8_t value);
     void write(uint8_t value);
+    // A register set without going through the chip's bus, as the Plus's
+    // sound channels fed from memory do; the register selected stays.
+    void setRegister(int number, uint8_t value);
     // `portA` is what the keyboard puts on the I/O port.
     uint8_t read(uint8_t portA) const;
 

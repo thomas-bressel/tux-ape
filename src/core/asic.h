@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 namespace tuxape {
 
@@ -74,6 +75,21 @@ public:
     uint8_t scroll() const { return sscr_; }              // bit 7 border, bits 6-4 lines, bits 3-0 pixels
     uint8_t interruptVector() const { return ivr_; }
 
+    // ---- Sound fed from memory ("DMA") ----
+    // Three channels, each of which, while its bit of the status register
+    // is set, takes one instruction a line from the list its address
+    // register points at: a value for a register of the sound chip, a
+    // pause, a loop, an interrupt or a stop. `readRam` and `writeSound`
+    // are the machine's memory and sound chip.
+    void attachSound(std::function<uint8_t(uint16_t)> readRam, std::function<void(int, uint8_t)> writeSound)
+    {
+        readRam_ = std::move(readRam);
+        writeSound_ = std::move(writeSound);
+    }
+    bool soundChannelsOn() const { return (dcsr_ & 0x07) != 0; }
+    // Called as each line's HSYNC starts.
+    void soundTick();
+
     // ---- Interrupts ----
     // The raster's interrupt, raised by the Gate Array on the line asked
     // for, and those of the three sound channels. The status register
@@ -103,6 +119,18 @@ private:
     uint8_t pri_ = 0, splt_ = 0, sscr_ = 0, ivr_ = 0;
     uint16_t ssa_ = 0;
     uint8_t dcsr_ = 0;
+
+    struct Channel {
+        uint16_t address = 0;   // of the next instruction
+        uint8_t prescaler = 0;  // lines to a pause's unit, less one
+        uint16_t loopStart = 0;
+        uint16_t repeats = 0;
+        uint16_t pause = 0;     // units still to wait
+        uint8_t pauseLines = 0; // lines left of the unit under way
+    };
+    std::array<Channel, 3> channels_ = {};
+    std::function<uint8_t(uint16_t)> readRam_;
+    std::function<void(int, uint8_t)> writeSound_;
 
     void setColour(int index, uint16_t grb);
     void showDcsr();

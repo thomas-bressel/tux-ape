@@ -553,6 +553,105 @@ void testRasterInterrupt()
     CHECK(back >= 0 && back != 77);
 }
 
+// The sound channels fed from memory: one instruction a line.
+void testSoundChannels()
+{
+    PlusMachine m;
+    Cpc& cpc = m.cpc;
+    auto list = [&](uint16_t at, std::initializer_list<uint16_t> instructions) {
+        for (const uint16_t instruction : instructions) {
+            cpc.memory().baseRam()[at++] = static_cast<uint8_t>(instruction);
+            cpc.memory().baseRam()[at++] = static_cast<uint8_t>(instruction >> 8);
+        }
+    };
+    // To just after the start of the next HSYNC, or of the one after...
+    auto lines = [&](int count) {
+        for (int i = 0; i < count; ++i) {
+            while (cpc.crtc().hsync())
+                cpc.run(1);
+            while (!cpc.crtc().hsync())
+                cpc.run(1);
+            cpc.run(3);
+        }
+    };
+    // The Gate Array's own interrupts are not what is looked at here.
+    auto settle = [&] {
+        if (cpc.gateArray().interruptRequested())
+            cpc.irqAck();
+    };
+    // Volume 15 on channel A, a tone, a pause of two lines, then a loop of
+    // two instructions gone through twice, another register, an interrupt,
+    // and the end.
+    list(0x8000, {0x080F, 0x0055, 0x1002, 0x2002, 0x0101, 0x4001, 0x0C77, 0x4010, 0x4020, 0x0AFF});
+    m.write(0x6C00, 0x01);  // the address's lowest bit does not count
+    m.write(0x6C01, 0x80);
+    m.write(0x6C02, 0x00);
+    m.write(0x6805, 0x21);  // the vector; bit 0: interrupts stay until cleared
+    CHECK_EQ(cpc.psg().reg(8), 0);
+    lines(3);
+    CHECK_EQ(cpc.psg().reg(8), 0);  // not without its bit in the status register
+    m.write(0x6C0F, 0x01);
+    lines(1);
+    CHECK_EQ(cpc.psg().reg(8), 0x0F);
+    CHECK_EQ(cpc.psg().reg(0), 0x00);
+    lines(1);
+    CHECK_EQ(cpc.psg().reg(0), 0x55);
+    lines(1);  // the pause is read: what follows comes two lines on
+    lines(1);
+    CHECK_EQ(cpc.psg().reg(1), 0x00);
+    lines(2);  // the loop's start is noted, and its first instruction done
+    CHECK_EQ(cpc.psg().reg(1), 0x01);
+    cpc.psg().setRegister(1, 0);
+    lines(2);  // back once: twice through in all
+    CHECK_EQ(cpc.psg().reg(1), 0x01);
+    CHECK_EQ(cpc.psg().reg(12), 0x00);
+    lines(2);  // out of the loop
+    CHECK_EQ(cpc.psg().reg(12), 0x77);
+    CHECK_EQ(cpc.memory().read(0x6C0F) & 0x7F, 0x01);
+    lines(1);
+    // The interrupt: asked for until its flag is written to.
+    CHECK_EQ(cpc.memory().read(0x6C0F) & 0x7F, 0x41);
+    settle();
+    CHECK(cpc.irq());
+    CHECK_EQ(cpc.irqAck(), 0x24);  // the vector says channel 0 (bit 0 never shows)
+    CHECK(cpc.irq());
+    m.write(0x6C0F, 0x41);
+    CHECK(!cpc.irq());
+    lines(1);
+    // Stopped: its bit is gone, and nothing more is taken from the list.
+    CHECK_EQ(cpc.memory().read(0x6C0F) & 0x7F, 0x00);
+    lines(3);
+    CHECK_EQ(cpc.psg().reg(10), 0x00);
+
+    // With bit 0 of the vector register clear, taking the interrupt takes
+    // the flag down. Channel 1's vector is between the others'.
+    list(0x9000, {0x4010, 0x4020});
+    m.write(0x6C04, 0x00);
+    m.write(0x6C05, 0x90);
+    m.write(0x6805, 0x20);
+    m.write(0x6C0F, 0x02);
+    lines(1);
+    CHECK_EQ(cpc.memory().read(0x6C0F) & 0x7F, 0x22);
+    settle();
+    CHECK_EQ(cpc.irqAck(), 0x22);
+    CHECK_EQ(cpc.memory().read(0x6C0F) & 0x7F, 0x02);
+    settle();
+    CHECK(!cpc.irq());
+    lines(1);
+
+    // A pause counts in units of the prescaler plus one lines: here two
+    // units of three lines.
+    list(0xA000, {0x1002, 0x0203, 0x4020});
+    m.write(0x6C08, 0x00);
+    m.write(0x6C09, 0xA0);
+    m.write(0x6C0A, 0x02);
+    m.write(0x6C0F, 0x04);
+    lines(6);
+    CHECK_EQ(cpc.psg().reg(2), 0x00);
+    lines(1);
+    CHECK_EQ(cpc.psg().reg(2), 0x03);
+}
+
 }  // namespace
 
 int main()
@@ -564,5 +663,6 @@ int main()
     testSprites();
     testSplitAndScroll();
     testRasterInterrupt();
+    testSoundChannels();
     return checkSummary("plus");
 }

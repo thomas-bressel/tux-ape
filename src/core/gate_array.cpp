@@ -256,6 +256,9 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
             asic_->raiseRasterInterrupt();
             interrupt_ = true;
         }
+        // Its sound channels take an instruction each on every line.
+        if (hsyncAge_ == 0 && plus_ && asic_->soundChannelsOn())
+            asic_->soundTick();
         if (hsyncAge_ == 2)
             monitor.hsync();
         if (hsyncAge_ == kHsyncPulse)

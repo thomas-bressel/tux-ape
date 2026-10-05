@@ -82,6 +82,13 @@ const Program kPrograms[] = {
     {"asictest", "plus/asic1.dsk", "TEST", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 80000, 22, {"sprite ram mask"}},
     // What the ASIC does in place of an 8255.
     {"asicppi", "plus/asic1.dsk", "PPI", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 40000, 21, {}},
+    // The sound channels fed from memory. Still wrong: which interrupt
+    // comes first when channel 1 asks for one, and channels that should
+    // run on lines whose HSYNC has no length. The last check ends by
+    // writing &A0 to a locked ASIC, which puts the lower ROM over its own
+    // results: whether it passes hangs on when the next interrupt comes.
+    {"dmatest", "plus/asic1.dsk", "DMATEST", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 40000, 25,
+     {"dma int request test (dcsr bits)", "CRTC R0 length and dma", "dma under asic registers"}},
 };
 
 struct Verdict {

@@ -60,6 +60,14 @@ void Psg::write(uint8_t value)
         restartEnvelope();
 }
 
+void Psg::setRegister(int number, uint8_t value)
+{
+    number &= 15;
+    reg_[number] = value & kMask[number];
+    if (number == 13)
+        restartEnvelope();
+}
+
 uint8_t Psg::read(uint8_t portA) const
 {
     if (!selectValid_)

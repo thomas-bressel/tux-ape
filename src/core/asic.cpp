@@ -52,6 +52,7 @@ void Asic::reset()
     pri_ = splt_ = sscr_ = ivr_ = 0;
     ssa_ = 0;
     dcsr_ = 0;
+    channels_.fill(Channel());
     showDcsr();
     if (gateArray_)
         for (int index = 0; index < 32; ++index)
@@ -72,6 +73,67 @@ void Asic::raiseChannelInterrupt(int channel)
     showDcsr();
 }
 
+// An instruction is a word. Its top four bits say what it is:
+//   0RDD  put DD in register R of the sound chip
+//   1NNN  the next instruction comes NNN units later, a unit being as many
+//         lines as the prescaler says, and one more
+//   2NNN  the instructions from here are to be gone through NNN times
+//   4xxx  bit 0: go back to the last 2NNN while its count lasts;
+//         bit 4: ask for an interrupt; bit 5: stop the channel
+void Asic::soundTick()
+{
+    if (!readRam_)
+        return;
+    for (int number = 0; number < 3; ++number) {
+        if (!(dcsr_ & 1 << number))
+            continue;
+        Channel& channel = channels_[static_cast<size_t>(number)];
+        if (channel.pause > 0) {
+            if (channel.pauseLines > 0) {
+                --channel.pauseLines;
+            } else {
+                channel.pauseLines = channel.prescaler;
+                --channel.pause;
+            }
+            continue;
+        }
+        const uint16_t instruction =
+            static_cast<uint16_t>(readRam_(channel.address) | readRam_(static_cast<uint16_t>(channel.address + 1)) << 8);
+        channel.address = static_cast<uint16_t>(channel.address + 2);
+        if ((instruction & 0x7000) == 0) {
+            if (writeSound_)
+                writeSound_(instruction >> 8 & 0x0F, static_cast<uint8_t>(instruction));
+            continue;
+        }
+        if ((instruction & 0x1000) && (instruction & 0x0FFF) != 0) {
+            // The line of the instruction itself is the pause's first.
+            channel.pause = instruction & 0x0FFF;
+            channel.pauseLines = channel.prescaler;
+            if (channel.pauseLines > 0) {
+                --channel.pauseLines;
+            } else {
+                channel.pauseLines = channel.prescaler;
+                --channel.pause;
+            }
+        }
+        if (instruction & 0x2000) {
+            channel.repeats = instruction & 0x0FFF;
+            channel.loopStart = channel.address;
+        }
+        if (instruction & 0x4000) {
+            // The count is of times through, the first included.
+            if ((instruction & 0x01) && channel.repeats > 0 && --channel.repeats > 0)
+                channel.address = channel.loopStart;
+            if (instruction & 0x10)
+                raiseChannelInterrupt(number);
+            if (instruction & 0x20) {
+                dcsr_ &= static_cast<uint8_t>(~(1 << number));
+                showDcsr();
+            }
+        }
+    }
+}
+
 uint8_t Asic::acknowledgeInterrupt(bool raster)
 {
     // The raster's interrupt comes first, then the channels' from 0 to 2;
@@ -84,9 +146,12 @@ uint8_t Asic::acknowledgeInterrupt(bool raster)
     } else if (dcsr_ & 0x70) {
         const int channel = dcsr_ & 0x40 ? 0 : dcsr_ & 0x20 ? 1 : 2;
         vector |= static_cast<uint8_t>((2 - channel) << 1);
-        // A channel's interrupt stays until its flag is written to, unless
-        // the vector register asks for it to go by itself.
-        if (ivr_ & 1)
+        // Taken, a channel's interrupt goes by itself. With bit 0 of the
+        // vector register set it stays until its flag is written to;
+        // channel 2's still goes. (Amstrad's description has the bit the
+        // other way round, and says nothing of channel 2; this is what
+        // Kevin Thacker's "dmatest" finds on a real machine.)
+        if (!(ivr_ & 1) || channel == 2)
             dcsr_ &= static_cast<uint8_t>(~(0x40 >> channel));
     }
     showDcsr();
@@ -193,6 +258,26 @@ void Asic::write(uint16_t address, uint8_t value)
         return;
     case kRaster + 4: sscr_ = value; return;
     case kRaster + 5: ivr_ = value; return;
+    // The channels' registers: the list's address (even), then the
+    // prescaler.
+    case kDma: case kDma + 4: case kDma + 8:
+        channels_[static_cast<size_t>((at - kDma) >> 2)].address =
+            static_cast<uint16_t>((channels_[static_cast<size_t>((at - kDma) >> 2)].address & 0xFF00) | (value & 0xFE));
+        return;
+    case kDma + 1: case kDma + 5: case kDma + 9:
+        channels_[static_cast<size_t>((at - kDma) >> 2)].address =
+            static_cast<uint16_t>((channels_[static_cast<size_t>((at - kDma) >> 2)].address & 0x00FF) | value << 8);
+        return;
+    // Written during a pause, the prescaler ends the unit under way there
+    // and then: the rest of the pause is in units of the new length.
+    case kDma + 2: case kDma + 6: case kDma + 10: {
+        Channel& channel = channels_[static_cast<size_t>((at - kDma) >> 2)];
+        channel.prescaler = value;
+        channel.pauseLines = value;
+        if (channel.pause > 0)
+            --channel.pause;
+        return;
+    }
     case kDma + 15:
         // The channels' enables; a one written over an interrupt flag
         // takes the flag down.

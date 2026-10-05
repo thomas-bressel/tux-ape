@@ -75,6 +75,9 @@ public:
             writeMap_[addr >> 14][addr & 0x3FFF] = value;
     }
 
+    // The RAM at an address, whatever ROM or register is shown over it.
+    uint8_t readRam(uint16_t addr) const { return writeMap_[addr >> 14][addr & 0x3FFF]; }
+
     // The 64K of one RAM page: 0 is the base RAM, 1 and up the expansion
     // pages as the banking register numbers them. Null where none is fitted.
     static constexpr int kRamPages = 65;

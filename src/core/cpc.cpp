@@ -6,6 +6,8 @@ Cpc::Cpc()
     : cpu_(*this)
 {
     asic_.attach(&gateArray_, &crtc_);
+    asic_.attachSound([this](uint16_t address) { return memory_.readRam(address); },
+                      [this](int number, uint8_t value) { psg_.setRegister(number, value); });
     gateArray_.attach(&asic_);
     memory_.setAsic(&asic_);
     reset();
