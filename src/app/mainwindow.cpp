@@ -24,6 +24,7 @@
 #include "icons.h"
 #include "screenwidget.h"
 #include "setupdialog.h"
+#include "tooldialogs.h"
 
 #include "core/snapshot.h"
 
@@ -198,14 +199,14 @@ void MainWindow::createMenus()
     addItem(file, tr("Playbac&k Session..."));
     addItem(file, tr("&Record Session..."));
     file->addSeparator();
-    addItem(file, tr("Save Screens&hot..."), CTRL | Qt::Key_F7);
+    addItem(file, tr("Save Screens&hot..."), CTRL | Qt::Key_F7, [this] { saveScreenshot(); });
     addItem(file, tr("R&ecord AVI..."));
     addItem(file, tr("Record &WAV..."));
     addItem(file, tr("Record &YM..."));
     file->addSeparator();
     addItem(file, tr("Po&kes..."), CTRL | Qt::Key_F8);
     file->addSeparator();
-    addItem(file, tr("Aut&o Type..."), CTRL | Qt::Key_F5);
+    addItem(file, tr("Aut&o Type..."), CTRL | Qt::Key_F5, [this] { autoType(); });
     pasteAction_ = addItem(file, tr("&Paste"), CTRL | Qt::Key_F11, [this] { paste(); });
     pasteAction_->setEnabled(!QApplication::clipboard()->text().isEmpty());
     file->addSeparator();
@@ -421,6 +422,38 @@ void MainWindow::setSpeed(int percent)
     settings.displayEvery = false;
     applySettings(settings);
     settings_.save();
+}
+
+// The picture is taken when the window opens: what is saved is what was on
+// screen when the user asked.
+void MainWindow::saveScreenshot()
+{
+    ScreenshotDialog dialog(screen_->screenshot(), this);
+    dialog.setHalfSize(settings_.screenshotHalfSize);
+    dialog.setHalfHeight(settings_.screenshotHalfHeight);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    settings_.screenshotHalfSize = dialog.halfSize();
+    settings_.screenshotHalfHeight = dialog.halfHeight();
+    const QString folder = settings_.screenshotFolder.isEmpty() ? QDir::homePath() : settings_.screenshotFolder;
+    QString path = QFileDialog::getSaveFileName(this, tr("Save Screenshot"), folder, ScreenshotDialog::fileFilter());
+    if (!path.isEmpty()) {
+        if (QFileInfo(path).suffix().isEmpty())
+            path += ".png";
+        if (!ScreenshotDialog::save(dialog.result(), path))
+            report(tr("Cannot write %1.").arg(QDir::toNativeSeparators(path)));
+        settings_.screenshotFolder = QFileInfo(path).absolutePath();
+    }
+    settings_.save();
+}
+
+void MainWindow::autoType()
+{
+    AutoTypeDialog dialog(autoTypeText_, this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    autoTypeText_ = dialog.text();
+    emulator_->autoType(autoTypeText_);
 }
 
 void MainWindow::toggleFullScreen()

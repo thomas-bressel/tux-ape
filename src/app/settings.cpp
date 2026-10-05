@@ -139,6 +139,11 @@ void Settings::read(const tuxape::IniFile& ini)
     joystick = ini.getBool(kConfiguration, "Joystick Enabled", joystick);
     if (ini.has(kConfiguration, "Keyboard File"))
         keyboardFile = QString::fromStdString(ini.get(kConfiguration, "Keyboard File"));
+
+    screenshotHalfSize = ini.getBool("Screenshots", "Half Size", screenshotHalfSize);
+    screenshotHalfHeight = ini.getBool("Screenshots", "Half Height", screenshotHalfHeight);
+    if (ini.has("Screenshots", "Path"))
+        screenshotFolder = QString::fromStdString(ini.get("Screenshots", "Path"));
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -185,6 +190,12 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
     if (parts & InputPart) {
         ini.setBool(kConfiguration, "Joystick Enabled", joystick);
         ini.set(kConfiguration, "Keyboard File", keyboardFile.toStdString());
+    }
+    // Not part of any profile: only the settings file itself has these.
+    if (parts == AllParts) {
+        ini.setBool("Screenshots", "Half Size", screenshotHalfSize);
+        ini.setBool("Screenshots", "Half Height", screenshotHalfHeight);
+        ini.set("Screenshots", "Path", screenshotFolder.toStdString());
     }
 }
 

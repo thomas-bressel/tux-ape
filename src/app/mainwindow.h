@@ -59,6 +59,7 @@ private:
     QString snapshotFolder_;  // where the last snapshot was read or written
     QString snapshotPath_;    // the file "Update Snapshot" writes to
     Settings settings_;
+    QString autoTypeText_;  // what the Auto-Type window held last
 
     QAction* runAction_ = nullptr;
     QAction* pauseAction_ = nullptr;
@@ -111,6 +112,9 @@ private:
     // Snapshots.
     void chooseSnapshot();
     void saveSnapshotAs();
+    // Screenshots and Auto-Type.
+    void saveScreenshot();
+    void autoType();
     void updateDiscActions();
     void updateDriveLights();
     void report(const QString& error);

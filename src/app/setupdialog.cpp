@@ -1178,7 +1178,8 @@ void SetupDialog::showPage(Page page)
 
 Settings SetupDialog::settings() const
 {
-    Settings settings;
+    // What none of the pages shows comes back as it was given.
+    Settings settings = opened_;
     settings.crtcType = crtcType_->currentIndex();
     settings.fastDisc = fastDisc_->isChecked();
     settings.speedPercent = speed_->value();

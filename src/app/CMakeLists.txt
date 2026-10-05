@@ -28,6 +28,8 @@ add_library(tuxape_app STATIC
     settings.h
     setupdialog.cpp
     setupdialog.h
+    tooldialogs.cpp
+    tooldialogs.h
 )
 target_include_directories(tuxape_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(tuxape_app PUBLIC tuxape_core Qt6::Widgets)

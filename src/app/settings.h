@@ -53,6 +53,12 @@ struct Settings {
     bool joystick = true;       // the host's joystick or game pad is the CPC's
     QString keyboardFile;       // the layout last loaded or saved, for the record
 
+    // Screenshots: the choices of the Save Screenshot window and where the
+    // last one went.
+    bool screenshotHalfSize = false;
+    bool screenshotHalfHeight = false;
+    QString screenshotFolder;
+
     // Values out of range are brought back into it; a missing file or key
     // leaves the default.
     void load();
