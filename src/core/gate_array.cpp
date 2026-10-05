@@ -1,6 +1,7 @@
 #include "core/gate_array.h"
 
 #include <array>
+#include <cstring>
 
 #include "core/crtc.h"
 #include "core/monitor.h"
@@ -74,11 +75,15 @@ void GateArray::reset()
         ink_[i] = 0;
         rgb_[i] = colours_[0];
     }
+    inkChanged_ = false;
+    fetched_[0] = fetched_[1] = 0;
+    fetchedDisplay_ = false;
     r52_ = 0;
-    vsyncDelay_ = 0;
     hsyncAge_ = 0;
+    vsyncLines_ = 0;
+    vsyncSequence_ = vsyncBlack_ = false;
     interrupt_ = false;
-    prevHsync_ = prevVsync_ = false;
+    prevHsync_ = prevVsync_ = delayedHsync_ = false;
 }
 
 void GateArray::setMonitor(MonitorKind kind, bool linear)
@@ -112,6 +117,10 @@ void GateArray::write(uint8_t value)
         pen_ = (value & 0x10) ? kBorder : value & 0x0F;
         break;
     case 1:  // set the colour of the selected pen
+        if (!inkChanged_) {
+            std::memcpy(rgbBefore_, rgb_, sizeof rgb_);
+            inkChanged_ = true;
+        }
         ink_[pen_] = value & 0x1F;
         rgb_[pen_] = colours_[value & 0x1F];
         break;
@@ -134,61 +143,98 @@ void GateArray::acknowledgeInterrupt()
 
 void GateArray::tick(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor)
 {
-    const bool hsync = crtc.hsync();
+    const bool plusAsic = crtc.type() == CrtcType::AsicPlus;
+    const bool asic = plusAsic || crtc.type() == CrtcType::PreAsic;
+
+    // A discrete Gate Array reacts to the CRTC's HSYNC at once, a character
+    // ahead of the picture it is still drawing. The ASICs keep the two in
+    // step, so there everything tied to HSYNC comes a microsecond later.
+    const bool hsync = asic ? delayedHsync_ : crtc.hsync();
+    delayedHsync_ = crtc.hsync();
     const bool vsync = crtc.vsync();
 
+    if (vsync && !prevVsync_) {
+        // From here the Gate Array times the vertical sync itself, counting
+        // HSYNCs, whatever the CRTC's VSYNC does next.
+        vsyncLines_ = 0;
+        vsyncSequence_ = true;
+        vsyncBlack_ = true;
+    }
+
     if (hsync) {
-        // The monitor gets its sync pulse two characters after the CRTC
-        // raises HSYNC, so shorter pulses never reach it.
-        if (hsyncAge_ == 2)
+        // Two microseconds into the HSYNC the monitor's sync pulse starts
+        // and the requested screen mode takes effect. Shorter pulses do
+        // neither.
+        if (hsyncAge_ == 2) {
             monitor.hsync();
+            mode_ = rmr_ & 3;
+        }
         if (hsyncAge_ < 0xFF)
             ++hsyncAge_;
     } else if (prevHsync_) {
+        if (hsyncAge_ == 2)
+            mode_ = rmr_ & 3;
         hsyncAge_ = 0;
-        // End of HSYNC: the requested mode takes effect and the interrupt
-        // counter advances.
-        mode_ = rmr_ & 3;
+        // The end of every HSYNC, however short, advances the interrupt
+        // counter.
         if (++r52_ == 52) {
             r52_ = 0;
             interrupt_ = true;
         }
-        // Two HSYNCs into the VSYNC the counter is resynchronised with the
-        // frame; an interrupt fires if the previous one is far enough away.
-        if (vsyncDelay_ && --vsyncDelay_ == 0) {
-            if (r52_ >= 32)
-                interrupt_ = true;
-            r52_ = 0;
+        if (vsyncSequence_) {
+            ++vsyncLines_;
+            if (vsyncLines_ == 2) {
+                // The monitor's vertical sync starts here. The interrupt
+                // counter is brought into step with the frame, with an
+                // interrupt if the previous one is far enough away.
+                monitor.vsync();
+                if (r52_ >= 32)
+                    interrupt_ = true;
+                r52_ = 0;
+            } else if (vsyncLines_ == 26) {
+                vsyncBlack_ = false;
+                vsyncSequence_ = false;
+            }
         }
-    }
-    if (vsync && !prevVsync_) {
-        vsyncDelay_ = 2;
-        monitor.vsync();
     }
     prevHsync_ = hsync;
     prevVsync_ = vsync;
 
     if (uint32_t* out = monitor.cell()) {
-        if (hsync || vsync) {
+        if (hsync || vsyncBlack_) {
             for (int i = 0; i < Monitor::kCellWidth; ++i)
                 out[i] = kBlack;
-        } else if (!crtc.displayEnable()) {
-            const uint32_t border = rgb_[kBorder];
-            for (int i = 0; i < Monitor::kCellWidth; ++i)
-                out[i] = border;
         } else {
-            // The refresh address and the raster line together address 64K:
-            // MA13-12 pick the 16K block, RA2-0 the line within the row.
-            const uint16_t ma = crtc.ma();
-            const unsigned addr = (ma & 0x3000u) << 2 | (crtc.ra() & 7u) << 11 | (ma & 0x3FFu) << 1;
-            const uint8_t* left = kPenTable.pens[mode_][videoRam[addr]];
-            const uint8_t* right = kPenTable.pens[mode_][videoRam[addr | 1]];
-            for (int i = 0; i < 8; ++i) {
-                out[i] = rgb_[left[i]];
-                out[i + 8] = rgb_[right[i]];
+            // An ink set during this microsecond shows from the middle of
+            // the character on a Gate Array, from a quarter of the way in
+            // on the Plus ASIC.
+            const int split = inkChanged_ ? (plusAsic ? 4 : 8) : 0;
+            if (!fetchedDisplay_) {
+                for (int i = 0; i < split; ++i)
+                    out[i] = rgbBefore_[kBorder];
+                for (int i = split; i < Monitor::kCellWidth; ++i)
+                    out[i] = rgb_[kBorder];
+            } else {
+                const uint8_t* left = kPenTable.pens[mode_][fetched_[0]];
+                const uint8_t* right = kPenTable.pens[mode_][fetched_[1]];
+                for (int i = 0; i < 8; ++i) {
+                    out[i] = (i < split ? rgbBefore_ : rgb_)[left[i]];
+                    out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[right[i]];
+                }
             }
         }
     }
+    inkChanged_ = false;
+
+    // Fetch the character the CRTC is pointing at; it is drawn next time.
+    // The refresh address and the raster line together address 64K:
+    // MA13-12 pick the 16K block, RA2-0 the line within the row.
+    fetchedDisplay_ = crtc.displayEnable();
+    const uint16_t ma = crtc.ma();
+    const unsigned addr = (ma & 0x3000u) << 2 | (crtc.ra() & 7u) << 11 | (ma & 0x3FFu) << 1;
+    fetched_[0] = videoRam[addr];
+    fetched_[1] = videoRam[addr | 1];
+
     monitor.advance();
 }
 

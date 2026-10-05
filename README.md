@@ -39,6 +39,25 @@ autre dossier avec la variable d'environnement `TUXAPE_ROM_DIR`.
 ctest --preset dev
 ```
 
+Les programmes de test tiers ne sont pas dans le dépôt ; `tests/fetch-test-roms.sh`
+les télécharge (`--sst`, `--acid`, `--shaker` pour les suites volumineuses).
+Les tests dont le programme manque sont simplement ignorés.
+
+## Références et crédits
+
+- Informations techniques issues du « Amstrad CPC CRTC Compendium » par
+  Longshot / Logon System (CC BY-NC-ND) : c'est la référence suivie pour le
+  CRTC, le Gate Array, les synchronisations et les interruptions.
+  <https://shaker.logonsystem.eu/>
+- Le « Shaker » de Longshot et les « acid tests » de Kevin Thacker (Arnold)
+  servent à vérifier l'émulation contre de vraies machines.
+- Les tests du Z80 viennent de Frank Cringle (zexdoc, zexall) et du projet
+  SingleStepTests.
+- WinAPE est l'œuvre de Richard Wilson ; TuxAPE en reprend le fonctionnement
+  et les formats de fichiers, pas le code.
+
+`tools/fetch-references.sh` télécharge le Compendium dans `reference/`.
+
 ## Organisation
 
 | Dossier | Contenu |

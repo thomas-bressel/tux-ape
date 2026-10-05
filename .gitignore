@@ -11,4 +11,7 @@
 # Test programs downloaded on demand (see tests/fetch-test-roms.sh)
 /tests/roms/
 
+# Third-party reference documents (see tools/fetch-references.sh)
+/reference/
+
 CMakeUserPresets.json

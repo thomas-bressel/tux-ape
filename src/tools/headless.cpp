@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -23,11 +24,16 @@ void usage(const char* program)
                  "  --model 464|664|6128   machine to emulate (default 6128)\n"
                  "  --crtc 0-4             CRTC type (default 0)\n"
                  "  --rom-dir DIR          folder holding the ROM images\n"
+                 "  --disc FILE            disc image for drive A:\n"
+                 "  --fast-disc            no waiting for the disc drive\n"
                  "  --frames N             frames to run before typing (default 150)\n"
                  "  --type TEXT            text to type, in WinAPE Auto-Type syntax\n"
                  "  --after N              frames to run after typing (default 50)\n"
+                 "  --tap N                press SPACE every N frames while running on,\n"
+                 "                         for programs that wait for a key between pages\n"
                  "  --png FILE             save the final picture\n"
-                 "  --text                 print the final screen as text\n",
+                 "  --text                 print the final screen as text\n"
+                 "  --capture              print everything the program printed\n",
                  program);
 }
 
@@ -42,9 +48,13 @@ int main(int argc, char* argv[])
     std::filesystem::path romDir = defaultRomDir();
     int frames = 150;
     int after = 50;
+    int tap = 0;
     std::string typed;
     std::string png;
+    std::string discFile;
+    bool fastDisc = false;
     bool printText = false;
+    bool capture = false;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -66,12 +76,20 @@ int main(int argc, char* argv[])
             frames = std::atoi(value());
         } else if (arg == "--after") {
             after = std::atoi(value());
+        } else if (arg == "--tap") {
+            tap = std::atoi(value());
         } else if (arg == "--type") {
             typed = value();
+        } else if (arg == "--disc") {
+            discFile = value();
+        } else if (arg == "--fast-disc") {
+            fastDisc = true;
         } else if (arg == "--png") {
             png = value();
         } else if (arg == "--text") {
             printText = true;
+        } else if (arg == "--capture") {
+            capture = true;
         } else {
             usage(argv[0]);
             return 2;
@@ -86,6 +104,29 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    // Everything printed goes through the firmware's TXT OUTPUT entry.
+    std::string printed;
+    if (capture) {
+        constexpr uint16_t kTxtOutput = 0xBB5A;
+        cpc.watchAddress(kTxtOutput);
+        cpc.setExecHook([&](uint16_t) {
+            const char c = static_cast<char>(cpc.cpu().reg[cpc.cpu().A]);
+            if (c == '\n' || (c >= 32 && c < 127))
+                printed += c;
+        });
+    }
+
+    cpc.fdc().setFast(fastDisc);
+    if (!discFile.empty()) {
+        const auto file = readFile(discFile);
+        auto disc = file ? Disc::fromDsk(*file) : std::nullopt;
+        if (!disc) {
+            std::fprintf(stderr, "cannot read disc image %s\n", discFile.c_str());
+            return 1;
+        }
+        cpc.fdc().drive(0).disc = std::make_unique<Disc>(std::move(*disc));
+    }
+
     for (int f = 0; f < frames; ++f)
         cpc.runFrame();
 
@@ -95,9 +136,14 @@ int main(int argc, char* argv[])
         autoType.frame();
         cpc.runFrame();
     }
-    for (int f = 0; f < after; ++f)
+    for (int f = 0; f < after; ++f) {
+        if (tap > 0)
+            cpc.keyboard().set(CpcKey::Space, f % tap < 3);
         cpc.runFrame();
+    }
 
+    if (capture)
+        std::fputs(printed.c_str(), stdout);
     if (printText)
         std::fputs(readScreenText(cpc).c_str(), stdout);
 

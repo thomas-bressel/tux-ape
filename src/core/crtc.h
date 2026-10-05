@@ -17,6 +17,9 @@ enum class CrtcType : uint8_t {
 // The CRTC is clocked once per microsecond (one character, 16 mode-2 pixels).
 // After each tick() its outputs describe that character: the refresh address,
 // the raster line, and the sync and display-enable signals.
+//
+// The differences between the five types follow the "Amstrad CPC CRTC
+// Compendium" by Longshot / Logon System (CC BY-NC-ND).
 class Crtc {
 public:
     void setType(CrtcType type) { type_ = type; }

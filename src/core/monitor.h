@@ -53,9 +53,10 @@ public:
 
 private:
     // Position of the visible area relative to the sync pulses, chosen so
-    // that the firmware's standard screen is centred.
-    static constexpr int kFirstColumn = 12;
-    static constexpr int kFirstLine = 37;
+    // that the firmware's standard screen is centred on a CPC with a
+    // discrete Gate Array.
+    static constexpr int kFirstColumn = 13;
+    static constexpr int kFirstLine = 35;
     // How far the tube lets a line or a frame drift before it retraces on
     // its own, and how early it accepts a sync pulse.
     static constexpr int kMinLine = 56;

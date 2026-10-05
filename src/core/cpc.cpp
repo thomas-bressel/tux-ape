@@ -32,9 +32,27 @@ void Cpc::run(uint32_t microseconds)
     if (runUntil_ < clk_)
         runUntil_ = clk_;
     runUntil_ += static_cast<uint64_t>(microseconds) * 4;
-    while (clk_ < runUntil_)
-        cpu_.step();
+    if (watchedCount_ == 0) {
+        while (clk_ < runUntil_)
+            cpu_.step();
+    } else {
+        while (clk_ < runUntil_) {
+            // Not when an interrupt is about to be taken: the instruction
+            // will run, and be reported, after the handler returns.
+            if (watched_[cpu_.pc] && execHook_ && !cpu_.interruptDue())
+                execHook_(cpu_.pc);
+            cpu_.step();
+        }
+    }
     syncSound();
+}
+
+void Cpc::watchAddress(uint16_t addr, bool watch)
+{
+    if (watched_.empty())
+        watched_.assign(0x10000, 0);
+    watchedCount_ += static_cast<int>(watch) - static_cast<int>(watched_[addr] != 0);
+    watched_[addr] = watch;
 }
 
 // The CPC decodes I/O addresses one line at a time: each device answers when
@@ -53,12 +71,6 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
             memory_.setRomEnables(gateArray_.lowerRomEnabled(), gateArray_.upperRomEnabled());
         }
     }
-    if (!(port & 0x4000)) {
-        if ((high & 3) == 0)
-            crtc_.select(value);
-        else if ((high & 3) == 1)
-            crtc_.write(value);
-    }
     if (!(port & 0x2000))
         memory_.selectUpperRom(value);
     if (!(port & 0x0800)) {
@@ -74,16 +86,33 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
     }
 }
 
+void Cpc::crtcWrite(uint16_t port, uint8_t value)
+{
+    if (port & 0x4000)
+        return;
+    switch ((port >> 8) & 3) {
+    case 0: crtc_.select(value); break;
+    case 1: crtc_.write(value); break;
+    }
+}
+
 uint8_t Cpc::ioRead(uint16_t port)
 {
     const uint8_t high = static_cast<uint8_t>(port >> 8);
     uint8_t value = 0xFF;
 
     if (!(port & 0x4000)) {
-        if ((high & 3) == 2)
-            value &= crtc_.readStatus();
-        else if ((high & 3) == 3)
-            value &= crtc_.readData();
+        switch (high & 3) {
+        case 2: value &= crtc_.readStatus(); break;
+        case 3: value &= crtc_.readData(); break;
+        default:
+            // The CRTC is not wired to the Z80's read and write lines: an
+            // input from one of its write addresses is a write, of whatever
+            // is on the bus. The Compendium (4.4.2) reports the high address
+            // byte arriving, as with IN A,(n).
+            crtcWrite(port, high);
+            break;
+        }
     }
     if (!(port & 0x0800)) {
         uint8_t pins = 0xFF;
@@ -100,7 +129,10 @@ uint8_t Cpc::ioRead(uint16_t port)
         value &= ppi_.read(high & 3, pins);
     }
     // Disc interface: &FB7E is the FDC's status port, &FB7F its data port.
-    if (!(port & 0x0480) && (port & 0x0100))
+    // When an address selects the PPI as well, it is the PPI that is read:
+    // on a real 6128 port B reads the same at every address that selects
+    // it, the disc interface's included.
+    if (!(port & 0x0480) && (port & 0x0100) && (port & 0x0800))
         value &= (port & 1) ? fdc_.readData(microseconds()) : fdc_.readStatus(microseconds());
     return value;
 }
@@ -108,8 +140,9 @@ uint8_t Cpc::ioRead(uint16_t port)
 uint8_t Cpc::portB() const
 {
     // Bit 7: cassette data in. Bit 6: printer busy (nothing is connected).
-    // Bit 5: /EXP. Bit 4: 50 Hz link. Bits 3-1: maker links, 111 = Amstrad.
-    uint8_t value = 0x7E;
+    // Bit 5: /EXP, low with nothing on the expansion port. Bit 4: 50 Hz
+    // link. Bits 3-1: maker links, 111 = Amstrad.
+    uint8_t value = 0x5E;
     if (crtc_.vsync())
         value |= 0x01;
     return value;

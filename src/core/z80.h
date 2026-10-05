@@ -114,6 +114,10 @@ public:
     // NMI is edge triggered: call once per falling edge.
     void nmi() { nmiPending_ = true; }
 
+    // True if the next step() will respond to an interrupt instead of
+    // running the instruction at PC.
+    bool interruptDue() const { return nmiPending_ || (!eiDelay_ && iff1 && bus_.irq()); }
+
     uint16_t af() const { return static_cast<uint16_t>(reg[A] << 8 | reg[F]); }
     uint16_t bc() const { return static_cast<uint16_t>(reg[B] << 8 | reg[C]); }
     uint16_t de() const { return static_cast<uint16_t>(reg[D] << 8 | reg[E]); }

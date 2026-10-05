@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <vector>
 
 #include "core/audio.h"
 #include "core/crtc.h"
@@ -37,6 +39,13 @@ public:
     // may run over; the excess is taken off the next call.
     void run(uint32_t microseconds);
     void runFrame() { run(kFrameMicroseconds); }
+
+    // Calls `hook` just before the instruction at a watched address runs.
+    // Tools use this to observe a program, for instance to collect what it
+    // prints by watching the firmware's character output routine.
+    using ExecHook = std::function<void(uint16_t pc)>;
+    void setExecHook(ExecHook hook) { execHook_ = std::move(hook); }
+    void watchAddress(uint16_t addr, bool watch = true);
 
     // T-states since power on.
     uint64_t clock() const { return clk_; }
@@ -98,10 +107,19 @@ public:
 
     void out(uint16_t port, uint8_t value)
     {
+        // The devices see the write as soon as the I/O cycle is under way,
+        // before the wait: with OUT (C),r that is the instruction's third
+        // microsecond. The CRTC inside an ASIC (types 3 and 4) samples the
+        // bus later and catches it on the fourth. (Compendium, 4.4.3.)
         advance(2);
+        const bool lateCrtc = crtc_.type() == CrtcType::AsicPlus || crtc_.type() == CrtcType::PreAsic;
+        ioWrite(port, value);
+        if (!lateCrtc)
+            crtcWrite(port, value);
         waitForGateArray();
         advance(1);
-        ioWrite(port, value);
+        if (lateCrtc)
+            crtcWrite(port, value);
         advance(1);
     }
 
@@ -140,6 +158,10 @@ private:
     uint64_t videoClk_ = 0;  // start of the next microsecond of video to draw
     uint64_t runUntil_ = 0;
 
+    ExecHook execHook_;
+    std::vector<uint8_t> watched_;  // one flag per address; empty when nothing is watched
+    int watchedCount_ = 0;
+
     void advance(unsigned tstates)
     {
         clk_ += tstates;
@@ -155,7 +177,8 @@ private:
     void waitForGateArray() { advance((kReadyPhase - static_cast<unsigned>(clk_)) & 3); }
 
     uint8_t ioRead(uint16_t port);
-    void ioWrite(uint16_t port, uint8_t value);
+    void ioWrite(uint16_t port, uint8_t value);  // every device but the CRTC
+    void crtcWrite(uint16_t port, uint8_t value);
     uint8_t portB() const;
     void updatePsgBus();
     void syncSound();
