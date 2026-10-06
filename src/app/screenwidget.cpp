@@ -387,7 +387,9 @@ void ScreenWidget::handleKey(QKeyEvent* event, bool pressed)
         return;
     }
     emulator_->pcKeyEvent(pcKey, numLock_, pressed);
-    event->accept();
+    // A key the layout gives to no key of the CPC is the interface's: Alt,
+    // for the menus, unless a layout has COPY on it, as WinAPE's does.
+    event->setAccepted(!emulator_->keyMap().cpcKeys(pcKey, numLock_).empty());
 }
 
 void ScreenWidget::focusOutEvent(QFocusEvent* event)

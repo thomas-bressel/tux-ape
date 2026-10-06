@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QElapsedTimer>
+#include <QKeyEvent>
 #include <QPointer>
 #include <QSplashScreen>
 #include <QTemporaryDir>
@@ -51,6 +52,17 @@ int main(int argc, char* argv[])
     CHECK(waitForText(emulator, "Ready", 10000));
     CHECK_EQ(window.screen()->width(), 768);
     CHECK_EQ(window.screen()->height(), 540);
+
+    // Alt is left to the interface, for its menus: the screen does not
+    // take it, as it takes Insert, the CPC's COPY key.
+    for (const bool pressed : {true, false}) {
+        const QEvent::Type type = pressed ? QEvent::KeyPress : QEvent::KeyRelease;
+        QKeyEvent alt(type, Qt::Key_Alt, pressed ? Qt::AltModifier : Qt::NoModifier);
+        QKeyEvent insert(type, Qt::Key_Insert, Qt::NoModifier);
+        QApplication::sendEvent(window.screen(), &alt);
+        QApplication::sendEvent(window.screen(), &insert);
+        CHECK(!alt.isAccepted() && insert.isAccepted());
+    }
 
     // Synthetic key events carry no scan code, which exercises the fallback
     // that maps by key meaning.

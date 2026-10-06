@@ -45,7 +45,7 @@ class KeyMap {
 public:
     static constexpr int kAlternatives = 3;
 
-    // Starts with WinAPE's default layout.
+    // Starts with WinAPE's default layout, but for COPY: on Insert, not Alt.
     KeyMap() { setDefault(); }
     void setDefault();
 

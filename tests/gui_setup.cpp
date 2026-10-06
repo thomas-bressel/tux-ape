@@ -771,8 +771,8 @@ void testInputPage(const QString& folder, const QString& picture)
     emit on[0]->activated(0);
     CHECK(dialog.keyMap() == standard);
 
-    // WinAPE's own layout file is the standard layout; a layout saved is
-    // read back the same.
+    // WinAPE's own layout file is the standard layout, but for COPY, which
+    // it has on Alt; a layout saved is read back the same.
     off[2]->setCurrentIndex(off[2]->findText("Page Up"));
     emit off[2]->activated(off[2]->currentIndex());
     const KeyMap changed = dialog.keyMap();
@@ -780,7 +780,10 @@ void testInputPage(const QString& folder, const QString& picture)
     CHECK(dialog.saveKeyboard(path));
     CHECK(dialog.settings().keyboardFile == path);
     CHECK(dialog.loadKeyboard(QStringLiteral(TUXAPE_WINAPE_DIR "/default.kbd")));
-    CHECK(dialog.keyMap() == standard);
+    KeyMap winape = standard;
+    for (const bool numLock : {false, true})
+        winape.setPcKey(numLock, CpcKey::Copy, 0, tuxape::PcLeftAlt);
+    CHECK(dialog.keyMap() == winape);
     CHECK(off[2]->currentText() == "Num 9");  // the lists follow
     CHECK(dialog.loadKeyboard(path));
     CHECK(dialog.keyMap() == changed);

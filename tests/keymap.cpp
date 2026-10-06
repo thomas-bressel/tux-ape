@@ -13,7 +13,11 @@ int main()
 
     // Spot checks of the default layout.
     CHECK_EQ(defaults.pcKey(false, CpcKey::A, 0), PcA);
-    CHECK_EQ(defaults.pcKey(true, CpcKey::Copy, 0), PcLeftAlt);
+    // COPY is not on Alt, which is left to the interface.
+    CHECK_EQ(defaults.pcKey(true, CpcKey::Copy, 0), PcInsert);
+    for (int key = 0; key < kCpcKeyCount; ++key)
+        for (int slot = 0; slot < KeyMap::kAlternatives; ++slot)
+            CHECK(defaults.pcKey(true, static_cast<CpcKey>(key), slot) != PcLeftAlt);
     CHECK_EQ(defaults.pcKey(true, CpcKey::Shift, 1), PcRightShift);
     CHECK_EQ(defaults.pcKey(true, CpcKey::F1, 0), PcNum1);
     CHECK_EQ(defaults.pcKey(false, CpcKey::F1, 0), PcNone);
@@ -35,10 +39,16 @@ int main()
     CHECK(reloaded.save() == saved);
     CHECK(!reloaded.load(std::vector<uint8_t>(10)));
 
-    // Byte for byte the same as the file WinAPE ships, when it is around.
-    if (const auto shipped = readFile(TUXAPE_WINAPE_DIR "/default.kbd"))
-        CHECK(*shipped == saved);
-    else
+    // Byte for byte the same as the file WinAPE ships, when it is around,
+    // but for COPY, which WinAPE has on Alt.
+    if (const auto shipped = readFile(TUXAPE_WINAPE_DIR "/default.kbd")) {
+        KeyMap winape;
+        CHECK(winape.load(*shipped));
+        CHECK_EQ(winape.pcKey(true, CpcKey::Copy, 0), PcLeftAlt);
+        for (bool numLock : {false, true})
+            winape.setPcKey(numLock, CpcKey::Copy, 0, PcInsert);
+        CHECK(winape.save() == saved);
+    } else
         std::printf("WinAPE's default.kbd not found; comparison skipped\n");
 
     return checkSummary("keymap");
