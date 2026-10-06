@@ -184,7 +184,8 @@ int main(int argc, char* argv[])
     CHECK(emulator.breakpoints() == std::set<uint16_t>{0x8008});
     run->trigger();
     CHECK(stopsAt(0x8008));
-    CHECK(debugger->isVisible());
+    // The window hears of the stop from the machine's thread, a moment later.
+    CHECK(QTest::qWaitFor([&] { return debugger->isVisible() && run->isEnabled(); }, 2000));
     CHECK(debugger->registerText("AF").startsWith("00"));
     CHECK(debugger->registerText("BC").startsWith("13"));
     CHECK(run->isEnabled() && !pause->isEnabled());

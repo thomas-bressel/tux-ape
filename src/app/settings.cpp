@@ -121,6 +121,15 @@ void Settings::read(const tuxape::IniFile& ini)
     linearPalette = ini.getBool(kConfiguration, "Linear Palette", linearPalette);
     palEmulation = ini.getBool(kConfiguration, "PAL Emulation", palEmulation);
     crtShader = ini.getBool(kConfiguration, "CRT Shader", crtShader);
+    const auto percent = [&](const char* key, int& value) {
+        value = std::clamp(ini.getInt(kConfiguration, key, value), 0, CrtLook::kMost);
+    };
+    percent("CRT Curvature", crtLook.curvature);
+    percent("CRT Scan Lines", crtLook.scanLines);
+    percent("CRT Mask", crtLook.mask);
+    percent("CRT Glow", crtLook.glow);
+    percent("CRT Blur", crtLook.blur);
+    percent("CRT Fringe", crtLook.fringe);
     driveLed = ini.getBool(kConfiguration, "On Screen Drive LED", driveLed);
     showDriveCylinders = ini.getBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
     readWindowOptions(ini, "", windowed);
@@ -212,6 +221,12 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kConfiguration, "Linear Palette", linearPalette);
         ini.setBool(kConfiguration, "PAL Emulation", palEmulation);
         ini.setBool(kConfiguration, "CRT Shader", crtShader);
+        ini.setInt(kConfiguration, "CRT Curvature", crtLook.curvature);
+        ini.setInt(kConfiguration, "CRT Scan Lines", crtLook.scanLines);
+        ini.setInt(kConfiguration, "CRT Mask", crtLook.mask);
+        ini.setInt(kConfiguration, "CRT Glow", crtLook.glow);
+        ini.setInt(kConfiguration, "CRT Blur", crtLook.blur);
+        ini.setInt(kConfiguration, "CRT Fringe", crtLook.fringe);
         ini.setBool(kConfiguration, "On Screen Drive LED", driveLed);
         ini.setBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
     }

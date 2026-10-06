@@ -7,6 +7,8 @@
 #include <QOpenGLShaderProgram>
 #include <QOpenGLWidget>
 
+#include "crtlook.h"
+
 class QOpenGLFramebufferObject;
 class QPainter;
 
@@ -30,7 +32,7 @@ public:
     bool hasFrame() const { return !frame_.isNull(); }
     // Draws the picture over the whole of a framebuffer of that many
     // pixels. A colour tube has a mask; a green or a grey one has none.
-    void draw(GLuint framebuffer, const QSize& pixels, bool mask);
+    void draw(GLuint framebuffer, const QSize& pixels, bool mask, const CrtLook& look = {});
 
     // The mask's pitch, in pixels of the screen, for a picture this wide;
     // 0 when the picture is too small to show it.
@@ -39,7 +41,10 @@ public:
     static bool available();
     // A picture drawn without any window, for a screenshot or a test.
     // Null if it cannot be done here.
-    static QImage render(const QImage& frame, const QSize& pixels, bool mask = true);
+    static QImage render(const QImage& frame, const QSize& pixels, bool mask = true, const CrtLook& look = {});
+    // How long the graphics card takes to draw a picture of that size, in
+    // milliseconds, and which card it is. Negative if it cannot be done.
+    static double measure(const QSize& pixels, QString* card = nullptr);
 
 private:
     QImage frame_;
@@ -60,9 +65,15 @@ public:
     explicit CrtView(QWidget* parent = nullptr);
     ~CrtView() override;
 
+    // Whether widgets can be drawn by the graphics card on this display at
+    // all: not on the make-believe ones tests and servers run on.
+    static bool supported();
+
     void setFrame(const QImage& frame);
     void setMask(bool on);
     bool mask() const { return mask_; }
+    void setLook(const CrtLook& look);
+    const CrtLook& look() const { return look_; }
     // True once drawing has been found impossible here.
     bool failed() const { return failed_; }
 
@@ -81,6 +92,7 @@ protected:
 
 private:
     CrtRenderer renderer_;
+    CrtLook look_;
     bool mask_ = true;
     bool failed_ = false;
 };

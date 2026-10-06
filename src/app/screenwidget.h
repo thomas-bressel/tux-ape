@@ -3,6 +3,8 @@
 #include <QImage>
 #include <QWidget>
 
+#include "crtlook.h"
+
 class QPainter;
 
 class CrtView;
@@ -37,7 +39,7 @@ public:
     // TuxAPE's own: the picture as a CTM644 monitor shows it (see CrtView),
     // drawn by the graphics card. Where there is none to do it the picture
     // stays as it was. A colour tube has a mask, a green or grey one none.
-    void setCrtShader(bool on, bool colourTube = true);
+    void setCrtShader(bool on, bool colourTube = true, const CrtLook& look = {});
     bool crtShader() const { return crt_ != nullptr; }
     CrtView* crtView() const { return crt_; }
     // WinAPE's "AMX Mouse": the pointer's moves over the picture, and the

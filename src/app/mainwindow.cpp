@@ -722,7 +722,7 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setMonitor(settings.monitorType, settings.linearPalette, settings.brightness);
     screen_->setDriveLight(settings.driveLed, settings.showDriveCylinders);
     screen_->setPalEmulation(settings.palEmulation);
-    screen_->setCrtShader(settings.crtShader, settings.monitorType == 0);
+    screen_->setCrtShader(settings.crtShader, settings.monitorType == 0, settings.crtLook);
     emulator_->setVerticalHold(settings.verticalHold);
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
                         settings.soundVolume, settings.soundBufferSync / 10.0);
@@ -767,9 +767,28 @@ void MainWindow::showSetup(int page)
     const tuxape::KeyMap keysBefore = emulator_->keyMap();
     dialog.setKeyMap(keysBefore);
     dialog.showPage(static_cast<SetupDialog::Page>(page));
-    if (dialog.exec() != QDialog::Accepted)
+    // The shader's sliders show on the picture as they move.
+    connect(&dialog, &SetupDialog::shaderChanged, this, [this](bool on, const CrtLook& look) {
+        screen_->setCrtShader(on, settings_.monitorType == 0, look);
+    });
+    // The machine stands still while its settings are open, and goes on
+    // afterwards if it was running.
+    const bool wasRunning = !emulator_->isPaused();
+    if (wasRunning) {
+        emulator_->setPaused(true);
+        updateDebugActions();
+    }
+    const bool accepted = dialog.exec() == QDialog::Accepted;
+    if (accepted)
+        applySettings(dialog.settings());
+    else
+        screen_->setCrtShader(settings_.crtShader, settings_.monitorType == 0, settings_.crtLook);
+    if (wasRunning) {
+        emulator_->setPaused(false);
+        updateDebugActions();
+    }
+    if (!accepted)
         return;
-    applySettings(dialog.settings());
     // The keyboard layout is kept as it now is, for the next run too.
     if (!(dialog.keyMap() == keysBefore)) {
         emulator_->setKeyMap(dialog.keyMap());

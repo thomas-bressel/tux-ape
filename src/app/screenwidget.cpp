@@ -122,9 +122,9 @@ void ScreenWidget::fetchFrame()
         update();
 }
 
-void ScreenWidget::setCrtShader(bool on, bool colourTube)
+void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
 {
-    if (on && !crt_ && CrtRenderer::available()) {
+    if (on && !crt_ && CrtView::supported() && CrtRenderer::available()) {
         crt_ = new CrtView(this);
         // The keyboard and the mouse stay this widget's.
         crt_->setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -139,8 +139,10 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube)
         crt_->deleteLater();
         crt_ = nullptr;
     }
-    if (crt_)
+    if (crt_) {
         crt_->setMask(colourTube);
+        crt_->setLook(look);
+    }
     update();
 }
 

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include <QElapsedTimer>
+#include <QGuiApplication>
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
 #include <QOpenGLFramebufferObject>
@@ -75,6 +77,14 @@ uniform vec2 outSize;     // the picture on the screen, in its pixels
 uniform float triad;      // the mask's pitch in screen pixels; 0: no mask
 uniform float depth;      // how dark the mask is, 0 to 1
 uniform float slot;       // a slot's height in screen pixels; 0: stripes
+// The user's settings, 1 being TuxAPE's own: the curve of the glass, how
+// much the scan lines show, the glow, the spot's width and how far off
+// blue lands.
+uniform float curve;
+uniform float lines;
+uniform float glow;
+uniform float blur;
+uniform float fringe;
 varying vec2 uv;
 
 vec3 lin(vec3 c)
@@ -90,14 +100,16 @@ vec3 scanline(float row, float x)
     float v = (row + 0.5) / frameSize.y;
     float du = 1.0 / frameSize.x;
     float u = x * du;
-    vec3 a = lin(texture2D(frame, vec2(u - 0.9 * du, v)).rgb);
+    float spot = 0.9 * blur * du;
+    vec3 a = lin(texture2D(frame, vec2(u - spot, v)).rgb);
     vec3 b = lin(texture2D(frame, vec2(u, v)).rgb);
-    vec3 c = lin(texture2D(frame, vec2(u + 0.9 * du, v)).rgb);
+    vec3 c = lin(texture2D(frame, vec2(u + spot, v)).rgb);
     vec3 beam = a * 0.23 + b * 0.54 + c * 0.23;
-    float ub = u - 0.40 * du;
-    float blue = pow(texture2D(frame, vec2(ub - 1.3 * du, v)).b, 2.2) * 0.27
+    float ub = u - 0.40 * fringe * du;
+    float wider = spot + 0.4 * fringe * du;
+    float blue = pow(texture2D(frame, vec2(ub - wider, v)).b, 2.2) * 0.27
                + pow(texture2D(frame, vec2(ub, v)).b, 2.2) * 0.46
-               + pow(texture2D(frame, vec2(ub + 1.3 * du, v)).b, 2.2) * 0.27;
+               + pow(texture2D(frame, vec2(ub + wider, v)).b, 2.2) * 0.27;
     return vec3(beam.rg, blue);
 }
 
@@ -105,7 +117,7 @@ void main()
 {
     // The glass is curved: the picture's corners draw in.
     vec2 p = uv * 2.0 - 1.0;
-    vec2 q = p * (1.0 + vec2(0.025, 0.034) * p.yx * p.yx);
+    vec2 q = p * (1.0 + vec2(0.025, 0.034) * curve * p.yx * p.yx);
     vec2 edge = abs(q) - vec2(0.93);
     float face = 1.0 - smoothstep(-0.006, 0.002, length(max(edge, 0.0)) - 0.07);
     vec2 s = q * 0.5 + 0.5;
@@ -119,11 +131,12 @@ void main()
     float f = y - row;
     vec3 c0 = scanline(row, x);
     vec3 c1 = scanline(row + 1.0, x);
-    float sharp = clamp((outSize.y / frameSize.y - 2.0) / 2.0, 0.0, 1.0);
-    vec3 w0 = mix(vec3(0.70), mix(vec3(0.27), vec3(0.37), c0), sharp);
-    vec3 w1 = mix(vec3(0.70), mix(vec3(0.27), vec3(0.37), c1), sharp);
+    float sharp = clamp((outSize.y / frameSize.y - 2.0) / 2.0, 0.0, 1.0) * min(lines, 1.0);
+    float fine = 1.0 / (1.0 + 0.6 * max(lines - 1.0, 0.0));
+    vec3 w0 = mix(vec3(0.27), vec3(0.37), c0) * fine;
+    vec3 w1 = mix(vec3(0.27), vec3(0.37), c1) * fine;
     vec3 beam = c0 * exp(-f * f / (2.0 * w0 * w0)) + c1 * exp(-(1.0 - f) * (1.0 - f) / (2.0 * w1 * w1));
-    beam /= mix(1.5, 0.87, sharp);
+    beam = mix(mix(c0, c1, f), beam / 0.87, sharp);
 
     // The mask, as the photographs show it enlarged: stripes of red, green
     // and blue phosphor, three to a triad, cut into slots: bright beads
@@ -136,12 +149,12 @@ void main()
         float third = fract(across) * 3.0;
         float stripe = floor(third);
         vec3 lit = vec3(stripe == 0.0, stripe == 1.0, stripe == 2.0);
-        vec3 mask = mix(vec3(1.0 - 0.55 * depth), vec3(1.0 + 0.30 * depth), lit);
+        vec3 mask = mix(vec3(max(1.0 - 0.55 * depth, 0.0)), vec3(1.0 + 0.30 * min(depth, 1.5)), lit);
         if (slot > 0.0) {
             float bead = 1.0 - smoothstep(0.62, 1.0, abs(fract(across) - 0.5) * 2.0);
             float down = fract((at.y + mod(floor(across), 2.0) * slot * 0.5) / slot);
             bead *= smoothstep(0.0, 0.26, down) * smoothstep(0.0, 0.26, 1.0 - down);
-            mask *= mix(1.0 - 0.8 * depth, 1.0, bead) * 1.3;
+            mask *= mix(max(1.0 - 0.8 * depth, 0.0), 1.0, bead) * 1.3;
         }
         beam *= mask;
     }
@@ -150,7 +163,7 @@ void main()
     // far across the glass.
     vec3 close = texture2D(tight, s).rgb;
     vec3 distant = texture2D(wide, s).rgb;
-    vec3 colour = beam + close * close * 0.12 + distant * distant * 0.085;
+    vec3 colour = beam + (close * close * 0.12 + distant * distant * 0.085) * glow;
     // The tube's white is a cold one.
     colour *= vec3(0.95, 0.99, 1.05);
 
@@ -238,7 +251,7 @@ void CrtRenderer::release()
     tube_.removeAllShaders();
 }
 
-void CrtRenderer::draw(GLuint framebuffer, const QSize& pixels, bool mask)
+void CrtRenderer::draw(GLuint framebuffer, const QSize& pixels, bool mask, const CrtLook& look)
 {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     if (frame_.isNull() || !frameTexture_ || !glow_[0]) {
@@ -307,7 +320,12 @@ void CrtRenderer::draw(GLuint framebuffer, const QSize& pixels, bool mask)
     tube_.setUniformValue("outSize", QVector2D(static_cast<float>(wide), static_cast<float>(high)));
     tube_.setUniformValue("triad", static_cast<float>(mask ? triadPixels(wide) : 0));
     // The mask comes in as the picture grows large enough for it.
-    tube_.setUniformValue("depth", static_cast<float>(std::clamp((realTriad - 1.6) / 1.2, 0.0, 1.0)));
+    tube_.setUniformValue("depth", static_cast<float>(std::clamp((realTriad - 1.6) / 1.2, 0.0, 1.0) * look.mask / 100.0));
+    tube_.setUniformValue("curve", look.curvature / 100.0f);
+    tube_.setUniformValue("lines", look.scanLines / 100.0f);
+    tube_.setUniformValue("glow", look.glow / 100.0f);
+    tube_.setUniformValue("blur", look.blur / 100.0f);
+    tube_.setUniformValue("fringe", look.fringe / 100.0f);
     tube_.setUniformValue("slot", slot >= 4.0 ? static_cast<float>(std::lround(slot)) : 0.0f);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, glow_[3]->texture());
@@ -320,7 +338,7 @@ void CrtRenderer::draw(GLuint framebuffer, const QSize& pixels, bool mask)
     tube_.release();
 }
 
-QImage CrtRenderer::render(const QImage& frame, const QSize& pixels, bool mask)
+QImage CrtRenderer::render(const QImage& frame, const QSize& pixels, bool mask, const CrtLook& look)
 {
     QOpenGLContext context;
     QOffscreenSurface surface;
@@ -333,7 +351,7 @@ QImage CrtRenderer::render(const QImage& frame, const QSize& pixels, bool mask)
         if (renderer.initialize()) {
             QOpenGLFramebufferObject target(pixels);
             renderer.setFrame(frame);
-            renderer.draw(target.handle(), pixels, mask);
+            renderer.draw(target.handle(), pixels, mask, look);
             picture = target.toImage().convertToFormat(QImage::Format_RGB32);
         }
         renderer.release();
@@ -342,7 +360,56 @@ QImage CrtRenderer::render(const QImage& frame, const QSize& pixels, bool mask)
     return picture;
 }
 
+double CrtRenderer::measure(const QSize& pixels, QString* card)
+{
+    QOpenGLContext context;
+    QOffscreenSurface surface;
+    surface.create();
+    if (!context.create() || !surface.isValid() || !context.makeCurrent(&surface))
+        return -1.0;
+    double each = -1.0;
+    {
+        CrtRenderer renderer;
+        if (renderer.initialize()) {
+            if (card)
+                *card = QString::fromLatin1(reinterpret_cast<const char*>(renderer.glGetString(GL_RENDERER)));
+            QOpenGLFramebufferObject target(pixels);
+            QImage frame(768, 270, QImage::Format_RGB32);
+            // A new picture each time, as the machine gives one: the
+            // sending of it counts too.
+            const int kTimes = 200;
+            QElapsedTimer timer;
+            for (int n = -20; n < kTimes; ++n) {
+                if (n == 0) {
+                    renderer.glFinish();
+                    timer.start();
+                }
+                frame.fill(QColor::fromHsv((n * 7) & 255, 200, 255));
+                renderer.setFrame(frame);
+                renderer.draw(target.handle(), pixels, true);
+            }
+            renderer.glFinish();
+            each = static_cast<double>(timer.nsecsElapsed()) / 1e6 / kTimes;
+        }
+        renderer.release();
+    }
+    context.doneCurrent();
+    return each;
+}
+
 // ---- the widget -----------------------------------------------------------------
+
+bool CrtView::supported()
+{
+    static const QStringList kWithout = {"offscreen", "minimal", "linuxfb", "vnc"};
+    return !kWithout.contains(QGuiApplication::platformName());
+}
+
+void CrtView::setLook(const CrtLook& look)
+{
+    look_ = look;
+    update();
+}
 
 CrtView::CrtView(QWidget* parent)
     : QOpenGLWidget(parent)
@@ -402,7 +469,8 @@ void CrtView::paintGL()
         return;
     const qreal ratio = devicePixelRatioF();
     renderer_.draw(defaultFramebufferObject(),
-                   QSize(static_cast<int>(std::lround(width() * ratio)), static_cast<int>(std::lround(height() * ratio))), mask_);
+                   QSize(static_cast<int>(std::lround(width() * ratio)), static_cast<int>(std::lround(height() * ratio))), mask_,
+                   look_);
     if (overlay) {
         QPainter painter(this);
         overlay(painter);

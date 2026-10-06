@@ -403,8 +403,59 @@ QWidget* SetupDialog::createDisplayPage()
     showTrack_->setObjectName("ckShowTrack");
     auto* sharedLayout = new QVBoxLayout(sharedBox);
     sharedLayout->setSpacing(2);
-    for (QCheckBox* box : {pal_, crtShader_, linearPalette_, driveLed_, showTrack_})
+    for (QCheckBox* box : {pal_, linearPalette_, driveLed_, showTrack_})
         sharedLayout->addWidget(box);
+
+    // ---- The CTM644 shader: its box, and sliders to set it by hand, each
+    // a percentage of TuxAPE's own setting ----
+    auto* shaderBox = new QGroupBox(tr("CTM644 Monitor Shader"));
+    shaderBox->setObjectName("gbCrtShader");
+    auto* shaderGrid = new QGridLayout(shaderBox);
+    shaderGrid->setVerticalSpacing(2);
+    crtShader_->setText(tr("Enabled"));
+    auto* defaults = new QPushButton(tr("Defaults"));
+    defaults->setObjectName("bCrtDefaults");
+    defaults->setAutoDefault(false);
+    defaults->setToolTip(tr("Puts the six sliders back to TuxAPE's own setting"));
+    shaderGrid->addWidget(crtShader_, 0, 0, 1, 3);
+    shaderGrid->addWidget(defaults, 0, 4, 1, 2, Qt::AlignRight);
+    const struct {
+        const char* name;
+        QString text;
+        QString tip;
+    } kSliders[6] = {{"slCrtCurvature", tr("Curvature:"), tr("The curve of the glass")},
+                     {"slCrtScanLines", tr("Scan lines:"), tr("How much the scan lines show")},
+                     {"slCrtMask", tr("Mask:"), tr("How dark the tube's mask is")},
+                     {"slCrtGlow", tr("Glow:"), tr("The light bright areas throw around them")},
+                     {"slCrtBlur", tr("Blur:"), tr("How far a pixel runs into its neighbours")},
+                     {"slCrtFringe", tr("Colour fringes:"), tr("How far off the blue gun lands")}};
+    const auto announce = [this] { emit shaderChanged(crtShader_->isChecked(), chosenLook()); };
+    for (int i = 0; i < 6; ++i) {
+        auto* slider = new QSlider(Qt::Horizontal);
+        slider->setObjectName(kSliders[i].name);
+        slider->setRange(0, CrtLook::kMost);
+        slider->setPageStep(10);
+        slider->setValue(100);
+        slider->setToolTip(kSliders[i].tip);
+        auto* value = new QLabel("100 %");
+        value->setObjectName(QString("l") + (kSliders[i].name + 2));
+        value->setMinimumWidth(fontMetrics().horizontalAdvance("200 %"));
+        value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        connect(slider, &QSlider::valueChanged, this, [value, announce](int percent) {
+            value->setText(QString("%1 %").arg(percent));
+            announce();
+        });
+        // Two columns of three.
+        const int row = 1 + i % 3, column = i / 3 * 3;
+        shaderGrid->addWidget(new QLabel(kSliders[i].text), row, column);
+        shaderGrid->addWidget(slider, row, column + 1);
+        shaderGrid->addWidget(value, row, column + 2);
+        crtSliders_[i] = slider;
+    }
+    shaderGrid->setColumnStretch(1, 1);
+    shaderGrid->setColumnStretch(4, 1);
+    connect(crtShader_, &QCheckBox::toggled, this, announce);
+    connect(defaults, &QPushButton::clicked, this, [this] { setLook(CrtLook()); });
 
     // ---- Full Screen Colours: always true colour here ----
     auto* coloursBox = new QGroupBox(tr("Full Screen Colours"));
@@ -444,11 +495,28 @@ QWidget* SetupDialog::createDisplayPage()
     grid->addWidget(sharedBox, 1, 1);
     grid->addWidget(coloursBox, 1, 2);
     grid->addWidget(brightBox, 2, 0, 1, 3);
+    grid->addWidget(shaderBox, 3, 0, 1, 3);
 
     auto* layout = new QHBoxLayout(page);
     layout->addLayout(left);
     layout->addLayout(grid, 1);
     return page;
+}
+
+CrtLook SetupDialog::chosenLook() const
+{
+    CrtLook look;
+    int* const figures[6] = {&look.curvature, &look.scanLines, &look.mask, &look.glow, &look.blur, &look.fringe};
+    for (int i = 0; i < 6; ++i)
+        *figures[i] = crtSliders_[i]->value();
+    return look;
+}
+
+void SetupDialog::setLook(const CrtLook& look)
+{
+    const int figures[6] = {look.curvature, look.scanLines, look.mask, look.glow, look.blur, look.fringe};
+    for (int i = 0; i < 6; ++i)
+        crtSliders_[i]->setValue(figures[i]);
 }
 
 int SetupDialog::chosenMonitor() const
@@ -1121,6 +1189,7 @@ void SetupDialog::setSettings(const Settings& settings)
     linearPalette_->setChecked(settings.linearPalette);
     pal_->setChecked(settings.palEmulation);
     crtShader_->setChecked(settings.crtShader);
+    setLook(settings.crtLook);
     driveLed_->setChecked(settings.driveLed);
     showTrack_->setChecked(settings.showDriveCylinders);
     const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
@@ -1370,6 +1439,7 @@ Settings SetupDialog::settings() const
     settings.linearPalette = linearPalette_->isChecked();
     settings.palEmulation = pal_->isChecked();
     settings.crtShader = crtShader_->isChecked();
+    settings.crtLook = chosenLook();
     settings.driveLed = driveLed_->isChecked();
     settings.showDriveCylinders = showTrack_->isChecked();
     Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};

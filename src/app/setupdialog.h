@@ -49,6 +49,13 @@ public:
     // window was opened with.
     void setPreview(const QImage& frame);
 
+signals:
+    // The shader's box or one of its sliders has moved: for the picture to
+    // show it at once, before OK.
+    void shaderChanged(bool on, const CrtLook& look);
+
+public:
+
     // The keyboard layout the Input page shows and changes.
     void setKeyMap(const tuxape::KeyMap& map);
     const tuxape::KeyMap& keyMap() const { return keyMap_; }
@@ -89,6 +96,9 @@ private:
     QCheckBox* linearPalette_ = nullptr;
     QCheckBox* pal_ = nullptr;
     QCheckBox* crtShader_ = nullptr;
+    QSlider* crtSliders_[6] = {};
+    CrtLook chosenLook() const;
+    void setLook(const CrtLook& look);
     QCheckBox* turbo_ = nullptr;
     QCheckBox* plusPpi_ = nullptr;
     QCheckBox* tapeSounds_ = nullptr;
