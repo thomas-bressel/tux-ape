@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include <QPixmap>
 
 class QSplashScreen;
@@ -8,7 +10,9 @@ class QSplashScreen;
 // own: Tux with a CPC in his flipper, drawn by the project's author.
 QPixmap welcomePicture();
 
-// Shows it in the middle of the screen, no taller than half of it, for a
-// few seconds or until it is clicked. The window does away with itself
-// when its time is up. Nothing if the picture is not there.
-QSplashScreen* showWelcome(int milliseconds = 2500);
+// Shows it in the middle of the screen, no taller than half of it, for
+// three seconds or until it is clicked; `gone` is then called, once: the
+// program's window comes after the picture, not with it. The picture's
+// window does away with itself. If the picture is not there, `gone` is
+// called at once and nothing is shown.
+QSplashScreen* showWelcome(std::function<void()> gone = {}, int milliseconds = 3000);

@@ -60,17 +60,22 @@ int main(int argc, char* argv[])
     if (Settings::loadKeyMap(keys))
         emulator.setKeyMap(keys);
 
-    // The welcome picture, over the window for a moment, unless the user
-    // would rather not, or a picture of the window is what was asked for.
-    if (settings.welcomePicture && !parser.isSet(grabOption))
-        showWelcome();
-
     MainWindow window(&emulator);
     window.applySettings(settings);
-    window.show();
-    if (!parser.positionalArguments().isEmpty())
-        window.insertDiscFile(0, parser.positionalArguments().first());
-    emulator.start();
+    const auto open = [&] {
+        window.show();
+        if (!parser.positionalArguments().isEmpty())
+            window.insertDiscFile(0, parser.positionalArguments().first());
+        emulator.start();
+    };
+    // The welcome picture stays three seconds on the screen, by itself;
+    // the window and the machine come after it. Not if the user would
+    // rather not see it, or if a picture of the window is what was asked
+    // for.
+    if (settings.welcomePicture && !parser.isSet(grabOption))
+        showWelcome(open);
+    else
+        open();
 
     if (parser.isSet(grabOption)) {
         QTimer::singleShot(parser.value(grabDelayOption).toInt(), &window, [&] {

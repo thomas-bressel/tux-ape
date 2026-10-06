@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QElapsedTimer>
 #include <QPointer>
 #include <QSplashScreen>
 #include <QTemporaryDir>
@@ -100,17 +101,32 @@ int main(int argc, char* argv[])
     {
         const QPixmap picture = welcomePicture();
         CHECK(!picture.isNull() && picture.width() > 200 && picture.height() > picture.width());
-        QPointer<QSplashScreen> splash = showWelcome(60000);
+        // It tells when it has gone, once: the program's window is to
+        // come after it. A click sends it away before its time.
+        int gone = 0;
+        QPointer<QSplashScreen> splash = showWelcome([&] { ++gone; }, 60000);
         CHECK(splash && splash->isVisible() && splash->objectName() == "Welcome");
         if (splash) {
             CHECK(!splash->pixmap().isNull() && splash->pixmap().height() <= picture.height());
+            QTest::qWait(100);
+            CHECK_EQ(gone, 0);
             QTest::mouseClick(splash, Qt::LeftButton);
             CHECK(QTest::qWaitFor([&] { return !splash || !splash->isVisible(); }, 2000));
+            CHECK_EQ(gone, 1);
             delete splash.data();
+            CHECK_EQ(gone, 1);
         }
-        // It goes by itself too.
-        QPointer<QSplashScreen> brief = showWelcome(50);
+        // Left alone it stays its time, three seconds unless said
+        // otherwise, then goes by itself.
+        gone = 0;
+        QElapsedTimer shown;
+        shown.start();
+        QPointer<QSplashScreen> brief = showWelcome([&] { ++gone; }, 400);
+        CHECK(brief && brief->isVisible());
+        CHECK(QTest::qWaitFor([&] { return gone == 1; }, 3000));
+        CHECK(shown.elapsed() >= 380);
         CHECK(QTest::qWaitFor([&] { return brief.isNull(); }, 2000));
+        CHECK_EQ(gone, 1);
 
         Settings settings;
         CHECK(settings.welcomePicture);
