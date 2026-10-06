@@ -276,7 +276,9 @@ void MainWindow::createMenus()
     // the Library's thumbnail of the program in the machine. A desktop
     // that keeps that key for itself leaves it with Ctrl.
     thumbnailAction_ = addItem(file, tr("Screen to &Thumbnail"), Qt::Key_Print, [this] { thumbnailFromScreen(); });
-    thumbnailAction_->setShortcuts({QKeySequence(Qt::Key_Print), QKeySequence(CTRL | Qt::Key_Print)});
+    // Ctrl+T as well: a key no desktop holds back.
+    thumbnailAction_->setShortcuts(
+        {QKeySequence(CTRL | Qt::Key_T), QKeySequence(Qt::Key_Print), QKeySequence(CTRL | Qt::Key_Print)});
     recordAviAction_ = addItem(file, tr("R&ecord AVI..."), {}, [this] { toggleAviRecording(); });
     recordAviAction_->setCheckable(true);
     recordWavAction_ = addItem(file, tr("Record &WAV..."), {}, [this] { toggleWavRecording(); });
@@ -401,6 +403,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::Tape, tr("Tape Control"), tapeControlAction_);
     addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
     addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
+    addButton(IconId::Photo, tr("Screen to Thumbnail (CTRL+T)"), thumbnailAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Settings, tr("Settings (F12)"), setupAction_);
     addButton(IconId::FullScreen, tr("Toggle Full Screen (F10)"), fullScreenAction_);
@@ -847,10 +850,20 @@ void MainWindow::setSpeed(int percent)
 // screen when the user asked.
 QString MainWindow::programInMachine() const
 {
+    QStringList present;
     for (int drive = 0; drive < discs_->drives(); ++drive)
         if (const DiscManager::Info info = discs_->info(drive); info.present && !info.path.isEmpty())
-            return info.path;
-    return tapePath_;
+            present << QDir::cleanPath(info.path);
+    if (!tapePath_.isEmpty())
+        present << QDir::cleanPath(tapePath_);
+    if (const tuxape::MachineConfig machine = emulator_->machine(); machine.isPlus()) {
+        // Named without its folder, the cartridge is the machine's own.
+        const QString cartridge = QDir::fromNativeSeparators(QString::fromStdString(machine.cartridge));
+        if (QFileInfo(cartridge).isAbsolute())
+            present << QDir::cleanPath(cartridge);
+    }
+    const QString last = QDir::cleanPath(lastProgram_);
+    return !lastProgram_.isEmpty() && present.contains(last) ? last : present.value(0);
 }
 
 // The Print Screen key: the picture on the screen, through the shader if
@@ -863,7 +876,7 @@ void MainWindow::thumbnailFromScreen()
     const QImage picture = screen_->shownPicture();
     const QString program = programInMachine();
     if (program.isEmpty()) {
-        report(tr("There is no disc or tape in the machine to give a thumbnail to."));
+        report(tr("There is no disc, tape or cartridge in the machine to give a thumbnail to."));
         return;
     }
     const LibraryEntry entry = libraryEntryIn(program, libraryFoldersOrDefault(settings_.libraryFolders));
@@ -1105,6 +1118,7 @@ bool MainWindow::insertCartridgeFile(const QString& path)
     emulator_->setCrtcType(tuxape::CrtcType::AsicPlus);
     settings_ = settings;
     cartridgeFolder_ = QFileInfo(path).absolutePath();
+    lastProgram_ = path;
     if (!error.isEmpty())
         report(tr("%1.").arg(error.left(1).toUpper() + error.mid(1)));
     if (!settings_.save())
@@ -1131,6 +1145,7 @@ bool MainWindow::insertTapeFile(const QString& path)
     if (!insertTapeData(data ? std::span<const uint8_t>(*data) : std::span<const uint8_t>(), path))
         return false;
     tapeFolder_ = QFileInfo(path).absolutePath();
+    lastProgram_ = path;
     return true;
 }
 
@@ -1387,8 +1402,10 @@ bool MainWindow::insertDiscFile(int drive, const QString& path)
 {
     const QString error = discs_->insert(drive, path);
     report(error);
-    if (error.isEmpty())
+    if (error.isEmpty()) {
         discFolder_ = QFileInfo(path).absolutePath();
+        lastProgram_ = path;
+    }
     return error.isEmpty();
 }
 

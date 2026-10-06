@@ -40,6 +40,7 @@
 #include "emulator.h"
 #include "librarydialog.h"
 #include "mainwindow.h"
+#include "screenwidget.h"
 #include "settings.h"
 
 namespace {
@@ -1152,9 +1153,16 @@ int main(int argc, char* argv[])
         CHECK(shot != nullptr);
         if (!shot)
             return checkSummary("gui_library");
-        // The key itself, and with Ctrl for desktops that keep it.
+        // Ctrl+T, the Print Screen key itself and with Ctrl, for what a
+        // desktop lets through; and a button of the control panel.
+        CHECK(shot->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_T)));
         CHECK(shot->shortcuts().contains(QKeySequence(Qt::Key_Print)));
         CHECK(shot->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_Print)));
+        QToolButton* camera = nullptr;
+        for (QToolButton* each : window.findChildren<QToolButton*>())
+            if (each->toolTip().startsWith("Screen to Thumbnail"))
+                camera = each;
+        CHECK(camera && camera->isEnabled());
         const auto press = [&](const char* button, bool* paused = nullptr) {
             Modals modals([&](QWidget* modal) {
                 auto* box = qobject_cast<QMessageBox*>(modal);
@@ -1180,8 +1188,26 @@ int main(int argc, char* argv[])
         // under its name, the side with it.
         CHECK(window.insertDiscFile(0, zub));
         CHECK(window.programInMachine() == zub);
-        CHECK_EQ(press("bReplace"), 0);
         const QString thumbnail = shots + "/thumbnails/Zub (1986) (Platform) (Disc) (Face A) [Original].png";
+        // By the key, as a key pressed in the window; then by the button.
+        // (The window has to be the one in front for its keys to count:
+        // other windows have come and gone in this test.)
+        window.activateWindow();
+        window.screen()->setFocus();
+        CHECK(QTest::qWaitForWindowActive(&window, 3000));
+        QTest::keyClick(window.screen(), Qt::Key_T, Qt::ControlModifier);
+        CHECK(QFile::exists(thumbnail));
+        // The Print Screen key does the same when the desktop lets it
+        // through, with Ctrl or without.
+        CHECK(QFile::remove(thumbnail));
+        QTest::keyClick(window.screen(), Qt::Key_Print, Qt::ControlModifier);
+        CHECK(QFile::exists(thumbnail));
+        CHECK(QFile::remove(thumbnail));
+        QTest::keyClick(window.screen(), Qt::Key_Print);
+        CHECK(QFile::exists(thumbnail));
+        CHECK(QFile::remove(thumbnail));
+        if (camera)
+            camera->click();
         CHECK(QFile::exists(thumbnail));
         const QImage made(thumbnail);
         CHECK(!made.isNull() && made.width() >= 384 && made.width() <= 960 && made.height() > 200);
@@ -1215,7 +1241,36 @@ int main(int argc, char* argv[])
         CHECK(window.insertDiscFile(0, loose));
         CHECK_EQ(press("bReplace"), 0);
         CHECK(QFile::exists(folder.filePath("elsewhere/thumbnails/Lone (1985) (Disc).png")));
+
+        // A cartridge is a program too. Of several in the machine, the one
+        // put in last is meant; when it goes, the one that is left.
+        QDir().mkpath(shots + "/Games/Action");
+        const QString cartridge = shots + "/Games/Action/Burnin Rubber (1990).cpr";
+        {
+            // One block of sixteen kilobytes, in a RIFF file of the kind.
+            QByteArray image("RIFF");
+            const auto number = [](quint32 value) {
+                return QByteArray(1, char(value)) + char(value >> 8) + char(value >> 16) + char(value >> 24);
+            };
+            image += number(4 + 8 + 0x4000) + "AMS!" + "cb00" + number(0x4000) + QByteArray(0x4000, '\0');
+            QFile file(cartridge);
+            CHECK(file.open(QIODevice::WriteOnly) && file.write(image) == image.size());
+        }
+        CHECK(window.insertDiscFile(0, zub));
+        CHECK(window.programInMachine() == zub);
+        {
+            // Whatever the machine has to say of its ROMs is not the point.
+            Modals modals([](QWidget* modal) { modal->close(); });
+            window.insertCartridgeFile(cartridge);
+        }
+        CHECK(window.programInMachine() == cartridge);
+        CHECK_EQ(press("bReplace"), 0);
+        CHECK(QFile::exists(shots + "/thumbnails/Burnin Rubber (1990) (Action) (Cartridge).png"));
+        CHECK(libraryThumbnailName(libraryEntryIn(cartridge, {shots})) == "Burnin Rubber (1990) (Action) (Cartridge)");
+        CHECK(window.insertDiscFile(0, zub));
+        CHECK(window.programInMachine() == zub);
         window.discs()->remove(0);
+        CHECK(window.programInMachine() == cartridge);
     }
     return checkSummary("gui_library");
 }

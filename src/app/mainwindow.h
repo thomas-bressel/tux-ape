@@ -74,8 +74,11 @@ public:
     // was not one, and starts afresh, as one does when its cartridge is
     // changed.
     bool insertCartridgeFile(const QString& path);
-    // The file of the program in the machine: the disc in drive A:, or in
-    // another drive, or else the tape in the deck. Empty if there is none.
+    // The file of the program in the machine: of the discs in the drives,
+    // the tape in the deck and the cartridge of a Plus, the one put in
+    // last; if that one has gone, a disc before a tape, a tape before a
+    // cartridge. The machine's own cartridge, out of the ROM folder, is no
+    // program. Empty if there is none.
     QString programInMachine() const;
 
     // Puts the user's settings into effect. The window starts with the
@@ -142,6 +145,7 @@ private:
     QAction* playTapeAction_ = nullptr;
     QAction* recordTapeAction_ = nullptr;
     QAction* thumbnailAction_ = nullptr;
+    QString lastProgram_;  // the disc, tape or cartridge last put in the machine
     QString tapeRecording_;
     TapeDialog* tapeDialog_ = nullptr;
     QString tapePath_;    // the file the tape in the deck came from
