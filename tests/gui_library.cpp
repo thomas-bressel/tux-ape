@@ -16,6 +16,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QTreeWidget>
 #include <QToolButton>
 
 #include "check.h"
@@ -129,6 +130,13 @@ void testNames()
     CHECK(entry.details == "System 3, fr, cr");
     CHECK(entry.kind == LibraryEntry::Disc);
 
+    // "(AI)", in any case, is a mark of its own and not a note.
+    CHECK(!entry.ai);
+    entry = libraryEntry("/games/Outrun 2026 (AI) (2026) [FR].dsk");
+    CHECK(entry.ai && entry.title == "Outrun 2026" && entry.year == "2026" && entry.details == "FR");
+    CHECK(libraryEntry("Forest (ai).dsk").ai && libraryEntry("Forest (ai).dsk").details.isEmpty());
+    CHECK(!libraryEntry("Air Raid (AIR) (Again).dsk").ai);
+    CHECK(!libraryEntry("AI.dsk").ai);
     entry = libraryEntry("/games/sorcery_plus.SNA");
     CHECK(entry.title == "sorcery plus");
     CHECK(entry.year.isEmpty() && entry.details.isEmpty());
@@ -175,7 +183,7 @@ int main(int argc, char* argv[])
     QDir().mkpath(more);
     const QString gryzor = games + "/Gryzor (UK) (1987) (CPM) [Original].dsk";
     const QString ninja = games + "/sub/Last Ninja, The (1988)(System 3).dsk";
-    const QString boulder = more + "/boulder dash.dsk";
+    const QString boulder = more + "/boulder dash (AI).dsk";
     const QString sorcery = more + "/Sorcery+ (1985)(Amsoft).sna";
     CHECK(window.discs()->createBlank(0, gryzor, tuxape::defaultDiscFormat()).isEmpty());
     window.discs()->remove(0);
@@ -202,6 +210,12 @@ int main(int argc, char* argv[])
         auto* insertB = dialog.findChild<QPushButton*>("bInsertB");
         auto* count = dialog.findChild<QLabel*>("lCount");
         CHECK(dialog.listedTitles() == (QStringList{"boulder dash", "Gryzor", "Sorcery+", "The Last Ninja"}));
+        // The AI column: ticked for the files with "(AI)" in their name.
+        CHECK(dialog.listedAiTitles() == QStringList{"boulder dash"});
+        auto* programs = dialog.findChild<QTreeWidget*>("lvLibrary");
+        CHECK(programs && programs->columnCount() == 5 && programs->headerItem()->text(3) == "AI");
+        CHECK(programs && programs->topLevelItem(0)->text(4).isEmpty());  // not among the notes as well
+        CHECK(programs && !(programs->topLevelItem(0)->flags() & Qt::ItemIsUserCheckable));
         CHECK(count->text() == "4 of 4");
         CHECK(insertA->isEnabled() && insertA->text() == "Insert in &A:");
         if (!prefix.isEmpty()) {
@@ -364,6 +378,22 @@ int main(int argc, char* argv[])
     // No program in it, and not an archive at all: nothing listed.
     writeZip(zipped + "/documents.zip", {{"readme.txt", games + "/readme.txt"}});
     CHECK(QFile::copy(games + "/readme.txt", zipped + "/broken.zip"));
+
+    // An archive marked "(AI)" marks the programs it holds.
+    {
+        const QString marked = folder.filePath("marked");
+        QDir().mkpath(marked);
+        writeZip(marked + "/Pack (AI).zip", {{"One (2026).dsk", gryzor}, {"Two.dsk", gryzor}});
+        writeZip(marked + "/Other.zip", {{"Three [ai].dsk", gryzor}, {"Four.dsk", gryzor}});
+        const QList<LibraryEntry> programs = scanLibrary({marked});
+        CHECK_EQ(programs.size(), 4);
+        if (programs.size() == 4) {
+            CHECK(programs[0].title == "Four" && !programs[0].ai);
+            CHECK(programs[1].title == "One" && programs[1].ai && programs[1].year == "2026");
+            CHECK(programs[2].title == "Three" && programs[2].ai && programs[2].details.isEmpty());
+            CHECK(programs[3].title == "Two" && programs[3].ai);
+        }
+    }
 
     const QList<LibraryEntry> inside = scanLibrary({zipped});
     CHECK_EQ(inside.size(), 4);

@@ -28,6 +28,8 @@ bool isProgram(const QString& name)
            || name.endsWith(".cpr", Qt::CaseInsensitive) || name.endsWith(".sna", Qt::CaseInsensitive);
 }
 
+constexpr int kAiColumn = 3;
+
 LibraryEntry::Kind kindOf(const QString& name)
 {
     return name.endsWith(".sna", Qt::CaseInsensitive)   ? LibraryEntry::Snapshot
@@ -70,7 +72,9 @@ LibraryEntry libraryEntry(const QString& path)
         QStringList details;
         for (auto it = note.globalMatch(name, notes); it.hasNext();) {
             const QString text = it.next().captured(1).simplified();
-            if (const auto match = year.match(text); match.hasMatch() && entry.year.isEmpty())
+            if (text.compare("AI", Qt::CaseInsensitive) == 0)
+                entry.ai = true;
+            else if (const auto match = year.match(text); match.hasMatch() && entry.year.isEmpty())
                 entry.year = match.captured(1);
             else if (!text.isEmpty() && text != "-")
                 details << text;
@@ -104,8 +108,11 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
             for (const tuxape::ZipArchive::Entry& file : archive->entries())
                 if (const QString name = memberName(file.name); isProgram(name))
                     programs << name;
+            // The archive's own "(AI)" stands for all it holds.
+            const bool ai = libraryEntry(path).ai;
             for (const QString& name : programs) {
                 LibraryEntry entry = libraryEntry(programs.size() == 1 ? path : name);
+                entry.ai = entry.ai || ai;
                 entry.path = path;
                 entry.member = name;
                 entry.kind = kindOf(name);
@@ -151,7 +158,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     search_->setClearButtonEnabled(true);
     list_ = new QTreeWidget;
     list_->setObjectName("lvLibrary");
-    list_->setHeaderLabels({tr("Title"), tr("Year"), tr("Type"), tr("Notes")});
+    list_->setHeaderLabels({tr("Title"), tr("Year"), tr("Type"), tr("AI"), tr("Notes")});
     list_->setRootIsDecorated(false);
     list_->setUniformRowHeights(true);
     list_->setAlternatingRowColors(true);
@@ -159,6 +166,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setColumnWidth(0, 300);
     list_->setColumnWidth(1, 50);
     list_->setColumnWidth(2, 80);
+    list_->setColumnWidth(kAiColumn, 36);
     count_ = new QLabel;
     count_->setObjectName("lCount");
     count_->setWordWrap(true);
@@ -226,8 +234,12 @@ void LibraryDialog::fill()
                              : entry.kind == LibraryEntry::Tape      ? tr("Tape")
                              : entry.kind == LibraryEntry::Cartridge ? tr("Cartridge")
                                                                      : tr("Snapshot");
-        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, entry.details});
+        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, QString(), entry.details});
         item->setData(0, Qt::UserRole, i);
+        // A box that shows, ticked or not, and is not for clicking.
+        item->setFlags(item->flags() & ~Qt::ItemIsUserCheckable);
+        item->setCheckState(kAiColumn, entry.ai ? Qt::Checked : Qt::Unchecked);
+        item->setToolTip(kAiColumn, entry.ai ? tr("\"(AI)\" is in the file's name") : QString());
         item->setToolTip(0, libraryDisplayPath(entry));
     }
     filter();
@@ -279,6 +291,15 @@ QStringList LibraryDialog::listedTitles() const
     QStringList titles;
     for (int row = 0; row < list_->topLevelItemCount(); ++row)
         if (!list_->topLevelItem(row)->isHidden())
+            titles << list_->topLevelItem(row)->text(0);
+    return titles;
+}
+
+QStringList LibraryDialog::listedAiTitles() const
+{
+    QStringList titles;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row)
+        if (!list_->topLevelItem(row)->isHidden() && list_->topLevelItem(row)->checkState(kAiColumn) == Qt::Checked)
             titles << list_->topLevelItem(row)->text(0);
     return titles;
 }

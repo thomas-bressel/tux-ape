@@ -23,11 +23,14 @@ struct LibraryEntry {
     QString title;
     QString year;     // four digits, or empty
     QString details;  // the other notes of the name, e.g. "UK, CPM, Original"
+    bool ai = false;  // the name carries the note "(AI)"
 };
 
 // What a file name says. Collections name their files in the manner of
 // TOSEC, "Gryzor (1987)(Ocean)(fr)[cr].dsk": a title, then notes in round
-// and square brackets, the year among them.
+// and square brackets, the year among them. The note "(AI)" is the user's
+// mark for a program made with the help of an AI: it has a column of its
+// own, and is left out of the other notes.
 LibraryEntry libraryEntry(const QString& path);
 // The disc images, tapes, cartridges and snapshots (.dsk, .cdt, .cpr, .sna)
 // in the folders and their sub-folders, those inside ZIP archives included,
@@ -57,6 +60,8 @@ public:
     QString search() const;
     void setSearch(const QString& text);
     QStringList listedTitles() const;
+    // Those of them whose AI box is ticked.
+    QStringList listedAiTitles() const;
     bool select(const QString& title);
 
     // Closes the window on the program selected, as a double click does
