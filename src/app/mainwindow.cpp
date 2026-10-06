@@ -989,13 +989,17 @@ void MainWindow::updateTapeActions()
 // disc in its drive, a tape in the deck, a snapshot as it is.
 void MainWindow::showLibrary()
 {
-    LibraryDialog dialog(settings_.libraryFolders, this);
+    // With no folder named, or none of those named left, the Library's own
+    // "library" folder is looked in, if there is one. It is not written
+    // down as the user's choice.
+    const QStringList folders = libraryFoldersOrDefault(settings_.libraryFolders);
+    LibraryDialog dialog(folders, this);
     dialog.setCategory(libraryCategory_);
     dialog.setSearch(librarySearch_);
     const int closed = dialog.exec();
     librarySearch_ = dialog.search();
     libraryCategory_ = dialog.category();
-    if (dialog.folders() != settings_.libraryFolders) {
+    if (dialog.folders() != folders) {
         settings_.libraryFolders = dialog.folders();
         if (!settings_.save())
             report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));

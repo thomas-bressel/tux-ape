@@ -191,6 +191,9 @@ int main(int argc, char* argv[])
     const QString prefix = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString();
 
     testNames();
+    // No folder of the Library's own, unless a test names one: the
+    // project's must not come into these.
+    qputenv("TUXAPE_LIBRARY_DIR", folder.filePath("no library").toLocal8Bit());
 
     // ROM images are not needed: the machine is not started.
     Emulator emulator;
@@ -331,6 +334,38 @@ int main(int argc, char* argv[])
     CHECK(toolButton && toolButton->isEnabled());
     if (!action || !toolButton)
         return checkSummary("gui_library");
+
+    // With no folder named, the Library's own is looked in, if there is
+    // one: it is used, and not written down as the user's choice.
+    {
+        CHECK(defaultLibraryFolder().isEmpty());
+        CHECK(libraryFoldersOrDefault({}).isEmpty());
+        const QString own = folder.filePath("own library");
+        QDir().mkpath(own + "/Games/Maze");
+        CHECK(QFile::copy(gryzor, own + "/Games/Maze/Pac-Man (1983).dsk"));
+        qputenv("TUXAPE_LIBRARY_DIR", own.toLocal8Bit());
+        CHECK(defaultLibraryFolder() == own);
+        CHECK(libraryFoldersOrDefault({}) == QStringList{own});
+        // Folders named and still there are the ones; named and gone, not.
+        CHECK(libraryFoldersOrDefault({more}) == QStringList{more});
+        CHECK(libraryFoldersOrDefault({folder.filePath("gone")}) == QStringList{own});
+        CHECK(libraryFoldersOrDefault({folder.filePath("gone"), more}) == (QStringList{folder.filePath("gone"), more}));
+        CHECK(window.settings().libraryFolders.isEmpty());
+        Modals modals([&](QWidget* modal) {
+            auto* dialog = qobject_cast<LibraryDialog*>(modal);
+            CHECK(dialog != nullptr);
+            if (!dialog)
+                return modal->close(), void();
+            CHECK(dialog->folders() == QStringList{own});
+            CHECK(dialog->listedTitles() == QStringList{"Pac-Man"} && dialog->category() == "Games");
+            dialog->reject();
+        });
+        action->trigger();
+        CHECK_EQ(modals.seen(), 1);
+        CHECK(window.settings().libraryFolders.isEmpty());
+        qputenv("TUXAPE_LIBRARY_DIR", folder.filePath("no library").toLocal8Bit());
+        CHECK(defaultLibraryFolder().isEmpty());
+    }
 
     // Folders named in the window are remembered, even when it is closed
     // without a program.

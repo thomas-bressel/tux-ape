@@ -53,6 +53,13 @@ LibraryEntry libraryEntry(const QString& path);
 // the programs of one that holds several go by their own. The folders a
 // file is in give its category and sub-category.
 QList<LibraryEntry> scanLibrary(const QStringList& folders);
+// The folder the Library looks in when the user has named none: the one
+// TUXAPE_LIBRARY_DIR gives, or else a "library" folder beside the program,
+// or the project's own. Empty if there is no such folder.
+QString defaultLibraryFolder();
+// The folders to look in: those the user has named, as long as one of them
+// is there; otherwise the Library's own, if it exists.
+QStringList libraryFoldersOrDefault(const QStringList& named);
 // What the program's file holds. Nothing if it cannot be read.
 std::optional<std::vector<uint8_t>> libraryData(const LibraryEntry& entry);
 // The program's file as shown to the user: "archive.zip » file.dsk".

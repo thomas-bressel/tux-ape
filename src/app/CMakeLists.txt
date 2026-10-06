@@ -50,6 +50,11 @@ add_library(tuxape_app STATIC
     tooldialogs.h
 )
 target_include_directories(tuxape_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(tuxape_app PRIVATE
+    # The Library's own folder, when TUXAPE_LIBRARY_DIR is not set and there
+    # is none beside the program.
+    TUXAPE_DEV_LIBRARY_DIR="${PROJECT_SOURCE_DIR}/library"
+)
 target_link_libraries(tuxape_app PUBLIC tuxape_core Qt6::Widgets)
 target_link_libraries(tuxape_app PRIVATE SDL2::SDL2)
 

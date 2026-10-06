@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QCoreApplication>
 #include <QPushButton>
 #include <QTabBar>
 #include <QRegularExpression>
@@ -101,6 +102,27 @@ QString memberName(const std::string& name)
 }
 
 }  // namespace
+
+QString defaultLibraryFolder()
+{
+    // Said from outside, it is that folder or none.
+    if (qEnvironmentVariableIsSet("TUXAPE_LIBRARY_DIR")) {
+        const QString named = qEnvironmentVariable("TUXAPE_LIBRARY_DIR");
+        return QDir(named).exists() && !named.isEmpty() ? QDir::cleanPath(named) : QString();
+    }
+    for (const QString& folder : {QCoreApplication::applicationDirPath() + "/library", QStringLiteral(TUXAPE_DEV_LIBRARY_DIR)})
+        if (QDir(folder).exists())
+            return QDir::cleanPath(folder);
+    return {};
+}
+
+QStringList libraryFoldersOrDefault(const QStringList& named)
+{
+    if (std::any_of(named.begin(), named.end(), [](const QString& folder) { return QDir(folder).exists(); }))
+        return named;
+    const QString own = defaultLibraryFolder();
+    return own.isEmpty() ? named : QStringList{own};
+}
 
 QStringList libraryCategories()
 {
