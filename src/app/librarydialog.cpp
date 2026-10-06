@@ -28,7 +28,28 @@ bool isProgram(const QString& name)
            || name.endsWith(".cpr", Qt::CaseInsensitive) || name.endsWith(".sna", Qt::CaseInsensitive);
 }
 
-constexpr int kAiColumn = 3;
+constexpr int kReleaseColumn = 3;
+constexpr int kAiColumn = 4;
+
+// The kind of release a note of a file name tells, or nothing. A note
+// that is only that is not one of the other notes; TOSEC's "cr XYZ", which
+// also names who did it, stays among them.
+QString releaseOf(const QString& note, bool* whole)
+{
+    const QString text = note.toLower();
+    static const struct {
+        const char* release;
+        QStringList words;
+    } kKinds[] = {{"Original", {"original"}}, {"Crack", {"crack", "cracked", "cr"}}, {"Hack", {"hack", "hacked", "h"}}};
+    for (const auto& kind : kKinds) {
+        for (const QString& word : kind.words) {
+            *whole = text == word;
+            if (*whole || text.startsWith(word + ' '))
+                return kind.release;
+        }
+    }
+    return {};
+}
 
 LibraryEntry::Kind kindOf(const QString& name)
 {
@@ -72,6 +93,12 @@ LibraryEntry libraryEntry(const QString& path)
         QStringList details;
         for (auto it = note.globalMatch(name, notes); it.hasNext();) {
             const QString text = it.next().captured(1).simplified();
+            bool whole = false;
+            const QString release = releaseOf(text, &whole);
+            if (!release.isEmpty() && entry.release.isEmpty())
+                entry.release = release;
+            if (!release.isEmpty() && whole)
+                continue;
             if (text.compare("AI", Qt::CaseInsensitive) == 0)
                 entry.ai = true;
             else if (const auto match = year.match(text); match.hasMatch() && entry.year.isEmpty())
@@ -108,11 +135,14 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
             for (const tuxape::ZipArchive::Entry& file : archive->entries())
                 if (const QString name = memberName(file.name); isProgram(name))
                     programs << name;
-            // The archive's own "(AI)" stands for all it holds.
-            const bool ai = libraryEntry(path).ai;
+            // The archive's own "(AI)" and kind of release stand for all
+            // it holds.
+            const LibraryEntry whole = libraryEntry(path);
             for (const QString& name : programs) {
                 LibraryEntry entry = libraryEntry(programs.size() == 1 ? path : name);
-                entry.ai = entry.ai || ai;
+                entry.ai = entry.ai || whole.ai;
+                if (entry.release.isEmpty())
+                    entry.release = whole.release;
                 entry.path = path;
                 entry.member = name;
                 entry.kind = kindOf(name);
@@ -158,7 +188,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     search_->setClearButtonEnabled(true);
     list_ = new QTreeWidget;
     list_->setObjectName("lvLibrary");
-    list_->setHeaderLabels({tr("Title"), tr("Year"), tr("Type"), tr("AI"), tr("Notes")});
+    list_->setHeaderLabels({tr("Title"), tr("Year"), tr("Type"), tr("Release Type"), tr("AI"), tr("Notes")});
     list_->setRootIsDecorated(false);
     list_->setUniformRowHeights(true);
     list_->setAlternatingRowColors(true);
@@ -166,6 +196,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setColumnWidth(0, 300);
     list_->setColumnWidth(1, 50);
     list_->setColumnWidth(2, 80);
+    list_->setColumnWidth(kReleaseColumn, 100);
     list_->setColumnWidth(kAiColumn, 36);
     count_ = new QLabel;
     count_->setObjectName("lCount");
@@ -193,7 +224,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     layout->addWidget(search_);
     layout->addWidget(list_, 1);
     layout->addLayout(buttons);
-    resize(640, 480);
+    resize(780, 480);
 
     connect(search_, &QLineEdit::textChanged, this, [this] { filter(); });
     connect(list_, &QTreeWidget::currentItemChanged, this, [this] { updateButtons(); });
@@ -234,7 +265,8 @@ void LibraryDialog::fill()
                              : entry.kind == LibraryEntry::Tape      ? tr("Tape")
                              : entry.kind == LibraryEntry::Cartridge ? tr("Cartridge")
                                                                      : tr("Snapshot");
-        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, QString(), entry.details});
+        // The three kinds of release are names, not words to translate.
+        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, entry.release, QString(), entry.details});
         item->setData(0, Qt::UserRole, i);
         // A box that shows, ticked or not, and is not for clicking.
         item->setFlags(item->flags() & ~Qt::ItemIsUserCheckable);
@@ -253,7 +285,8 @@ void LibraryDialog::filter()
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         QTreeWidgetItem* item = list_->topLevelItem(row);
         const LibraryEntry& entry = entries_[item->data(0, Qt::UserRole).toInt()];
-        const QString text = entry.title + ' ' + entry.year + ' ' + entry.details + ' ' + QFileInfo(entry.path).fileName()
+        const QString text = entry.title + ' ' + entry.year + ' ' + entry.details + ' ' + entry.release + ' '
+                             + QFileInfo(entry.path).fileName()
                              + ' ' + entry.member;
         const bool match = std::all_of(words.begin(), words.end(),
                                        [&](const QString& word) { return text.contains(word, Qt::CaseInsensitive); });
@@ -302,6 +335,15 @@ QStringList LibraryDialog::listedAiTitles() const
         if (!list_->topLevelItem(row)->isHidden() && list_->topLevelItem(row)->checkState(kAiColumn) == Qt::Checked)
             titles << list_->topLevelItem(row)->text(0);
     return titles;
+}
+
+QStringList LibraryDialog::listedReleases() const
+{
+    QStringList releases;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row)
+        if (!list_->topLevelItem(row)->isHidden())
+            releases << list_->topLevelItem(row)->text(kReleaseColumn);
+    return releases;
 }
 
 bool LibraryDialog::select(const QString& title)

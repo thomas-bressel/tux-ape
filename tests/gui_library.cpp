@@ -120,16 +120,26 @@ void testNames()
     LibraryEntry entry = libraryEntry("/games/Gryzor (UK) (1987) (CPM) [Original].dsk");
     CHECK(entry.title == "Gryzor");
     CHECK(entry.year == "1987");
-    CHECK(entry.details == "UK, CPM, Original");
+    CHECK(entry.details == "UK, CPM" && entry.release == "Original");
     CHECK(entry.kind == LibraryEntry::Disc);
     CHECK(entry.path == "/games/Gryzor (UK) (1987) (CPM) [Original].dsk");
 
     entry = libraryEntry("/games/Last Ninja, The (1988)(System 3)(fr)[cr].DSK");
     CHECK(entry.title == "The Last Ninja");
     CHECK(entry.year == "1988");
-    CHECK(entry.details == "System 3, fr, cr");
+    CHECK(entry.details == "System 3, fr" && entry.release == "Crack");
     CHECK(entry.kind == LibraryEntry::Disc);
 
+    // The kind of release: Original, Crack or Hack, as a word or as TOSEC
+    // writes it; who did it stays among the notes.
+    CHECK(libraryEntry("Zub (1986) [Crack].dsk").release == "Crack" && libraryEntry("Zub (1986) [Crack].dsk").details.isEmpty());
+    CHECK(libraryEntry("Zub (cracked).dsk").release == "Crack");
+    CHECK(libraryEntry("Zub (HACK).dsk").release == "Hack" && libraryEntry("Zub [Hacked].dsk").release == "Hack");
+    CHECK(libraryEntry("Zub (1986)[h XOR].dsk").release == "Hack" && libraryEntry("Zub (1986)[h XOR].dsk").details == "h XOR");
+    CHECK(libraryEntry("Zub (1986)[cr NPS][t].dsk").release == "Crack");
+    CHECK(libraryEntry("Zub (Original) (Hack).dsk").release == "Original");
+    CHECK(libraryEntry("Zub (Hackers) (Crackdown) (Originals).dsk").release.isEmpty());
+    CHECK(libraryEntry("Hack.dsk").release.isEmpty() && libraryEntry("Hack.dsk").title == "Hack");
     // "(AI)", in any case, is a mark of its own and not a note.
     CHECK(!entry.ai);
     entry = libraryEntry("/games/Outrun 2026 (AI) (2026) [FR].dsk");
@@ -213,8 +223,15 @@ int main(int argc, char* argv[])
         // The AI column: ticked for the files with "(AI)" in their name.
         CHECK(dialog.listedAiTitles() == QStringList{"boulder dash"});
         auto* programs = dialog.findChild<QTreeWidget*>("lvLibrary");
-        CHECK(programs && programs->columnCount() == 5 && programs->headerItem()->text(3) == "AI");
-        CHECK(programs && programs->topLevelItem(0)->text(4).isEmpty());  // not among the notes as well
+        CHECK(programs && programs->columnCount() == 6 && programs->headerItem()->text(4) == "AI");
+        CHECK(programs && programs->topLevelItem(0)->text(5).isEmpty());  // not among the notes as well
+        // The Release Type column: Original, Crack or Hack, from the name.
+        CHECK(programs && programs->headerItem()->text(3) == "Release Type");
+        CHECK(dialog.listedReleases() == (QStringList{"", "Original", "", ""}));
+        CHECK(programs && programs->topLevelItem(1)->text(5) == "UK, CPM");
+        dialog.setSearch("original");
+        CHECK(dialog.listedTitles() == QStringList{"Gryzor"});
+        dialog.setSearch(QString());
         CHECK(programs && !(programs->topLevelItem(0)->flags() & Qt::ItemIsUserCheckable));
         CHECK(count->text() == "4 of 4");
         CHECK(insertA->isEnabled() && insertA->text() == "Insert in &A:");
@@ -383,15 +400,15 @@ int main(int argc, char* argv[])
     {
         const QString marked = folder.filePath("marked");
         QDir().mkpath(marked);
-        writeZip(marked + "/Pack (AI).zip", {{"One (2026).dsk", gryzor}, {"Two.dsk", gryzor}});
+        writeZip(marked + "/Pack (AI) [Crack].zip", {{"One (2026).dsk", gryzor}, {"Two (Hack).dsk", gryzor}});
         writeZip(marked + "/Other.zip", {{"Three [ai].dsk", gryzor}, {"Four.dsk", gryzor}});
         const QList<LibraryEntry> programs = scanLibrary({marked});
         CHECK_EQ(programs.size(), 4);
         if (programs.size() == 4) {
-            CHECK(programs[0].title == "Four" && !programs[0].ai);
-            CHECK(programs[1].title == "One" && programs[1].ai && programs[1].year == "2026");
+            CHECK(programs[0].title == "Four" && !programs[0].ai && programs[0].release.isEmpty());
+            CHECK(programs[1].title == "One" && programs[1].ai && programs[1].year == "2026" && programs[1].release == "Crack");
             CHECK(programs[2].title == "Three" && programs[2].ai && programs[2].details.isEmpty());
-            CHECK(programs[3].title == "Two" && programs[3].ai);
+            CHECK(programs[3].title == "Two" && programs[3].ai && programs[3].release == "Hack");
         }
     }
 
