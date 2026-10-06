@@ -29,3 +29,6 @@ CMakeUserPresets.json
 
 # The user's own programs for the Library window.
 /library/
+
+# ROM images the user keeps for the emulated machine: not ours to version.
+/roms/
