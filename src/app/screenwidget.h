@@ -26,6 +26,14 @@ public:
     // CPC line takes, the second is left black.
     void setRenderBothLines(bool both);
     bool renderBothLines() const { return renderBoth_; }
+    // WinAPE's "On-Screen Drive LED" and "Show Drive Cylinders": a light
+    // in the picture's top right corner while a drive is at work, with the
+    // drive's letter and, if asked, the cylinder its head is on.
+    void setDriveLight(bool shown, bool withCylinder);
+    // What the light shows: as Emulator::driveLight() gives it.
+    void showDriveLight(int light);
+    // Where the light is drawn, in the widget; empty when it is off.
+    QRect driveLightRect() const;
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -40,6 +48,10 @@ private:
     QImage striped_;  // image_ with black lines between its own, when asked for
     bool halfSize_ = false;
     bool renderBoth_ = true;
+    bool driveLightShown_ = false;
+    bool driveCylinderShown_ = false;
+    int driveLight_ = -1;
+    QRect pictureRect() const;
     bool numLock_ = true;
 
     void fetchFrame();

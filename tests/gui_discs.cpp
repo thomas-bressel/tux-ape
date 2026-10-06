@@ -16,6 +16,9 @@
 #include "discmanager.h"
 #include "emulator.h"
 #include "mainwindow.h"
+#include "core/cpc.h"
+#include "settings.h"
+#include "screenwidget.h"
 
 namespace {
 
@@ -142,6 +145,40 @@ int main(int argc, char* argv[])
     grab(format, "format.png");
     CHECK(format.format().firstSectorId == 0xC1);
     grab(window, "main.png");
+
+    // The drive's light on the picture: there only when asked for, in the
+    // top right corner while a drive's motor runs, with its letter and the
+    // cylinder its head is on.
+    {
+        ScreenWidget* screen = window.screen();
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.out(0xFA7E, 1); });
+        CHECK(QTest::qWaitFor([&] { return emulator.driveLight() >= 0; }, 3000));
+        CHECK(emulator.driveLight() >> 8 <= 1);  // the drive last used, A: or B:
+        QTest::qWait(50);
+        CHECK(screen->driveLightRect().isEmpty());
+        Settings settings = window.settings();
+        CHECK(!settings.driveLed && !settings.showDriveCylinders);
+        settings.driveLed = true;
+        window.applySettings(settings);
+        const QRect small = screen->driveLightRect();
+        CHECK(!small.isEmpty() && small.left() > screen->width() * 3 / 4 && small.bottom() < screen->height() / 4);
+        settings.showDriveCylinders = true;
+        window.applySettings(settings);
+        const QRect light = screen->driveLightRect();
+        CHECK(light.width() > small.width());
+        const QImage picture = screen->grab().toImage();
+        CHECK(picture.pixelColor(light.left() + 1, light.top() + 1) == QColor(255, 32, 32));
+        grab(window, "drive_light.png");
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.out(0xFA7E, 0); });
+        CHECK(QTest::qWaitFor([&] { return emulator.driveLight() < 0; }, 3000));
+        QTest::qWait(50);
+        CHECK(screen->driveLightRect().isEmpty());
+        // The two choices are kept with the settings.
+        CHECK(settings.save());
+        Settings saved;
+        saved.load();
+        CHECK(saved.driveLed && saved.showDriveCylinders);
+    }
 
     if (g_failures)
         std::printf("screen was:\n%s\n", screenText(emulator).c_str());

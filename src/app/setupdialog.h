@@ -86,6 +86,8 @@ private:
     QSlider* brightness_ = nullptr;
     QLabel* brightnessLabel_ = nullptr;
     QCheckBox* linearPalette_ = nullptr;
+    QCheckBox* driveLed_ = nullptr;
+    QCheckBox* showTrack_ = nullptr;
     // Half size, both lines, hide mouse, hide panel, hide menus, no
     // right-click menu: for the window, then for full screen.
     QCheckBox* windowOptions_[2][6] = {};

@@ -567,6 +567,7 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setSpeedPercent(settings.speedPercent);
     emulator_->setDisplayEvery(settings.displayEvery ? settings.displayEveryFrames : 0);
     emulator_->setMonitor(settings.monitorType, settings.linearPalette, settings.brightness);
+    screen_->setDriveLight(settings.driveLed, settings.showDriveCylinders);
     emulator_->setVerticalHold(settings.verticalHold);
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
                         settings.soundVolume, settings.soundBufferSync / 10.0);

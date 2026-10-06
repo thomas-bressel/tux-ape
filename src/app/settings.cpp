@@ -116,6 +116,8 @@ void Settings::read(const tuxape::IniFile& ini)
     brightness = std::clamp(ini.getInt(kConfiguration, "Monitor Brightness", brightness), -100, 100);
     verticalHold = std::clamp(ini.getInt(kConfiguration, "VHOLD Position", verticalHold), -32, 32);
     linearPalette = ini.getBool(kConfiguration, "Linear Palette", linearPalette);
+    driveLed = ini.getBool(kConfiguration, "On Screen Drive LED", driveLed);
+    showDriveCylinders = ini.getBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
     readWindowOptions(ini, "", windowed);
     readWindowOptions(ini, " FS", fullScreen);
 
@@ -191,6 +193,8 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt(kConfiguration, "Monitor Brightness", brightness);
         ini.setInt(kConfiguration, "VHOLD Position", verticalHold);
         ini.setBool(kConfiguration, "Linear Palette", linearPalette);
+        ini.setBool(kConfiguration, "On Screen Drive LED", driveLed);
+        ini.setBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
     }
     if (parts & WindowedPart)
         writeWindowOptions(ini, "", windowed);

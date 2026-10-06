@@ -122,6 +122,9 @@ public:
 
     // The latest finished picture: 768 x 270, to be shown twice as tall.
     QImage frame();
+    // The drive whose light is on (0 for A:) times 256, plus the cylinder
+    // its head is on; -1 when none is at work. As of the last frame.
+    int driveLight() const { return driveLight_; }
 
     // ---- Recording ----
     // The sound, as a WAV file, and the sound chip's registers, as a YM
@@ -238,6 +241,9 @@ signals:
     // The machine has paused by itself: on a breakpoint, a break
     // instruction, or at the end of a step.
     void stopped();
+    // The drive at work has changed, or its head has moved: see
+    // driveLight().
+    void driveLightChanged();
     // A session has been played to its end.
     void playbackFinished();
     // Sent about once a second: achieved speed and pictures per second.
@@ -285,6 +291,7 @@ private:
 
     // Debugging. All but stopRequested_ are only touched with the
     // machine's lock held.
+    std::atomic<int> driveLight_{-1};
     std::set<uint16_t> breakpoints_;
     std::map<uint16_t, BreakProps> breakProps_;
     std::vector<MemoryBreak> memoryBreaks_;

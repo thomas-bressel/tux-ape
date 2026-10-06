@@ -24,6 +24,8 @@ ScreenWidget::ScreenWidget(Emulator* emulator, QWidget* parent)
     setAttribute(Qt::WA_OpaquePaintEvent);
     image_ = emulator_->frame();
     connect(emulator_, &Emulator::frameReady, this, &ScreenWidget::fetchFrame, Qt::QueuedConnection);
+    connect(emulator_, &Emulator::driveLightChanged, this, [this] { showDriveLight(emulator_->driveLight()); },
+            Qt::QueuedConnection);
 }
 
 QSize ScreenWidget::sizeHint() const
@@ -65,29 +67,75 @@ void ScreenWidget::fetchFrame()
     update();
 }
 
+// Largest picture of the right proportions that fits, centred.
+QRect ScreenWidget::pictureRect() const
+{
+    QSize size(kDisplayWidth, kDisplayHeight);
+    size.scale(this->size(), Qt::KeepAspectRatio);
+    return QRect(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2), size);
+}
+
+void ScreenWidget::setDriveLight(bool shown, bool withCylinder)
+{
+    driveLightShown_ = shown;
+    driveCylinderShown_ = withCylinder;
+    update();
+}
+
+void ScreenWidget::showDriveLight(int light)
+{
+    if (light == driveLight_)
+        return;
+    driveLight_ = light;
+    if (driveLightShown_)
+        update();
+}
+
+QRect ScreenWidget::driveLightRect() const
+{
+    if (!driveLightShown_ || driveLight_ < 0)
+        return {};
+    const QRect picture = pictureRect();
+    const int unit = std::max(1, picture.width() / 96);  // 8 at full size
+    const int wide = (driveCylinderShown_ ? 5 : 2) * unit + unit / 2, high = unit + unit / 2;
+    return QRect(picture.right() - wide - unit, picture.top() + unit, wide, high);
+}
+
 void ScreenWidget::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
-    // Largest picture of the right proportions that fits, centred.
-    QSize size(kDisplayWidth, kDisplayHeight);
-    size.scale(this->size(), Qt::KeepAspectRatio);
-    const QRect target(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2), size);
+    const QRect target = pictureRect();
     if (target != rect())
         painter.fillRect(rect(), Qt::black);
     // At half size a CPC line is one screen line: there is no second line
     // to leave out.
     if (renderBoth_ || halfSize_ || image_.isNull()) {
         painter.drawImage(target, image_);
+    } else {
+        if (striped_.isNull()) {
+            striped_ = QImage(image_.width(), image_.height() * 2, QImage::Format_RGB32);
+            striped_.fill(Qt::black);
+        }
+        const qsizetype rowBytes = static_cast<qsizetype>(image_.width()) * 4;
+        for (int y = 0; y < image_.height(); ++y)
+            std::memcpy(striped_.scanLine(y * 2), image_.constScanLine(y), static_cast<size_t>(rowBytes));
+        painter.drawImage(target, striped_);
+    }
+    // The drive's light: red, with the drive's letter and its cylinder.
+    const QRect light = driveLightRect();
+    if (light.isEmpty())
         return;
-    }
-    if (striped_.isNull()) {
-        striped_ = QImage(image_.width(), image_.height() * 2, QImage::Format_RGB32);
-        striped_.fill(Qt::black);
-    }
-    const qsizetype rowBytes = static_cast<qsizetype>(image_.width()) * 4;
-    for (int y = 0; y < image_.height(); ++y)
-        std::memcpy(striped_.scanLine(y * 2), image_.constScanLine(y), static_cast<size_t>(rowBytes));
-    painter.drawImage(target, striped_);
+    painter.setPen(QColor(64, 0, 0));
+    painter.setBrush(QColor(255, 32, 32));
+    painter.drawRect(light.adjusted(0, 0, -1, -1));
+    QFont font = painter.font();
+    font.setPixelSize(std::max(6, light.height() - 2));
+    font.setBold(true);
+    painter.setFont(font);
+    painter.setPen(Qt::white);
+    const QChar letter('A' + (driveLight_ >> 8));
+    painter.drawText(light, Qt::AlignCenter,
+                     driveCylinderShown_ ? QString("%1:%2").arg(letter).arg(driveLight_ & 0xFF, 2, 10, QLatin1Char('0')) : QString(letter));
 }
 
 bool ScreenWidget::event(QEvent* event)

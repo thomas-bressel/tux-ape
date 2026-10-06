@@ -800,6 +800,11 @@ void Emulator::publishFrame()
     if (number == lastFrameNumber_)
         return;
     lastFrameNumber_ = number;
+    // The drive's light, for the picture's corner.
+    const int drive = cpc_.fdc().activeDrive();
+    const int light = drive < 0 ? -1 : drive << 8 | (cpc_.fdc().drive(drive).cylinder & 0xFF);
+    if (driveLight_.exchange(light) != light)
+        emit driveLightChanged();
     {
         std::lock_guard lock(frameMutex_);
         const size_t size = static_cast<size_t>(Monitor::kWidth) * Monitor::kHeight * sizeof(uint32_t);

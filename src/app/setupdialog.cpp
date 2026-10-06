@@ -392,13 +392,13 @@ QWidget* SetupDialog::createDisplayPage()
     linearPalette_ = new QCheckBox(tr("Linear Palette"));
     linearPalette_->setObjectName("ckLinearPalette");
     connect(linearPalette_, &QCheckBox::toggled, this, &SetupDialog::updatePreview);
-    auto* driveLed = notYet(new QCheckBox(tr("On-Screen Drive LED")));
-    driveLed->setObjectName("ckDriveLED");
-    auto* showTrack = notYet(new QCheckBox(tr("Show Drive Cylinders")));
-    showTrack->setObjectName("ckShowTrack");
+    driveLed_ = new QCheckBox(tr("On-Screen Drive LED"));
+    driveLed_->setObjectName("ckDriveLED");
+    showTrack_ = new QCheckBox(tr("Show Drive Cylinders"));
+    showTrack_->setObjectName("ckShowTrack");
     auto* sharedLayout = new QVBoxLayout(sharedBox);
     sharedLayout->setSpacing(2);
-    for (QCheckBox* box : {pal, linearPalette_, driveLed, showTrack})
+    for (QCheckBox* box : {pal, linearPalette_, driveLed_, showTrack_})
         sharedLayout->addWidget(box);
 
     // ---- Full Screen Colours: always true colour here ----
@@ -1002,6 +1002,8 @@ void SetupDialog::setSettings(const Settings& settings)
     brightness_->setValue(settings.brightness);
     brightnessLabel_->setText(QString::number(settings.brightness));
     linearPalette_->setChecked(settings.linearPalette);
+    driveLed_->setChecked(settings.driveLed);
+    showTrack_->setChecked(settings.showDriveCylinders);
     const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
     for (int mode = 0; mode < 2; ++mode) {
         const bool values[6] = {options[mode]->halfSize,  options[mode]->renderBothLines, options[mode]->hideMouse,
@@ -1236,6 +1238,8 @@ Settings SetupDialog::settings() const
     settings.verticalHold = verticalHold_->value();
     settings.brightness = brightness_->value();
     settings.linearPalette = linearPalette_->isChecked();
+    settings.driveLed = driveLed_->isChecked();
+    settings.showDriveCylinders = showTrack_->isChecked();
     Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
     for (int mode = 0; mode < 2; ++mode) {
         options[mode]->halfSize = windowOptions_[mode][0]->isChecked();
