@@ -92,6 +92,8 @@ public:
     // hand on top of the usual (the "buffer synchronisation").
     void setSound(bool on, int sampleRate, bool sixteenBit, bool stereo, int volume, double extraFrames);
     bool soundOn() const { return soundOn_; }
+    // WinAPE's "Tape Loading Sounds": the tape is heard while it loads.
+    void setTapeSounds(bool on);
 
     // The monitor: its kind (0 colour, 1 green, 2 greyscale), WinAPE's
     // "linear palette", the brightness knob (-100 to 100) and the vertical

@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <cstdlib>
+
 #include "check.h"
 #include "core/autotype.h"
 #include "core/cpc.h"
@@ -286,10 +288,58 @@ bool loadsFromTape(unsigned halfZero)
 
 }  // namespace
 
+// "Tape Loading Sounds": the tape's signal reaches the sound output while
+// a program reads it, and only when asked for.
+void testSound()
+{
+    // A long tone: pulses of 1750 T-states, half a millisecond each.
+    Bytes blocks = {0x12};
+    put(blocks, {1750, 4000});
+    const auto tape = Tape::parseCdt(cdt(blocks));
+    CHECK(tape.has_value());
+    if (!tape)
+        return;
+    // How much the sound moves while a program polls the tape for a
+    // twentieth of a second: the sum of the steps between samples.
+    const auto heard = [&](bool sound, bool play) {
+        Cpc cpc;
+        cpc.out(0x7F00, 0x8C);
+        // 8000 LD B,#F5 / 8002 IN A,(C) / 8004 JR 8002
+        const uint8_t program[] = {0x06, 0xF5, 0xED, 0x78, 0x18, 0xFC};
+        for (size_t i = 0; i < sizeof program; ++i)
+            cpc.memory().write(static_cast<uint16_t>(0x8000 + i), program[i]);
+        cpc.cpu().pc = 0x8000;
+        cpc.cpu().iff1 = cpc.cpu().iff2 = false;
+        cpc.setTapeSound(sound);
+        CHECK(cpc.tapeSound() == sound);
+        cpc.audio().setSampleRate(44100);
+        cpc.tape().insert(*tape);
+        if (play)
+            cpc.tape().play(cpc.microseconds());
+        cpc.out(0xF700, 0x82);  // the PPI's port C as outputs...
+        cpc.out(0xF600, 0x10);  // ...and the tape's motor on
+        cpc.run(50000);
+        const std::vector<int16_t>& samples = cpc.audio().samples();
+        long moves = 0;
+        for (size_t i = 2; i < samples.size(); i += 2)
+            moves += std::abs(samples[i] - samples[i - 2]);
+        CHECK(samples.size() > 4000);
+        return moves;
+    };
+    const long silent = heard(false, true);
+    const long loud = heard(true, true);
+    const long stopped = heard(true, false);
+    CHECK_EQ(silent, 0);
+    CHECK_EQ(stopped, 0);
+    // A square wave of 1 kHz: a hundred edges in the twentieth of a second.
+    CHECK(loud > 100 * 2000);
+}
+
 int main()
 {
     testBlocks();
     testDeck();
+    testSound();
     // The firmware's two speeds: 1000 baud and 2000 baud.
     const bool roms = loadsFromTape(1167) && loadsFromTape(583);
     if (!roms)

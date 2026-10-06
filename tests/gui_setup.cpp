@@ -647,9 +647,14 @@ void testSoundPage(const QString& picture)
     CHECK_EQ(again.soundBufferSync, 0);
     QFile::remove(Settings::file());
 
-    for (const char* name : {"ckDiscSound", "ckTapeSound", "ckAmDrum"}) {
+    for (const char* name : {"ckDiscSound", "ckAmDrum"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
+    }
+    // The tape can be heard while it loads.
+    {
+        const auto* tapeSound = dialog.findChild<QCheckBox*>("ckTapeSound");
+        CHECK(tapeSound && tapeSound->isEnabled() && !tapeSound->isChecked());
     }
 
     if (!picture.isEmpty()) {

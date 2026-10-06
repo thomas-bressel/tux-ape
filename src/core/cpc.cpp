@@ -238,7 +238,12 @@ uint8_t Cpc::portB()
     uint8_t value = 0x5E;
     if (crtc_.vsync())
         value |= 0x01;
-    if (tape_.level(microseconds()))
+    // A program loading from tape reads this port all the time: the sound
+    // is brought up to date before the level it finds can change.
+    if (tapeSound_ && tape_.playing() && tape_.motor())
+        syncSound();
+    tapeHeard_ = tape_.level(microseconds());
+    if (tapeHeard_)
         value |= 0x80;
     return value;
 }
@@ -269,10 +274,12 @@ void Cpc::syncSound()
         soundClk_ = now;
         return;
     }
+    // The tape, if it is to be heard: as the program last found it.
+    const float tape = tapeSound_ && tapeHeard_ && tape_.playing() && tape_.motor() ? 0.3f : 0.0f;
     while (soundClk_ + 8 <= now) {
         psg_.tick();
         audio_.addStep(Psg::amplitude(psg_.level(0)), Psg::amplitude(psg_.level(1)),
-                       Psg::amplitude(psg_.level(2)));
+                       Psg::amplitude(psg_.level(2)), tape);
         soundClk_ += 8;
     }
 }

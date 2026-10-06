@@ -118,6 +118,10 @@ public:
     void setCartridge(const Cartridge* cartridge, bool discRom = true);
     bool plus() const { return plus_; }
     Asic& asic() { return asic_; }
+    // WinAPE's "Tape Loading Sounds": what the tape plays is heard while
+    // a program listens to it.
+    void setTapeSound(bool on) { tapeSound_ = on; }
+    bool tapeSound() const { return tapeSound_; }
     // Sound output. Set its sample rate to start receiving samples.
     AudioMixer& audio() { return audio_; }
 
@@ -272,6 +276,8 @@ private:
     ExecHook execHook_;
     bool stopRun_ = false;
     bool breakInstructions_ = false;
+    bool tapeSound_ = false;
+    bool tapeHeard_ = false;  // the tape's level when it was last listened to
     bool breakInstructionHit_ = false;
     std::vector<uint8_t> watched_;  // one flag per address; empty when nothing is watched
     int watchedCount_ = 0;

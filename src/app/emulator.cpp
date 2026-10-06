@@ -121,6 +121,11 @@ void Emulator::setAudioOutput(AudioOutput* output)
     });
 }
 
+void Emulator::setTapeSounds(bool on)
+{
+    withMachine([&](Cpc& cpc) { cpc.setTapeSound(on); });
+}
+
 void Emulator::setSound(bool on, int sampleRate, bool sixteenBit, bool stereo, int volume, double extraFrames)
 {
     withMachine([&](Cpc& cpc) {

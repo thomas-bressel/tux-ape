@@ -555,13 +555,13 @@ QWidget* SetupDialog::createSoundPage()
     auto* otherBox = new QGroupBox(tr("Other Sounds"));
     auto* discSounds = notYet(new QCheckBox(tr("Disc Drive Sounds")));
     discSounds->setObjectName("ckDiscSound");
-    auto* tapeSounds = notYet(new QCheckBox(tr("Tape Loading Sounds")));
-    tapeSounds->setObjectName("ckTapeSound");
+    tapeSounds_ = new QCheckBox(tr("Tape Loading Sounds"));
+    tapeSounds_->setObjectName("ckTapeSound");
     auto* amDrum = notYet(new QCheckBox(tr("AmDrum")));
     amDrum->setObjectName("ckAmDrum");
     auto* otherLayout = new QHBoxLayout(otherBox);
     otherLayout->addWidget(discSounds);
-    otherLayout->addWidget(tapeSounds);
+    otherLayout->addWidget(tapeSounds_);
     otherLayout->addWidget(amDrum);
 
     // ---- Volume ----
@@ -1019,6 +1019,7 @@ void SetupDialog::setSettings(const Settings& settings)
     soundBits_[settings.sound16Bit ? 1 : 0]->setChecked(true);
     soundChannels_[settings.soundStereo ? 1 : 0]->setChecked(true);
     soundVolume_->setValue(settings.soundVolume);
+    tapeSounds_->setChecked(settings.tapeSounds);
     soundVolumeLabel_->setText(QString::number(settings.soundVolume));
     soundBufferSync_->setValue(settings.soundBufferSync);
     soundBufferSyncLabel_->setText(
@@ -1257,6 +1258,7 @@ Settings SetupDialog::settings() const
     settings.sound16Bit = soundBits_[1]->isChecked();
     settings.soundStereo = soundChannels_[1]->isChecked();
     settings.soundVolume = soundVolume_->value();
+    settings.tapeSounds = tapeSounds_->isChecked();
     settings.soundBufferSync = soundBufferSync_->value();
 
     settings.joystick = joystick_->isChecked();

@@ -50,6 +50,7 @@ struct Settings {
     bool sound16Bit = true;
     bool soundStereo = true;
     int soundVolume = 15;       // 0 to 15
+    bool tapeSounds = false;    // the tape is heard while it loads
     int soundBufferSync = 0;    // tenths of a frame of extra sound kept in hand, 0 to 20
 
     // The Input page. The keyboard layout itself is kept in a file of its

@@ -87,6 +87,7 @@ private:
     QLabel* brightnessLabel_ = nullptr;
     QCheckBox* linearPalette_ = nullptr;
     QCheckBox* pal_ = nullptr;
+    QCheckBox* tapeSounds_ = nullptr;
     QCheckBox* driveLed_ = nullptr;
     QCheckBox* showTrack_ = nullptr;
     // Half size, both lines, hide mouse, hide panel, hide menus, no

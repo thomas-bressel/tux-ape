@@ -129,6 +129,7 @@ void Settings::read(const tuxape::IniFile& ini)
     sound16Bit = ini.getInt(kConfiguration, "Sound Bits", sound16Bit ? 16 : 8) > 8;
     soundStereo = ini.getBool(kConfiguration, "Sound Stereo", soundStereo);
     soundVolume = std::clamp(ini.getInt(kConfiguration, "Sound Volume", soundVolume), 0, 15);
+    tapeSounds = ini.getBool(kConfiguration, "Tape Sound", tapeSounds);
     // Written like WinAPE's "0.4": frames, with one decimal.
     if (ini.has(kConfiguration, "Sound Frame Delay")) {
         // Read by hand: the C library would want a comma where the user's
@@ -208,6 +209,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt(kConfiguration, "Sound Bits", sound16Bit ? 16 : 8);
         ini.setBool(kConfiguration, "Sound Stereo", soundStereo);
         ini.setInt(kConfiguration, "Sound Volume", soundVolume);
+        ini.setBool(kConfiguration, "Tape Sound", tapeSounds);
         ini.set(kConfiguration, "Sound Frame Delay",
                 std::to_string(soundBufferSync / 10) + "." + std::to_string(soundBufferSync % 10));
     }

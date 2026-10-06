@@ -28,11 +28,14 @@ public:
     // 0 (silent) to 15, like WinAPE's volume slider.
     void setVolume(int volume) { volume_ = volume < 0 ? 0 : volume > 15 ? 15 : volume; }
 
-    // One step of sound: the PSG's three channel outputs, each 0.0 to 1.0.
-    void addStep(float a, float b, float c)
+    // One step of sound: the PSG's three channel outputs, each 0.0 to 1.0,
+    // and what else is to be heard on both sides (the tape, say).
+    void addStep(float a, float b, float c, float other = 0.0f)
     {
         if (rate_ <= 0)
             return;
+        left_ += other;
+        right_ += other;
         if (stereo_) {
             left_ += a + b * 0.5f;
             right_ += c + b * 0.5f;

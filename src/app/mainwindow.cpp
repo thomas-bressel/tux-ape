@@ -572,6 +572,7 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setVerticalHold(settings.verticalHold);
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
                         settings.soundVolume, settings.soundBufferSync / 10.0);
+    emulator_->setTapeSounds(settings.tapeSounds);
     emulator_->setJoystickEnabled(settings.joystick);
     applyWindowOptions();
 }
