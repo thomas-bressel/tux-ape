@@ -31,6 +31,8 @@ void usage(const char* program)
                  "  --crtc 0-4             CRTC type (default 0)\n"
                  "  --rom-dir DIR          folder holding the ROM images\n"
                  "  --disc FILE            disc image for drive A:\n"
+                 "  --new-disc             a blank disc in drive A:, formatted for data\n"
+                 "  --save-disc FILE       write drive A:'s disc to this image at the end\n"
                  "  --fast-disc            no waiting for the disc drive\n"
                  "  --snapshot FILE        load this snapshot once the machine has started\n"
                  "  --save-snapshot FILE   save a snapshot at the end\n"
@@ -81,6 +83,8 @@ int main(int argc, char* argv[])
     std::string snapshotFile;
     std::string saveSnapshotFile;
     bool fastDisc = false;
+    bool newDisc = false;
+    std::string saveDiscFile;
     bool printText = false;
     bool capture = false;
     std::string cslFile;
@@ -122,6 +126,10 @@ int main(int argc, char* argv[])
             snapshotFile = value();
         } else if (arg == "--save-snapshot") {
             saveSnapshotFile = value();
+        } else if (arg == "--new-disc") {
+            newDisc = true;
+        } else if (arg == "--save-disc") {
+            saveDiscFile = value();
         } else if (arg == "--fast-disc") {
             fastDisc = true;
         } else if (arg == "--png") {
@@ -192,6 +200,10 @@ int main(int argc, char* argv[])
             return 1;
         }
         cpc.fdc().drive(0).disc = std::make_unique<Disc>(std::move(*disc));
+    } else if (newDisc) {
+        auto disc = std::make_unique<Disc>();
+        disc->format(defaultDiscFormat());
+        cpc.fdc().drive(0).disc = std::move(disc);
     }
 
     for (int f = 0; f < frames; ++f)
@@ -242,6 +254,13 @@ int main(int argc, char* argv[])
     if (!png.empty() && !savePicture(cpc, png)) {
         std::fprintf(stderr, "cannot write %s\n", png.c_str());
         return 1;
+    }
+    if (!saveDiscFile.empty()) {
+        const Disc* disc = cpc.fdc().drive(0).disc.get();
+        if (!disc || !writeFile(saveDiscFile, disc->toDsk())) {
+            std::fprintf(stderr, "cannot write %s\n", saveDiscFile.c_str());
+            return 1;
+        }
     }
     if (!saveSnapshotFile.empty()) {
         const SnapshotMachine machine = model == CpcModel::Cpc464     ? SnapshotMachine::Cpc464
