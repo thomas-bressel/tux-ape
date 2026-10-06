@@ -241,7 +241,116 @@ Bytes binaryFile(const char* name, const Bytes& code, uint16_t address, unsigned
 
 // The firmware loads and runs a program from the tape, at the speed given
 // (half the length of a zero bit, in T-states of the file).
-bool loadsFromTape(unsigned halfZero)
+// A tape's pulses as the samples of a recording of it.
+std::vector<int16_t> recorded(const Tape& tape, double rate)
+{
+    std::vector<int16_t> samples;
+    bool high = false;
+    double end = 0;  // in T-states
+    for (const uint32_t pulse : tape.pulses()) {
+        high = (pulse & Tape::kHigh) ? true : (pulse & Tape::kLow) ? false : !high;
+        end += pulse & Tape::kLength;
+        while (static_cast<double>(samples.size()) < end * rate / 3500000.0)
+            samples.push_back(high ? 12000 : -12000);
+    }
+    return samples;
+}
+
+// The samples as a WAV file, of 8 or 16 bits, the same on every channel.
+Bytes wav(const std::vector<int16_t>& samples, unsigned rate, unsigned bits, unsigned channels, unsigned format = 1)
+{
+    const unsigned frame = bits / 8 * channels;
+    const unsigned size = static_cast<unsigned>(samples.size()) * frame;
+    Bytes file = {'R', 'I', 'F', 'F'};
+    put(file, {(36 + size) & 0xFFFF, (36 + size) >> 16});
+    append(file, {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
+    put(file, {16, 0, format, channels, rate & 0xFFFF, rate >> 16, (rate * frame) & 0xFFFF, (rate * frame) >> 16, frame, bits});
+    append(file, {'d', 'a', 't', 'a'});
+    put(file, {size & 0xFFFF, size >> 16});
+    for (const int16_t sample : samples) {
+        for (unsigned channel = 0; channel < channels; ++channel) {
+            if (bits == 8)
+                file.push_back(static_cast<uint8_t>(sample / 256 + 128));
+            else
+                put(file, {static_cast<uint16_t>(sample)});
+        }
+    }
+    return file;
+}
+
+// And as a Creative Voice file: the old 8-bit block, with its rate as a
+// "time constant", or the newer one with 16 bits.
+Bytes voc(const std::vector<int16_t>& samples, unsigned rate, bool sixteen)
+{
+    Bytes file;
+    for (const char c : std::string("Creative Voice File\x1A"))
+        file.push_back(static_cast<uint8_t>(c));
+    put(file, {26, 0x010A, 0x1129});
+    const unsigned size = static_cast<unsigned>(samples.size()) * (sixteen ? 2 : 1) + (sixteen ? 12 : 2);
+    append(file, {static_cast<uint8_t>(sixteen ? 9 : 1), static_cast<uint8_t>(size), static_cast<uint8_t>(size >> 8),
+                  static_cast<uint8_t>(size >> 16)});
+    if (sixteen) {
+        put(file, {rate & 0xFFFF, rate >> 16});
+        append(file, {16, 1, 4, 0, 0, 0, 0, 0});
+    } else {
+        append(file, {static_cast<uint8_t>(256 - 1000000 / rate), 0});
+    }
+    for (const int16_t sample : samples) {
+        if (sixteen)
+            put(file, {static_cast<uint16_t>(sample)});
+        else
+            file.push_back(static_cast<uint8_t>(sample / 256 + 128));
+    }
+    file.push_back(0);
+    return file;
+}
+
+// Recordings of a tape: a WAV or a VOC file gives back the tape's pulses,
+// to within a sample.
+void testRecordings()
+{
+    // A tone of 20 pulses of 1000 T-states, then 10 of 2000.
+    Bytes blocks = {0x12};
+    put(blocks, {1000, 20});
+    append(blocks, {0x12});
+    put(blocks, {2000, 10});
+    const auto tape = Tape::parseCdt(cdt(blocks));
+    CHECK(tape.has_value());
+    if (!tape)
+        return;
+    const auto same = [&](const std::optional<Tape>& heard, double rate) {
+        CHECK(heard.has_value());
+        if (!heard)
+            return;
+        CHECK_EQ(heard->blocks().size(), 1);
+        CHECK(!heard->blocks().empty() && heard->blocks()[0].name == "Direct Recording");
+        const double sample = 3500000.0 / rate;
+        CHECK_EQ(heard->pulses().size(), 30);
+        for (size_t i = 0; i < heard->pulses().size() && i < 30; ++i) {
+            const double length = heard->pulses()[i] & Tape::kLength, want = i < 20 ? 1000 : 2000;
+            CHECK(std::abs(length - want) <= sample + 1);
+            // Each says which level it has: high first, as on the tape.
+            CHECK(((heard->pulses()[i] & Tape::kHigh) != 0) == (i % 2 == 0));
+        }
+    };
+    const std::vector<int16_t> samples = recorded(*tape, 44100);
+    same(Tape::parseWav(wav(samples, 44100, 16, 2)), 44100);
+    same(Tape::parseWav(wav(samples, 44100, 8, 1)), 44100);
+    same(Tape::parse(wav(recorded(*tape, 22050), 22050, 16, 1)), 22050);
+    same(Tape::parseVoc(voc(samples, 44100, true)), 44100);
+    same(Tape::parse(voc(recorded(*tape, 40000), 40000, false)), 40000);
+    // Whichever kind a file is; and what is none.
+    CHECK(Tape::parse(cdt(blocks)).has_value() && Tape::parse(cdt(blocks))->blocks().size() == 2);
+    CHECK(!Tape::parseWav(cdt(blocks)).has_value() && !Tape::parseVoc(cdt(blocks)).has_value());
+    CHECK(!Tape::parseWav(wav(samples, 44100, 32, 1, 3)).has_value());  // floating point: not read
+    CHECK(!Tape::parseWav(wav({}, 44100, 16, 1)).has_value());
+    CHECK(!Tape::parse(Bytes{'R', 'I', 'F', 'F'}).has_value());
+    CHECK(!Tape::parse(Bytes(100, 0)).has_value());
+}
+
+// Loads a program through the firmware, from a CDT file's blocks or from a
+// recording of them.
+bool loadsFromTape(unsigned halfZero, bool asRecording = false)
 {
     Cpc cpc;
     if (!setupStockMachine(cpc, CpcModel::Cpc6128, defaultRomDir(), nullptr))
@@ -266,10 +375,16 @@ bool loadsFromTape(unsigned halfZero)
     // Prints its message through TXT OUTPUT and stays there.
     const Bytes code = {0x21, 0x0E, 0x80, 0x7E, 0xB7, 0x28, 0xFE, 0xCD, 0x5A, 0xBB, 0x23, 0x18, 0xF6, 0x00,
                         'T',  'A',  'P',  'E',  ' ',  'O',  'K',  0};
-    const auto tape = Tape::parseCdt(cdt(binaryFile("TEST", code, 0x8000, halfZero)));
+    auto tape = Tape::parseCdt(cdt(binaryFile("TEST", code, 0x8000, halfZero)));
     CHECK(tape.has_value());
     if (!tape)
         return true;
+    if (asRecording) {
+        tape = Tape::parse(wav(recorded(*tape, 44100), 44100, 16, 1));
+        CHECK(tape.has_value());
+        if (!tape)
+            return true;
+    }
     cpc.tape().insert(*tape);
     cpc.tape().play(cpc.microseconds());
 
@@ -340,8 +455,10 @@ int main()
     testBlocks();
     testDeck();
     testSound();
-    // The firmware's two speeds: 1000 baud and 2000 baud.
-    const bool roms = loadsFromTape(1167) && loadsFromTape(583);
+    testRecordings();
+    // The firmware's two speeds: 1000 baud and 2000 baud; and a recording
+    // of the first, as a WAV file.
+    const bool roms = loadsFromTape(1167) && loadsFromTape(583) && loadsFromTape(1167, true);
     if (!roms)
         std::printf("ROM images not found; loading through the firmware was not tested\n");
     const int result = checkSummary("tape");

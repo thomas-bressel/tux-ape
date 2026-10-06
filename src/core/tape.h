@@ -9,7 +9,8 @@
 namespace tuxape {
 
 // A cassette: the blocks of a CDT file (a TZX file, under the name CPC
-// emulators give it), turned into the pulses the tape plays.
+// emulators give it), turned into the pulses the tape plays; or a
+// recording of a tape's sound, as a WAV or a VOC file.
 class Tape {
 public:
     struct Block {
@@ -30,6 +31,13 @@ public:
     // Nothing for a file that is not one. A file cut short gives the blocks
     // that are whole.
     static std::optional<Tape> parseCdt(std::span<const uint8_t> file);
+    // A recording: a WAV file (PCM of 8 bits or more, any rate, any number
+    // of channels) or a Creative Voice file. The signal changes level each
+    // time the sound crosses its middle.
+    static std::optional<Tape> parseWav(std::span<const uint8_t> file);
+    static std::optional<Tape> parseVoc(std::span<const uint8_t> file);
+    // Whichever of the three the file is.
+    static std::optional<Tape> parse(std::span<const uint8_t> file);
 
     const std::vector<Block>& blocks() const { return blocks_; }
     const std::vector<uint32_t>& pulses() const { return pulses_; }
@@ -37,6 +45,8 @@ public:
 private:
     std::vector<Block> blocks_;
     std::vector<uint32_t> pulses_;
+
+    static Tape fromSamples(const std::vector<int16_t>& samples, double rate);
 };
 
 // The cassette deck: a tape, the Play key, and the motor, which the CPC

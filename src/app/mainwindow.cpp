@@ -155,7 +155,7 @@ void MainWindow::dropEvent(QDropEvent* event)
             loadSnapshotFile(path);
             continue;
         }
-        if (QFileInfo(path).suffix().compare(QLatin1String("cdt"), Qt::CaseInsensitive) == 0) {
+        if (QStringList{"cdt", "tzx", "wav", "voc"}.contains(QFileInfo(path).suffix().toLower())) {
             insertTapeFile(path);
             continue;
         }
@@ -847,7 +847,7 @@ bool MainWindow::insertTapeFile(const QString& path)
 
 bool MainWindow::insertTapeData(std::span<const uint8_t> data, const QString& name)
 {
-    auto tape = tuxape::Tape::parseCdt(data);
+    auto tape = tuxape::Tape::parse(data);
     if (!tape) {
         report(tr("%1 is not a tape image.").arg(QDir::toNativeSeparators(name)));
         return false;
@@ -866,7 +866,7 @@ bool MainWindow::insertTapeData(std::span<const uint8_t> data, const QString& na
 void MainWindow::chooseTape()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Insert Tape Image"), tapeFolder_,
-                                                      tr("Tape images (*.cdt *.tzx);;All files (*)"));
+                                                      tr("Tape images (*.cdt *.tzx *.wav *.voc);;All files (*)"));
     if (!path.isEmpty())
         insertTapeFile(path);
 }

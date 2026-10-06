@@ -194,6 +194,149 @@ std::optional<Tape> Tape::parseCdt(std::span<const uint8_t> file)
     return tape;
 }
 
+// ---- Recordings ---------------------------------------------------------------
+
+// The pulses of a sound: one for each stretch it spends above or below its
+// middle. A little way either side of the middle counts as neither, so
+// that hiss does not make pulses of its own.
+Tape Tape::fromSamples(const std::vector<int16_t>& samples, double rate)
+{
+    Tape tape;
+    if (samples.empty() || rate <= 0)
+        return tape;
+    int64_t sum = 0;
+    for (const int16_t sample : samples)
+        sum += sample;
+    const int middle = static_cast<int>(sum / static_cast<int64_t>(samples.size()));
+    constexpr int kDeadBand = 1024;
+    const double perSample = 3500000.0 / rate;
+    bool high = false;
+    size_t start = 0;
+    const auto pulse = [&](size_t end) {
+        // Ends are placed from the start of the tape: no error adds up.
+        uint64_t length = static_cast<uint64_t>(static_cast<double>(end) * perSample + 0.5)
+            - static_cast<uint64_t>(static_cast<double>(start) * perSample + 0.5);
+        while (length > kLength) {
+            tape.pulses_.push_back(kLength | (high ? kHigh : kLow));
+            length -= kLength;
+        }
+        if (length)
+            tape.pulses_.push_back(static_cast<uint32_t>(length) | (high ? kHigh : kLow));
+        start = end;
+    };
+    for (size_t i = 0; i < samples.size(); ++i) {
+        const int value = samples[i] - middle;
+        const bool now = value > kDeadBand ? true : value < -kDeadBand ? false : high;
+        if (now != high) {
+            pulse(i);
+            high = now;
+        }
+    }
+    pulse(samples.size());
+    tape.blocks_.push_back({0x15, "Direct Recording", 0});
+    return tape;
+}
+
+std::optional<Tape> Tape::parseWav(std::span<const uint8_t> file)
+{
+    if (file.size() < 12 || std::memcmp(file.data(), "RIFF", 4) != 0 || std::memcmp(file.data() + 8, "WAVE", 4) != 0)
+        return std::nullopt;
+    const auto word = [&](size_t at) { return static_cast<uint32_t>(file[at] | file[at + 1] << 8); };
+    const auto quad = [&](size_t at) { return word(at) | word(at + 2) << 16; };
+    unsigned format = 0, channels = 0, bits = 0;
+    double rate = 0;
+    std::vector<int16_t> samples;
+    for (size_t pos = 12; pos + 8 <= file.size();) {
+        const size_t size = std::min<size_t>(quad(pos + 4), file.size() - pos - 8);
+        const uint8_t* data = file.data() + pos + 8;
+        if (std::memcmp(file.data() + pos, "fmt ", 4) == 0 && size >= 16) {
+            format = word(pos + 8);
+            channels = word(pos + 10);
+            rate = quad(pos + 12);
+            bits = word(pos + 22);
+            // The extensible form says what it holds further on.
+            if (format == 0xFFFE && size >= 26)
+                format = word(pos + 32);
+        } else if (std::memcmp(file.data() + pos, "data", 4) == 0) {
+            if (format != 1 || channels == 0 || bits < 8 || bits % 8 != 0 || rate <= 0)
+                return std::nullopt;
+            // The channels are taken together; of a sample, its top 16 bits.
+            const size_t bytes = bits / 8, frame = bytes * channels;
+            samples.reserve(size / frame);
+            for (size_t at = 0; at + frame <= size; at += frame) {
+                int total = 0;
+                for (unsigned channel = 0; channel < channels; ++channel) {
+                    const uint8_t* sample = data + at + channel * bytes;
+                    total += bytes == 1 ? (sample[0] - 128) * 256
+                                        : static_cast<int16_t>(sample[bytes - 2] | sample[bytes - 1] << 8);
+                }
+                samples.push_back(static_cast<int16_t>(total / static_cast<int>(channels)));
+            }
+        }
+        pos += 8 + size + (size & 1);
+    }
+    if (samples.empty())
+        return std::nullopt;
+    return fromSamples(samples, rate);
+}
+
+std::optional<Tape> Tape::parseVoc(std::span<const uint8_t> file)
+{
+    static const char kMagic[] = "Creative Voice File\x1A";
+    if (file.size() < 26 || std::memcmp(file.data(), kMagic, 20) != 0)
+        return std::nullopt;
+    std::vector<int16_t> samples;
+    double rate = 0;
+    unsigned bytes = 1;
+    const auto take = [&](size_t from, size_t to) {
+        for (size_t at = from; at + bytes <= to; at += bytes)
+            samples.push_back(bytes == 1 ? static_cast<int16_t>((file[at] - 128) * 256)
+                                         : static_cast<int16_t>(file[at] | file[at + 1] << 8));
+    };
+    for (size_t pos = static_cast<size_t>(file[20] | file[21] << 8); pos + 4 <= file.size();) {
+        const unsigned type = file[pos];
+        if (type == 0)
+            break;
+        const size_t size = static_cast<size_t>(file[pos + 1] | file[pos + 2] << 8 | file[pos + 3] << 16);
+        const size_t body = pos + 4, end = std::min(body + size, file.size());
+        if (type == 1 && size >= 2 && file[body + 1] == 0) {
+            // Sound of 8 bits, its rate as a "time constant".
+            if (rate <= 0)
+                rate = 1000000.0 / (256 - file[body]);
+            bytes = 1;
+            take(body + 2, end);
+        } else if (type == 2) {
+            take(body, end);
+        } else if (type == 3 && size >= 3) {
+            // Silence: so many samples of nothing.
+            if (rate <= 0)
+                rate = 1000000.0 / (256 - file[body + 2]);
+            samples.insert(samples.end(), static_cast<size_t>(file[body] | file[body + 1] << 8) + 1, 0);
+        } else if (type == 9 && size >= 12) {
+            const unsigned codec = static_cast<unsigned>(file[body + 6] | file[body + 7] << 8);
+            if ((codec != 0 && codec != 4) || file[body + 5] != 1)
+                return std::nullopt;  // packed sound, or more than one channel
+            if (rate <= 0)
+                rate = file[body] | file[body + 1] << 8 | file[body + 2] << 16 | static_cast<uint32_t>(file[body + 3]) << 24;
+            bytes = codec == 4 ? 2 : 1;
+            take(body + 12, end);
+        }
+        pos = body + size;
+    }
+    if (samples.empty() || rate <= 0)
+        return std::nullopt;
+    return fromSamples(samples, rate);
+}
+
+std::optional<Tape> Tape::parse(std::span<const uint8_t> file)
+{
+    if (auto tape = parseCdt(file))
+        return tape;
+    if (auto tape = parseWav(file))
+        return tape;
+    return parseVoc(file);
+}
+
 void TapeDeck::insert(Tape tape)
 {
     tape_ = std::move(tape);
