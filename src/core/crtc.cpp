@@ -22,6 +22,7 @@ void Crtc::reset()
     hsync_ = vsync_ = false;
     hsyncCut_ = previousHsyncCut_ = HsyncCut::None;
     hDisp_ = vDisp_ = false;
+    r6Conflict_ = false;
     dispHistory_ = 0;
     inAdjust_ = false;
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
@@ -87,10 +88,21 @@ void Crtc::write(uint8_t value, bool early)
         }
         break;
     case 6:
-        // The UM6845R compares R6 continuously; the others only when the row
-        // changes.
-        if (type_ == CrtcType::UM6845R && vcc_ == reg_[6])
-            vDisp_ = false;
+        // Types 0, 1 and 2 look at R6 all along the line: made equal to the
+        // row being drawn, it brings the border for the rest of the frame
+        // (18.2.2, 18.2.3). Types 3 and 4 only look when a line starts.
+        if (type_ == CrtcType::UM6845R) {
+            if (vcc_ == reg_[6])
+                vDisp_ = false;
+        } else if (type_ == CrtcType::HD6845S || type_ == CrtcType::MC6845) {
+            // On types 0 and 2 the first line of a frame is a case of its
+            // own: R6 = 0 there starts the coming and going of the border,
+            // and another value calls it off (18.3.2).
+            if (vcc_ == 0 && vlc_ == 0)
+                r6Conflict_ = reg_[6] == 0 && vDisp_;
+            else if (vcc_ == reg_[6])
+                vDisp_ = false;
+        }
         break;
     case 7:
         if (type_ == CrtcType::HD6845S) {
@@ -196,6 +208,10 @@ uint8_t Crtc::dispNow() const
 {
     if (!hDisp_ || !vDisp_)
         return 0;
+    // First line of a frame with R6 = 0, types 0 and 2: each character is
+    // shown for its first half and is border for its second (18.3.2).
+    if (r6Conflict_)
+        return 1;
     const bool lateBorder = hcc_ == reg_[0] && (type_ == CrtcType::HD6845S || type_ == CrtcType::MC6845);
     return lateBorder ? 1 : 3;
 }
@@ -235,6 +251,14 @@ void Crtc::tick()
     const bool type0 = type_ == CrtcType::HD6845S;
     const bool newLine = hcc_ == reg_[0];
     if (newLine) {
+        // A first line that ends with R6 still 0 leaves the border for the
+        // rest of the frame, as one whose C0 meets R1 does. With R0 = 0
+        // every character is such an end (Shaker BU, "R0 = 0 after add
+        // line").
+        if (r6Conflict_) {
+            r6Conflict_ = false;
+            vDisp_ = false;
+        }
         const bool oneCharacter = hcc_ == 0;
         hcc_ = 0;
         if (type0)
@@ -314,6 +338,12 @@ void Crtc::tick()
 
     if (hcc_ == reg_[1]) {
         hDisp_ = false;
+        // R6 still 0 where the first line's display ends: the border stays
+        // (18.3.2).
+        if (r6Conflict_) {
+            r6Conflict_ = false;
+            vDisp_ = false;
+        }
         // The address reached at the end of a row's last line becomes the
         // start of the next row. On the ASICs the lines added after the
         // last row keep its address (11.2.6).
@@ -383,8 +413,14 @@ void Crtc::endOfLine(bool oneCharacter)
 
 void Crtc::startRow()
 {
-    if (vcc_ == reg_[6])
-        vDisp_ = false;
+    // On type 2 a frame that starts with R6 = 0 is not border at once
+    // (18.3.2).
+    if (vcc_ == reg_[6]) {
+        if (type_ == CrtcType::MC6845 && vcc_ == 0)
+            r6Conflict_ = vDisp_;
+        else
+            vDisp_ = false;
+    }
     if (vcc_ == reg_[7] && !vsync_)
         startVsync();
 }
@@ -575,7 +611,13 @@ void Crtc::latchC9()
 void Crtc::rowChanged0()
 {
     if (vcc_ == reg_[6]) {
-        vDisp_ = false;
+        // A frame that starts with R6 = 0 is not border at once: on its
+        // first line the border comes and goes with each character
+        // (18.3.2).
+        if (vcc_ == 0)
+            r6Conflict_ = vDisp_;
+        else
+            vDisp_ = false;
         // This is also where the chip settles the parity of the next frame,
         // whatever R8 holds: a frame whose C4 never meets R6 leaves the
         // parity where it was (19.5.2).

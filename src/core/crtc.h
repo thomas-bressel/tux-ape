@@ -111,6 +111,9 @@ private:
     bool vsync_ = false;
     bool hDisp_ = false;
     bool vDisp_ = false;
+    // Types 0 and 2, first line of a frame with R6 = 0: the border comes
+    // and goes with each character, until the line's display ends (18.3.2).
+    bool r6Conflict_ = false;
     // DISPTMG before R8's skew, for the character before the one in
     // progress (bits 0 and 1: its two halves) and the one before that (bits
     // 2 and 3).
