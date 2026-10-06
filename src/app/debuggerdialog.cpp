@@ -1157,6 +1157,17 @@ void DebuggerDialog::markData(bool words)
     disassembly_->setDataAreas(dataAreas_);
 }
 
+void DebuggerDialog::addDataArea(unsigned start, int size)
+{
+    if (size < 1 || start > 0xFFFF)
+        return;
+    const int from = static_cast<int>(start), end = std::min(from + size, 0x10000);
+    std::erase_if(dataAreas_, [&](const DisassemblyView::DataArea& area) { return area.start < end && area.start + area.size > from; });
+    dataAreas_.push_back({static_cast<uint16_t>(from), end - from, false});
+    std::sort(dataAreas_.begin(), dataAreas_.end(), [](const auto& a, const auto& b) { return a.start < b.start; });
+    disassembly_->setDataAreas(dataAreas_);
+}
+
 // Takes away the areas the selection touches.
 void DebuggerDialog::clearDataArea()
 {

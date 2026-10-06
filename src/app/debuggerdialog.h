@@ -199,6 +199,9 @@ public:
     // The selection as assembler source.
     QString disassembleSelection() const;
     void markData(bool words);
+    // A stretch of memory shown as bytes from now on, in place of the
+    // areas it runs into: what the Graphics Finder's "Mark as data" asks.
+    void addDataArea(unsigned start, int size);
     void clearDataArea();
     std::vector<DisassemblyView::DataArea> dataAreas() const { return dataAreas_; }
     void setDataAreas(const std::vector<DisassemblyView::DataArea>& areas);

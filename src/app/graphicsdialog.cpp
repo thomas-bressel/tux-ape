@@ -1,12 +1,21 @@
 #include "graphicsdialog.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <utility>
 
+#include <QAction>
+#include <QClipboard>
 #include <QComboBox>
+#include <QContextMenuEvent>
 #include <QEvent>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QMenu>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
@@ -130,6 +139,7 @@ GraphicsDialog::GraphicsDialog(Emulator* emulator, QWidget* parent)
     view_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     view_->setMinimumSize(340, 130);
     view_->setMouseTracking(true);
+    view_->setFocusPolicy(Qt::StrongFocus);
     view_->installEventFilter(this);
     layout->addWidget(view_, 1);
     bar_ = new QScrollBar(Qt::Horizontal);
@@ -156,11 +166,22 @@ GraphicsDialog::GraphicsDialog(Emulator* emulator, QWidget* parent)
     brushTool_ = tool("bBrush", QString(QChar(0x270E)), tr("Paintbrush"));
     fillTool_ = tool("bFill", QString(QChar(0x25A7)), tr("Fill"));
     selectTool_->setChecked(true);
-    penSwatch_ = new QLabel;
-    penSwatch_->setObjectName("PenSwatch");
-    penSwatch_->setFixedSize(16, 28);
-    penSwatch_->setAutoFillBackground(true);
-    bottom->addWidget(penSwatch_);
+    // The pen, and under it the paper.
+    auto* chosen = new QVBoxLayout;
+    chosen->setSpacing(0);
+    const auto swatch = [&](const char* objectName, const QString& tip) {
+        auto* label = new QLabel;
+        label->setObjectName(objectName);
+        label->setFixedSize(16, 14);
+        label->setAutoFillBackground(true);
+        label->setFrameStyle(QFrame::Box | QFrame::Plain);
+        label->setToolTip(tip);
+        chosen->addWidget(label);
+        return label;
+    };
+    penSwatch_ = swatch("PenSwatch", tr("Pen: the left button draws with it"));
+    paperSwatch_ = swatch("PaperSwatch", tr("Paper: the right button draws with it"));
+    bottom->addLayout(chosen);
     swatches_ = new QWidget;
     swatches_->setObjectName("Swatches");
     auto* swatchRow = new QHBoxLayout(swatches_);
@@ -171,6 +192,7 @@ GraphicsDialog::GraphicsDialog(Emulator* emulator, QWidget* parent)
         swatch->setObjectName(QString("pen%1").arg(pen));
         swatch->setFixedSize(12, 14);
         swatch->setAutoFillBackground(true);
+        swatch->setToolTip(tr("Left button: pen. Right button: paper."));
         swatch->installEventFilter(this);
         swatchRow->addWidget(swatch);
     }
@@ -182,11 +204,33 @@ GraphicsDialog::GraphicsDialog(Emulator* emulator, QWidget* parent)
     layout->addLayout(bottom);
     resize(380, 290);
 
+    // The right button's menu, for the tiles selected. Its keys work
+    // wherever the pointer is in the window.
+    const auto entry = [this](const char* objectName, const QString& text, const QKeySequence& keys, auto&& slot) {
+        auto* action = new QAction(text, this);
+        action->setObjectName(objectName);
+        action->setShortcut(keys);
+        action->setShortcutContext(Qt::WidgetWithChildrenShortcut);
+        connect(action, &QAction::triggered, this, std::forward<decltype(slot)>(slot));
+        addAction(action);
+        actions_ << action;
+    };
+    entry("Copy1", tr("&Copy"), QKeySequence::Copy, [this] { copySelection(false); });
+    entry("CopyMerged1", tr("Copy &Merged"), Qt::CTRL | Qt::SHIFT | Qt::Key_C, [this] { copySelection(true); });
+    entry("MarkAsData", tr("Mark as &data"), {}, [this] { markSelectionAsData(); });
+    entry("FlipHorizontal1", tr("Flip &Horizontal"), {}, [this] { turnSelection(FlipHorizontal); });
+    entry("FlipVertical1", tr("Flip &Vertical"), {}, [this] { turnSelection(FlipVertical); });
+    entry("Rotate1", tr("&Rotate Clockwise"), {}, [this] { turnSelection(RotateClockwise); });
+    entry("RotateAntiClockwise1", tr("Rotate &Anti-Clockwise"), {}, [this] { turnSelection(RotateAntiClockwise); });
+
     const auto changed = [this] {
         {
             const QSignalBlocker blocker(bar_);
             bar_->setValue(addressBox_->value());
         }
+        // Other tiles are in view: those selected are no longer.
+        if (!keepSelection_)
+            selected_ = -1;
         refresh();
     };
     connect(modeBox_, &QComboBox::currentIndexChanged, this, changed);
@@ -314,18 +358,25 @@ void GraphicsDialog::refresh()
         }
     });
     pen_ = std::min(pen_, pensInMode() - 1);
+    paper_ = std::min(paper_, pensInMode() - 1);
     drawView();
     updateSwatches();
+}
+
+// The room a tile takes in the view, the line after it included.
+QSize GraphicsDialog::cell() const
+{
+    const int unit = zoom();
+    const int wide = mode() == 0 ? 2 * unit : mode() == 2 ? std::max(1, unit / 2) : unit;
+    return QSize(pixelsWide() * wide + 1, tileHeight() * unit + 1);
 }
 
 // How many tiles the view has room for.
 void GraphicsDialog::layoutTiles()
 {
-    const int unit = zoom();
-    const int wide = mode() == 0 ? 2 * unit : mode() == 2 ? std::max(1, unit / 2) : unit;
-    const int tileW = pixelsWide() * wide + 1, tileH = tileHeight() * unit + 1;
-    columns_ = std::max(1, (view_->width() - 2) / tileW);
-    rows_ = std::max(1, (view_->height() - 2) / tileH);
+    const QSize tile = cell();
+    columns_ = std::max(1, (view_->width() - 2) / tile.width());
+    rows_ = std::max(1, (view_->height() - 2) / tile.height());
 }
 
 QImage GraphicsDialog::picture() const
@@ -349,7 +400,29 @@ QImage GraphicsDialog::picture() const
 void GraphicsDialog::drawView()
 {
     layoutTiles();
-    view_->setPixmap(QPixmap::fromImage(picture()));
+    // The view may have room for fewer tiles than were selected.
+    if (selected_ >= tileCount())
+        selected_ = -1;
+    else if (selected_ >= 0)
+        selectedCount_ = std::min(selectedCount_, tileCount() - selected_);
+    QImage image = picture();
+    if (selected_ >= 0) {
+        // A dashed line round each tile selected.
+        QPainter painter(&image);
+        const QSize tile = cell();
+        QPen dashes(Qt::white);
+        dashes.setDashPattern({2, 2});
+        for (int n = selected_; n < selected_ + selectedCount_; ++n) {
+            const QRect box((n % columns_) * tile.width(), (n / columns_) * tile.height(), tile.width() - 2,
+                            tile.height() - 2);
+            painter.setPen(Qt::black);
+            painter.drawRect(box);
+            painter.setPen(dashes);
+            painter.drawRect(box);
+        }
+    }
+    view_->setPixmap(QPixmap::fromImage(image));
+    updateActions();
     bar_->setSingleStep(tileWidth() * tileHeight());
     bar_->setPageStep(std::max(1, tileCount() * tileWidth() * tileHeight()));
 }
@@ -362,6 +435,7 @@ void GraphicsDialog::updateSwatches()
         widget->setPalette(look);
     };
     paint(penSwatch_, colour(pen_));
+    paint(paperSwatch_, colour(paper_));
     for (int p = 0; p < 16; ++p) {
         auto* swatch = swatches_->findChild<QLabel*>(QString("pen%1").arg(p));
         swatch->setVisible(p < pensInMode());
@@ -375,31 +449,47 @@ void GraphicsDialog::setCurrentPen(int pen)
     updateSwatches();
 }
 
+void GraphicsDialog::setCurrentPaper(int pen)
+{
+    paper_ = std::clamp(pen, 0, pensInMode() - 1);
+    updateSwatches();
+}
+
+// A pixel changes here; flush() gives the machine the bytes changed.
 void GraphicsDialog::setPixel(int tile, int x, int y, int pen)
 {
     const int perByte = pixelsPerByte(mode());
     const unsigned at = byteAddress(tile, x / perByte, y);
-    const uint8_t value = withPen(memory_[at], x % perByte, pen, mode(), encoding());
-    memory_[at] = value;
-    emulator_->withMachine([&](tuxape::Cpc& cpc) { cpc.memory().write(static_cast<uint16_t>(at), value); });
+    memory_[at] = withPen(memory_[at], x % perByte, pen, mode(), encoding());
+    written_.push_back(at);
 }
 
-void GraphicsDialog::paintPixel(int tile, int x, int y)
+void GraphicsDialog::flush()
+{
+    emulator_->withMachine([&](tuxape::Cpc& cpc) {
+        for (const unsigned at : written_)
+            cpc.memory().write(static_cast<uint16_t>(at), memory_[at]);
+    });
+    written_.clear();
+}
+
+void GraphicsDialog::paintPixel(int tile, int x, int y, bool paper)
 {
     if (tile < 0 || tile >= tileCount() || x < 0 || x >= pixelsWide() || y < 0 || y >= tileHeight())
         return;
-    setPixel(tile, x, y, pen_);
+    setPixel(tile, x, y, paper ? paper_ : pen_);
+    flush();
     drawView();
 }
 
 // The pixels of the tile that touch one another in the colour of the one
 // clicked take the pen chosen.
-void GraphicsDialog::fillFrom(int tile, int x, int y)
+void GraphicsDialog::fillFrom(int tile, int x, int y, bool paper)
 {
     if (tile < 0 || tile >= tileCount() || x < 0 || x >= pixelsWide() || y < 0 || y >= tileHeight())
         return;
-    const int old = pen(tile, x, y);
-    if (old == pen_)
+    const int old = pen(tile, x, y), with = paper ? paper_ : pen_;
+    if (old == with)
         return;
     std::vector<QPoint> todo = {QPoint(x, y)};
     while (!todo.empty()) {
@@ -407,11 +497,159 @@ void GraphicsDialog::fillFrom(int tile, int x, int y)
         todo.pop_back();
         if (at.x() < 0 || at.x() >= pixelsWide() || at.y() < 0 || at.y() >= tileHeight() || pen(tile, at.x(), at.y()) != old)
             continue;
-        setPixel(tile, at.x(), at.y(), pen_);
+        setPixel(tile, at.x(), at.y(), with);
         for (const QPoint step : {QPoint(1, 0), QPoint(-1, 0), QPoint(0, 1), QPoint(0, -1)})
             todo.push_back(at + step);
     }
+    flush();
     drawView();
+}
+
+// ---- the tiles selected --------------------------------------------------------
+
+void GraphicsDialog::select(int tile, int count)
+{
+    if (tile < 0 || tile >= tileCount() || count < 1) {
+        clearSelection();
+        return;
+    }
+    selected_ = tile;
+    selectedCount_ = std::min(count, tileCount() - tile);
+    drawView();
+}
+
+void GraphicsDialog::clearSelection()
+{
+    selected_ = -1;
+    drawView();
+}
+
+// The arrow keys: the tile selected is the next one that way, and the view
+// goes a row up or down when that is out of it. False at an end of memory.
+bool GraphicsDialog::moveSelection(int columns, int rows)
+{
+    if (selected_ < 0) {
+        select(0);
+        return true;
+    }
+    int tile = selected_ + columns + rows * columns_;
+    if (tile < 0 || tile >= tileCount()) {
+        const int row = static_cast<int>((byteAddress(columns_, 0, 0) - address()) & 0xFFFF);
+        const int moved = static_cast<int>(address()) + (tile < 0 ? -row : row);
+        if (moved < 0 || moved > 0xFFFF)
+            return false;
+        tile += tile < 0 ? columns_ : -columns_;
+        keepSelection_ = true;
+        addressBox_->setValue(moved);
+        keepSelection_ = false;
+    }
+    anchor_ = tile;
+    select(tile);
+    return true;
+}
+
+QImage GraphicsDialog::selectionPicture(bool merged) const
+{
+    if (selected_ < 0)
+        return {};
+    const int across = pixelsWide(), down = tileHeight(), gap = merged ? 0 : 1;
+    // The rows and the columns of the view the tiles stand in.
+    const int first = selected_, last = selected_ + selectedCount_ - 1;
+    const int top = first / columns_, bottom = last / columns_;
+    const int left = top == bottom ? first % columns_ : 0, right = top == bottom ? last % columns_ : columns_ - 1;
+    QImage image((right - left + 1) * (across + gap) - gap, (bottom - top + 1) * (down + gap) - gap, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    for (int tile = first; tile <= last; ++tile) {
+        const int x0 = (tile % columns_ - left) * (across + gap), y0 = (tile / columns_ - top) * (down + gap);
+        for (int y = 0; y < down; ++y)
+            for (int x = 0; x < across; ++x)
+                image.setPixel(x0 + x, y0 + y, colour(pen(tile, x, y)));
+    }
+    return image;
+}
+
+QString GraphicsDialog::selectionText() const
+{
+    const auto hex = [](unsigned value, int digits) { return QString("%1").arg(value, digits, 16, QLatin1Char('0')).toUpper(); };
+    QString text;
+    for (int tile = selected_; selected_ >= 0 && tile < selected_ + selectedCount_; ++tile) {
+        text += "; #" + hex(tileAddress(tile), 4) + '\n';
+        for (int line = 0; line < tileHeight(); ++line) {
+            QStringList bytes;
+            for (int column = 0; column < tileWidth(); ++column)
+                bytes << '#' + hex(memory_[byteAddress(tile, column, line)], 2);
+            text += "db " + bytes.join(',') + '\n';
+        }
+    }
+    return text;
+}
+
+void GraphicsDialog::copySelection(bool merged)
+{
+    if (selected_ < 0)
+        return;
+    auto* data = new QMimeData;
+    data->setImageData(selectionPicture(merged));
+    data->setText(selectionText());
+    QGuiApplication::clipboard()->setMimeData(data);
+}
+
+void GraphicsDialog::markSelectionAsData()
+{
+    if (selected_ < 0)
+        return;
+    if (encoding() != Screen) {
+        const unsigned start = tileAddress(selected_);
+        const int size = selectedCount_ * tileWidth() * tileHeight();
+        emit dataMarked(start, std::min(size, static_cast<int>(0x10000 - start)));
+        return;
+    }
+    // As on the screen a tile's lines are apart from one another.
+    for (int tile = selected_; tile < selected_ + selectedCount_; ++tile)
+        for (int line = 0; line < tileHeight(); ++line)
+            emit dataMarked(byteAddress(tile, 0, line), tileWidth());
+}
+
+bool GraphicsDialog::canRotate() const
+{
+    return pixelsWide() == tileHeight();
+}
+
+// Each tile selected is flipped or turned by itself, in the machine's
+// memory.
+void GraphicsDialog::turnSelection(Turn turn)
+{
+    const bool rotates = turn == RotateClockwise || turn == RotateAntiClockwise;
+    if (selected_ < 0 || (rotates && !canRotate()))
+        return;
+    const int across = pixelsWide(), down = tileHeight();
+    std::vector<int> old(static_cast<size_t>(across * down));
+    for (int tile = selected_; tile < selected_ + selectedCount_; ++tile) {
+        for (int y = 0; y < down; ++y)
+            for (int x = 0; x < across; ++x)
+                old[static_cast<size_t>(y * across + x)] = pen(tile, x, y);
+        for (int y = 0; y < down; ++y) {
+            for (int x = 0; x < across; ++x) {
+                // Where the pixel that comes here was.
+                const int from = turn == FlipHorizontal    ? y * across + (across - 1 - x)
+                                 : turn == FlipVertical    ? (down - 1 - y) * across + x
+                                 : turn == RotateClockwise ? (down - 1 - x) * across + y
+                                                           : x * across + (across - 1 - y);
+                if (old[static_cast<size_t>(from)] != old[static_cast<size_t>(y * across + x)])
+                    setPixel(tile, x, y, old[static_cast<size_t>(from)]);
+            }
+        }
+    }
+    flush();
+    drawView();
+}
+
+void GraphicsDialog::updateActions()
+{
+    for (QAction* action : actions_) {
+        const bool rotates = action->objectName().startsWith("Rotate");
+        action->setEnabled(selected_ >= 0 && (!rotates || canRotate()));
+    }
 }
 
 // The tile and the pixel at a place of the view.
@@ -435,19 +673,63 @@ bool GraphicsDialog::eventFilter(QObject* watched, QEvent* event)
         QTimer::singleShot(0, this, [this] { drawView(); });
     } else if (watched == view_ && (event->type() == QEvent::MouseMove || event->type() == QEvent::MouseButtonPress)) {
         const auto* mouse = static_cast<QMouseEvent*>(event);
+        const bool press = event->type() == QEvent::MouseButtonPress;
+        if (press)
+            view_->setFocus();
         int tile = 0, x = 0, y = 0;
         if (locate(mouse->position().toPoint(), &tile, &x, &y)) {
             // The address of the byte under the pointer.
             const unsigned at = byteAddress(tile, x / pixelsPerByte(mode()), y);
             addressLabel_->setText(tr("Address: %1").arg(QString("%1").arg(at, 4, 16, QLatin1Char('0')).toUpper()));
-            const bool pressed = event->type() == QEvent::MouseButtonPress || (mouse->buttons() & Qt::LeftButton);
-            if (pressed && brushTool_->isChecked())
-                paintPixel(tile, x, y);
-            else if (event->type() == QEvent::MouseButtonPress && fillTool_->isChecked())
-                fillFrom(tile, x, y);
+            const bool left = press ? mouse->button() == Qt::LeftButton : (mouse->buttons() & Qt::LeftButton) != 0;
+            const bool right = press ? mouse->button() == Qt::RightButton : (mouse->buttons() & Qt::RightButton) != 0;
+            if (brushTool_->isChecked()) {
+                // The left button draws with the pen, the right one with
+                // the paper.
+                if (left || right)
+                    paintPixel(tile, x, y, !left);
+            } else if (fillTool_->isChecked()) {
+                if (press && (left || right))
+                    fillFrom(tile, x, y, !left);
+            } else if (left) {
+                // A click selects a tile; Shift, or the button held, as far
+                // as another.
+                if (press && !(mouse->modifiers() & Qt::ShiftModifier))
+                    anchor_ = tile;
+                anchor_ = std::clamp(anchor_, 0, tileCount() - 1);
+                select(std::min(anchor_, tile), std::abs(tile - anchor_) + 1);
+            } else if (press && right && (tile < selected_ || tile >= selected_ + selectionCount())) {
+                // The menu is for the tile under the pointer, unless it is
+                // one of those selected.
+                anchor_ = tile;
+                select(tile);
+            }
+        }
+    } else if (watched == view_ && event->type() == QEvent::ContextMenu) {
+        if (selectTool_->isChecked() && selected_ >= 0) {
+            QMenu menu(this);
+            for (QAction* action : actions_) {
+                if (action->objectName() == "FlipHorizontal1")
+                    menu.addSeparator();
+                menu.addAction(action);
+            }
+            menu.exec(static_cast<QContextMenuEvent*>(event)->globalPos());
+        }
+        return true;
+    } else if (watched == view_ && event->type() == QEvent::KeyPress) {
+        switch (static_cast<QKeyEvent*>(event)->key()) {
+        case Qt::Key_Left: moveSelection(-1, 0); return true;
+        case Qt::Key_Right: moveSelection(1, 0); return true;
+        case Qt::Key_Up: moveSelection(0, -1); return true;
+        case Qt::Key_Down: moveSelection(0, 1); return true;
+        default: break;
         }
     } else if (event->type() == QEvent::MouseButtonPress && watched->parent() == swatches_) {
-        setCurrentPen(watched->objectName().mid(3).toInt());
+        const int pen = watched->objectName().mid(3).toInt();
+        if (static_cast<QMouseEvent*>(event)->button() == Qt::RightButton)
+            setCurrentPaper(pen);
+        else
+            setCurrentPen(pen);
     }
     return QDialog::eventFilter(watched, event);
 }

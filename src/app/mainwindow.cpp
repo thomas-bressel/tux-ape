@@ -471,8 +471,18 @@ void MainWindow::showRegisters()
 
 void MainWindow::showGraphics()
 {
-    if (!graphics_)
+    if (!graphics_) {
         graphics_ = new GraphicsDialog(emulator_, this);
+        // "Mark as data": the debugger's disassembly shows the tiles as
+        // bytes. The debugger need not be on the screen for that.
+        connect(graphics_, &GraphicsDialog::dataMarked, this, [this](unsigned address, int size) {
+            if (!debugger_) {
+                showDebugger();
+                debugger_->hide();
+            }
+            debugger_->addDataArea(address, size);
+        });
+    }
     graphics_->show();
     graphics_->raise();
 }
