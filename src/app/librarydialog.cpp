@@ -43,7 +43,8 @@ QString releaseOf(const QString& note, bool* whole)
     } kKinds[] = {{"Original", {"original"}},
                   {"Crack", {"crack", "cracked", "cr"}},
                   {"Hack", {"hack", "hacked", "h"}},
-                  {"File", {"file"}}};
+                  {"File", {"file"}},
+                  {"Portage", {"portage", "port"}}};
     for (const auto& kind : kKinds) {
         for (const QString& word : kind.words) {
             *whole = text == word;
