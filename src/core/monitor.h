@@ -50,6 +50,8 @@ public:
 
     int beamX() const { return x_; }
     int beamY() const { return y_; }
+    // The line of the picture being drawn: 0 for its first, less above it.
+    int rasterLine() const { return y_ - firstLine_; }
 
 private:
     // Position of the visible area relative to the sync pulses, chosen so

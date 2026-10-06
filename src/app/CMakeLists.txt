@@ -32,6 +32,8 @@ add_library(tuxape_app STATIC
     librarydialog.h
     mainwindow.cpp
     mainwindow.h
+    registersdialog.cpp
+    registersdialog.h
     screenwidget.cpp
     screenwidget.h
     settings.cpp

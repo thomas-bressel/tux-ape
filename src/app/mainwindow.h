@@ -17,6 +17,7 @@ class QMenu;
 class QToolButton;
 class AssemblerDialog;
 class DebuggerDialog;
+class RegistersDialog;
 class ScreenWidget;
 class TapeDialog;
 enum class IconId;
@@ -35,6 +36,7 @@ public:
     // The debugger's window, once the machine has been paused; else null.
     DebuggerDialog* debugger() const { return debugger_; }
     AssemblerDialog* assembler() const { return assembler_; }
+    RegistersDialog* registers() const { return registers_; }
 
     // Puts a disc image in a drive, reporting problems to the user.
     // Returns false if it could not be done.
@@ -87,6 +89,7 @@ private:
     QAction* stepOverAction_ = nullptr;
     DebuggerDialog* debugger_ = nullptr;
     AssemblerDialog* assembler_ = nullptr;
+    RegistersDialog* registers_ = nullptr;
     QAction* fullScreenAction_ = nullptr;
     QAction* pasteAction_ = nullptr;
     QAction* driveSetupAction_ = nullptr;
@@ -97,6 +100,7 @@ private:
     QAction* setupAction_ = nullptr;
     QAction* libraryAction_ = nullptr;
     QAction* assemblerAction_ = nullptr;
+    QAction* registersAction_ = nullptr;
     QAction* cartridgeAction_ = nullptr;
     QAction* recordWavAction_ = nullptr;
     QAction* recordYmAction_ = nullptr;
@@ -136,6 +140,7 @@ private:
     void machineStopped();
     void showDebugger();
     void showAssembler();
+    void showRegisters();
     void updateDebugActions();
     // Shows the Setup window on one of its pages (SetupDialog::Page).
     void showSetup(int page);

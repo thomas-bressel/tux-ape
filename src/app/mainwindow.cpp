@@ -21,6 +21,7 @@
 
 #include "assemblerdialog.h"
 #include "debuggerdialog.h"
+#include "registersdialog.h"
 #include "discdialogs.h"
 #include "disceditordialog.h"
 #include "discmanager.h"
@@ -298,7 +299,7 @@ void MainWindow::createMenus()
         action->setEnabled(false);
         addAction(action);
     }
-    addItem(debug, tr("&Registers"));
+    registersAction_ = addItem(debug, tr("&Registers"), {}, [this] { showRegisters(); });
     addItem(debug, tr("&Breakpoints"));
     addItem(debug, tr("&Data Areas"));
     addItem(debug, tr("&Timers"));
@@ -347,7 +348,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::SingleStep, tr("Single Step (F7)"), stepAction_);
     addButton(IconId::StepOver, tr("Step Over (F8)"), stepOverAction_);
     row->addWidget(separator(controlPanel_));
-    addButton(IconId::Registers, tr("Registers"), nullptr);
+    addButton(IconId::Registers, tr("Registers"), registersAction_);
     addButton(IconId::Assembler, tr("Assembler (F3)"), assemblerAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Library, tr("Library (CTRL+L)"), libraryAction_);
@@ -427,9 +428,19 @@ void MainWindow::updateDebugActions()
         statusLabel_->setText(tr("Paused"));
 }
 
+void MainWindow::showRegisters()
+{
+    if (!registers_)
+        registers_ = new RegistersDialog(emulator_, this);
+    registers_->show();
+    registers_->raise();
+}
+
 void MainWindow::machineStopped()
 {
     updateDebugActions();
+    if (registers_ && registers_->isVisible())
+        registers_->refresh();
     if (emulator_->isPaused())
         showDebugger();
 }

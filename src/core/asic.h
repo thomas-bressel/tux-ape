@@ -129,6 +129,7 @@ private:
     uint16_t ssa_ = 0;
     uint8_t dcsr_ = 0;
 
+public:
     struct Channel {
         uint16_t address = 0;   // of the next instruction
         uint8_t prescaler = 0;  // lines to a pause's unit, less one
@@ -137,6 +138,11 @@ private:
         uint16_t pause = 0;     // units still to wait
         uint8_t pauseLines = 0; // lines left of the unit under way
     };
+    // For the Registers window: the status register and a channel.
+    uint8_t dcsr() const { return dcsr_; }
+    const Channel& channel(int n) const { return channels_[static_cast<size_t>(n) % 3]; }
+
+private:
     std::array<Channel, 3> channels_ = {};
     std::function<uint8_t(uint16_t)> readRam_;
     std::function<void(int, uint8_t)> writeSound_;
