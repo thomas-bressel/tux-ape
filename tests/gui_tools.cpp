@@ -14,6 +14,8 @@
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QToolButton>
+#include <QTextBrowser>
 
 #include "check.h"
 #include "core/inifile.h"
@@ -356,6 +358,32 @@ int main(int argc, char* argv[])
     CHECK(!emulator.startAviRecording(folder.filePath("missing/film.avi")));
     CHECK(!emulator.startWavRecording(folder.filePath("missing/sound.wav")));
     CHECK(!emulator.startYmRecording(folder.filePath("missing/tune.ym")));
+
+    // Help: F1 opens TuxAPE's own, with every menu entry and its key, and
+    // whom the emulator owes what.
+    {
+        QAction* help = actionNamed(window, "Contents");
+        CHECK(help && help->isEnabled() && help->shortcut() == QKeySequence(Qt::Key_F1));
+        QToolButton* button = nullptr;
+        for (QToolButton* candidate : window.findChildren<QToolButton*>())
+            if (candidate->toolTip() == "Help (F1)")
+                button = candidate;
+        CHECK(button && button->isEnabled());
+        if (button)
+            button->click();
+        auto* text = window.findChild<QTextBrowser*>("HelpText");
+        CHECK(text && text->isVisible());
+        const QString shown = text ? text->toPlainText() : QString();
+        CHECK(shown.contains("TuxAPE") && shown.contains("Getting started"));
+        CHECK(shown.contains("File > Library") && shown.contains("Ctrl+L"));
+        CHECK(shown.contains("Assembler > Show Assembler") && shown.contains("F3"));
+        CHECK(shown.contains("Debug > Find Graphics"));
+        CHECK(shown.contains("Amstrad CPC CRTC Compendium") && shown.contains("Longshot") && shown.contains("CC BY-NC-ND"));
+        if (!prefix.isEmpty() && text)
+            text->window()->grab().save(prefix + "help.png");
+        if (text)
+            text->window()->close();
+    }
 
     emulator.stop();
     return checkSummary("gui_tools");

@@ -16,6 +16,7 @@ class QLabel;
 class QMenu;
 class QToolButton;
 class AssemblerDialog;
+class QDialog;
 class BreakpointsDialog;
 class TimersDialog;
 class DebuggerDialog;
@@ -109,6 +110,8 @@ private:
     QAction* setupAction_ = nullptr;
     QAction* libraryAction_ = nullptr;
     QAction* assemblerAction_ = nullptr;
+    QAction* helpAction_ = nullptr;
+    QDialog* help_ = nullptr;
     QAction* registersAction_ = nullptr;
     QAction* cartridgeAction_ = nullptr;
     QAction* recordWavAction_ = nullptr;
@@ -154,6 +157,8 @@ private:
     void showBreakpoints();
     void showDataAreas();
     void showTimers();
+    void showHelp();
+    QString helpText() const;
     void showGraphics();
     void updateDebugActions();
     // Shows the Setup window on one of its pages (SetupDialog::Page).

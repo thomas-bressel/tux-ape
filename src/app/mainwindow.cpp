@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 
+#include <functional>
+#include <QTextBrowser>
 #include <QTextCursor>
 #include <QApplication>
 #include <QClipboard>
@@ -36,6 +38,7 @@
 #include "tapedialog.h"
 #include "tooldialogs.h"
 
+#include "core/version.h"
 #include "core/cartridge.h"
 #include "core/files.h"
 #include "core/session.h"
@@ -314,7 +317,7 @@ void MainWindow::createMenus()
 
     // ---- Help ----
     QMenu* help = menuBar()->addMenu(tr("&Help"));
-    addItem(help, tr("&Contents"), Qt::Key_F1);
+    helpAction_ = addItem(help, tr("&Contents"), Qt::Key_F1, [this] { showHelp(); });
 }
 
 QToolButton* MainWindow::addButton(IconId icon, const QString& hint, QAction* action)
@@ -364,7 +367,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::Settings, tr("Settings (F12)"), setupAction_);
     addButton(IconId::FullScreen, tr("Toggle Full Screen (F10)"), fullScreenAction_);
     row->addWidget(separator(controlPanel_));
-    addButton(IconId::Help, tr("Help (F1)"), nullptr);
+    addButton(IconId::Help, tr("Help (F1)"), helpAction_);
 
     row->addStretch(1);
 
@@ -445,6 +448,89 @@ void MainWindow::showGraphics()
         graphics_ = new GraphicsDialog(emulator_, this);
     graphics_->show();
     graphics_->raise();
+}
+
+// TuxAPE's own help: how to start, every menu entry with its key, and
+// whom the emulator owes what.
+QString MainWindow::helpText() const
+{
+    QString html = QString("<h2>TuxAPE %1</h2>").arg(QString::fromLatin1(tuxape::versionString()));
+    html += tr("<p>An emulator of the Amstrad CPC 464, 664 and 6128 and of the 464 Plus and 6128 Plus, made after "
+               "WinAPE 2.0 Beta 2.</p>"
+               "<h3>Getting started</h3>"
+               "<ul>"
+               "<li><b>A disc:</b> drop its file on the window, or use File &gt; Drive A: &gt; Insert Disc Image. "
+               "Type <tt>cat</tt> to see what is on it, then <tt>run\"name</tt>.</li>"
+               "<li><b>A tape:</b> File &gt; Tape &gt; Insert Tape Image (CDT, TZX, WAV or VOC). On a machine with a "
+               "disc drive type <tt>|tape</tt> first, then <tt>run\"</tt> and press a key: the tape plays by itself.</li>"
+               "<li><b>A cartridge</b> (Plus): File &gt; Load Cartridge. The machine restarts on it.</li>"
+               "<li><b>A snapshot:</b> File &gt; Load Snapshot brings a machine back as it was saved.</li>"
+               "<li><b>The Library</b> lists the programs of the folders you name; a double click puts one in the "
+               "machine.</li>"
+               "<li>The machine, its ROMs, the display, the sound and the keyboard are set in Settings.</li>"
+               "</ul>");
+    // The menus as they are, so that this never falls behind them.
+    html += tr("<h3>Menus and keys</h3>");
+    const std::function<void(const QMenu*, const QString&)> list = [&](const QMenu* menu, const QString& path) {
+        for (const QAction* action : menu->actions()) {
+            if (action->isSeparator())
+                continue;
+            const QString name = path + QString(action->text()).remove('&').remove("...");
+            if (action->menu()) {
+                list(action->menu(), name + " &gt; ");
+                continue;
+            }
+            const QString keys = action->shortcut().toString(QKeySequence::NativeText).toHtmlEscaped();
+            html += QString("<tr><td>%1</td><td>&nbsp;&nbsp;<b>%2</b></td></tr>").arg(name, keys);
+        }
+    };
+    html += "<table>";
+    for (const QAction* top : menuBar()->actions())
+        if (top->menu())
+            list(top->menu(), QString(top->text()).remove('&') + " &gt; ");
+    html += "</table>";
+    html += tr("<h3>In the debugger</h3>"
+               "<table>"
+               "<tr><td>Step into, step over</td><td>&nbsp;&nbsp;<b>F7</b>, <b>F8</b></td></tr>"
+               "<tr><td>Run to the line chosen</td><td>&nbsp;&nbsp;<b>F4</b></td></tr>"
+               "<tr><td>Set or clear a breakpoint</td><td>&nbsp;&nbsp;<b>F5</b>, or a click in the margin</td></tr>"
+               "<tr><td>Run</td><td>&nbsp;&nbsp;<b>F9</b></td></tr>"
+               "<tr><td>Go to an address, find, find again</td><td>&nbsp;&nbsp;<b>Ctrl+G</b>, <b>Ctrl+F</b>, <b>F3</b></td></tr>"
+               "</table>"
+               "<p>A right click in the memory dump opens its tools: load, save, fill, compare, breakpoints on "
+               "reads and writes, disassembly.</p>"
+               "<h3>In the assembler</h3>"
+               "<table>"
+               "<tr><td>Assemble into the machine</td><td>&nbsp;&nbsp;<b>Ctrl+F9</b></td></tr>"
+               "<tr><td>Assemble and run (the source needs a <tt>run</tt> directive)</td><td>&nbsp;&nbsp;<b>F9</b></td></tr>"
+               "<tr><td>Find, find again, replace, go to a line</td><td>&nbsp;&nbsp;<b>Ctrl+F</b>, <b>F3</b>, <b>Ctrl+R</b>, <b>Ctrl+G</b></td></tr>"
+               "</table>"
+               "<p>The syntax is Maxam's, with WinAPE's extensions: a click in the margin sets a breakpoint on a "
+               "line.</p>"
+               "<h3>Thanks</h3>"
+               "<p>WinAPE, the model for this emulator, is by Richard Wilson.<br>"
+               "Technical information from the \"Amstrad CPC CRTC Compendium\" by Longshot / Logon System "
+               "(CC BY-NC-ND).<br>"
+               "Hardware tests by Kevin Thacker (the \"acid tests\") and by Longshot (the Shaker).<br>"
+               "Built with Qt, SDL and zlib.</p>");
+    return html;
+}
+
+void MainWindow::showHelp()
+{
+    if (!help_) {
+        help_ = new QDialog(this);
+        help_->setObjectName("Help");
+        help_->setWindowTitle(tr("TuxAPE Help"));
+        auto* layout = new QVBoxLayout(help_);
+        auto* text = new QTextBrowser;
+        text->setObjectName("HelpText");
+        layout->addWidget(text);
+        help_->resize(600, 640);
+    }
+    help_->findChild<QTextBrowser*>("HelpText")->setHtml(helpText());
+    help_->show();
+    help_->raise();
 }
 
 void MainWindow::showTimers()
