@@ -484,6 +484,9 @@ int main(int argc, char* argv[])
         CHECK(!dialog.settings().screenshotOnFlyback);
 
         emulator.setPaused(true);
+        // The firmware sets the colours again now and then, from its
+        // interrupt: it is kept from doing so meanwhile.
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.cpu().iff1 = cpc.cpu().iff2 = false; });
         const auto border = [&](int colour) {
             emulator.withMachine([colour](tuxape::Cpc& cpc) {
                 cpc.out(0x7F00, 0x10);
@@ -509,6 +512,7 @@ int main(int argc, char* argv[])
         CHECK(qGreen(part.pixel(4, 60)) > qRed(part.pixel(4, 60)));
         // Under the beam, the frame before.
         CHECK(part.pixel(4, line + 20) == red && part.pixel(4, 265) == red);
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.cpu().iff1 = cpc.cpu().iff2 = true; });
         emulator.setPaused(false);
     }
     return checkSummary("gui_tools");

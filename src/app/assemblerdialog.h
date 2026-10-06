@@ -154,6 +154,20 @@ public:
     int replaceAll(const FindOptions& options);
     void gotoNextBreakpoint();
 
+    // ---- Of the last assembly ----
+    // What "Information" says: the file, how many lines and bytes, the
+    // errors, the symbols, where the code went and where it runs from.
+    QString information() const;
+    void showInformation();
+    // The address the breakpoint of a line of the current file stands for:
+    // that of the first line from there on that gave code. -1 if the line
+    // has no breakpoint or the file has not been assembled.
+    int breakpointAddress(int line) const;
+    // "Breakpoint Properties": the condition and the pass count of a
+    // line's breakpoint. False if there is none or they cannot be used.
+    bool setBreakpointProperties(int line, const QString& condition, int passCount);
+    void showBreakpointProperties(int line);
+
     // ---- Options ----
     QString libraryPath() const { return libraryPath_; }
     bool pushPcOnRun() const { return pushPc_; }

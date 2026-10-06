@@ -21,6 +21,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QFormLayout>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -544,7 +545,7 @@ void AssemblerDialog::buildMenus(QMenuBar* bar)
     add(assembleMenu, tr("&Assemble"), Qt::CTRL | Qt::Key_F9, [this] { assemble(); });
     add(assembleMenu, tr("&Run"), Qt::Key_F9, [this] { run(); });
     assembleMenu->addSeparator();
-    later(assembleMenu, tr("&Information"));
+    add(assembleMenu, tr("&Information"), {}, [this] { showInformation(); });
     add(assembleMenu, tr("&Symbols"), {}, [this] { showSymbols(); });
     assembleMenu->addSeparator();
     add(assembleMenu, tr("&Options"), {}, [this] { showOptions(); });
@@ -634,7 +635,8 @@ int AssemblerDialog::newFile()
         menu.addSeparator();
         const int line = edit->cursorForPosition(at).blockNumber() + 1;
         menu.addAction(tr("&Toggle Breakpoint"), edit, [edit, line] { edit->toggleBreakpoint(line); });
-        menu.addAction(tr("&Breakpoint Properties..."))->setEnabled(false);
+        menu.addAction(tr("&Breakpoint Properties..."), this, [this, line] { showBreakpointProperties(line); })
+            ->setEnabled(breakpointAddress(line) >= 0);
         menu.exec(edit->viewport()->mapToGlobal(at));
     });
     const int index = tabs_->addTab(source.title);
@@ -962,6 +964,92 @@ void AssemblerDialog::applyBreakpoints()
     all.insert(ownBreakpoints_.begin(), ownBreakpoints_.end());
     emulator_->setBreakpoints(all);
     emit breakpointsChanged();
+}
+
+QString AssemblerDialog::information() const
+{
+    if (result_.lines == 0 && result_.errors.empty())
+        return tr("Nothing has been assembled yet.");
+    const auto hex = [](unsigned value) { return QString("#%1").arg(value, 4, 16, QLatin1Char('0')).toUpper(); };
+    QStringList lines;
+    lines << tr("Lines: %1").arg(result_.lines) << tr("Bytes: %1").arg(result_.bytes)
+          << tr("Errors: %1").arg(result_.errors.size()) << tr("Symbols: %1").arg(result_.symbols.size());
+    // Where the code went in memory: from its lowest byte to its highest.
+    unsigned low = 0x10000, high = 0;
+    for (const tuxape::AsmBlock& block : result_.memory) {
+        if (block.data.empty())
+            continue;
+        low = std::min<unsigned>(low, block.address);
+        high = std::max<unsigned>(high, block.address + static_cast<unsigned>(block.data.size()) - 1);
+    }
+    if (low <= high)
+        lines << tr("Code: %1 to %2").arg(hex(low), hex(std::min(high, 0xFFFFu)));
+    if (result_.run)
+        lines << tr("Run: %1").arg(hex(*result_.run));
+    if (const size_t files = result_.files.size() + result_.saves.size())
+        lines << tr("Files written: %1").arg(files);
+    return lines.join('\n');
+}
+
+void AssemblerDialog::showInformation()
+{
+    QMessageBox box(QMessageBox::Information, tr("Information"), information(), QMessageBox::Ok, this);
+    box.setObjectName("frmInfo");
+    box.exec();
+}
+
+int AssemblerDialog::breakpointAddress(int line) const
+{
+    const int index = currentFile();
+    if (index < 0 || !files_[index].editor->breakpoints().contains(line))
+        return -1;
+    const std::string name = sourceName(index).toStdString();
+    for (const tuxape::AsmLine& at : result_.addresses)
+        if (at.file == name && at.line >= line)
+            return ownBreakpoints_.count(at.address) ? at.address : -1;
+    return -1;
+}
+
+bool AssemblerDialog::setBreakpointProperties(int line, const QString& condition, int passCount)
+{
+    const int address = breakpointAddress(line);
+    const std::string text = condition.trimmed().toStdString();
+    if (address < 0 || passCount < 0 || (!text.empty() && !emulator_->conditionValid(text)))
+        return false;
+    emulator_->setBreakProps(static_cast<uint16_t>(address), text, passCount);
+    emit breakpointsChanged();
+    return true;
+}
+
+void AssemblerDialog::showBreakpointProperties(int line)
+{
+    const int address = breakpointAddress(line);
+    if (address < 0)
+        return;
+    const Emulator::BreakProps now = emulator_->breakProps(static_cast<uint16_t>(address));
+    QDialog box(this);
+    box.setObjectName("BreakProps");
+    box.setWindowTitle(tr("Breakpoint Properties"));
+    auto* form = new QFormLayout(&box);
+    auto* condition = new QLineEdit(QString::fromStdString(now.condition));
+    condition->setObjectName("edCondition");
+    condition->setMinimumWidth(220);
+    auto* passCount = new QLineEdit(now.passCount ? QString::number(now.passCount) : QString());
+    passCount->setObjectName("edPassCount");
+    form->addRow(tr("Condition:"), condition);
+    form->addRow(tr("Pass Count:"), passCount);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, &box, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &box, [&] {
+        bool number = true;
+        const int passes = passCount->text().trimmed().isEmpty() ? 0 : passCount->text().toInt(&number);
+        if (number && setBreakpointProperties(line, condition->text(), passes))
+            box.accept();
+        else
+            QMessageBox::warning(&box, box.windowTitle(), tr("The condition or the pass count is not one that can be used."));
+    });
+    box.exec();
 }
 
 void AssemblerDialog::showOutput(const QString& name)

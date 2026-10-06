@@ -11,6 +11,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDialogButtonBox>
 #include <QCheckBox>
 #include <QDir>
 #include <QFile>
@@ -497,6 +498,61 @@ int main(int argc, char* argv[])
     CHECK(runs());
     CHECK(QTest::qWaitFor([&] { return pc() == 0x8000 && !emulator.isPaused(); }, 5000));
     CHECK_EQ(sp(), stack);
+
+    // "Information": the figures of the last assembly. "Breakpoint
+    // Properties": the condition and the pass count of a line's
+    // breakpoint, once the file has been assembled.
+    {
+        type(editor, "org #8000\nrun start\n.start\nld a,1\nld b,2\n.loop jr loop\n");
+        for (const int line : editor->breakpoints())
+            editor->toggleBreakpoint(line);
+        editor->toggleBreakpoint(5);
+        CHECK(assembles());
+        const QString said = assembler->information();
+        for (const char* part : {"Lines: 6", "Bytes: 6", "Errors: 0", "Symbols: 2", "Code: #8000 to #8005", "Run: #8000"})
+            CHECK(said.contains(part));
+        if (!said.contains("Bytes: 6"))
+            std::printf("%s\n", qPrintable(said));
+        {
+            Modals modals([&](QWidget* modal) {
+                auto* box = qobject_cast<QMessageBox*>(modal);
+                CHECK(box && box->objectName() == "frmInfo" && box->text() == said);
+                modal->close();
+            });
+            for (QAction* action : assembler->findChildren<QAction*>())
+                if (action->text() == "&Information")
+                    action->trigger();
+            CHECK_EQ(modals.seen(), 1);
+        }
+        // Line 5 has the breakpoint: "ld b,2", at #8002.
+        CHECK_EQ(assembler->breakpointAddress(5), 0x8002);
+        CHECK_EQ(assembler->breakpointAddress(4), -1);
+        CHECK(!assembler->setBreakpointProperties(4, "a=1", 0));
+        CHECK(!assembler->setBreakpointProperties(5, "a=(", 0));
+        CHECK(!assembler->setBreakpointProperties(5, "a=1", -2));
+        CHECK(assembler->setBreakpointProperties(5, "a=1", 3));
+        CHECK(emulator.breakProps(0x8002).condition == "a=1" && emulator.breakProps(0x8002).passCount == 3);
+        // The window: what the breakpoint has, to change and confirm.
+        {
+            Modals modals([&](QWidget* modal) {
+                auto* condition = modal->findChild<QLineEdit*>("edCondition");
+                auto* passes = modal->findChild<QLineEdit*>("edPassCount");
+                auto* buttons = modal->findChild<QDialogButtonBox*>();
+                CHECK(modal->objectName() == "BreakProps" && condition && passes && buttons);
+                if (!(condition && passes && buttons))
+                    return modal->close(), void();
+                CHECK(condition->text() == "a=1" && passes->text() == "3");
+                condition->setText("b=2");
+                passes->clear();
+                buttons->button(QDialogButtonBox::Ok)->click();
+            });
+            assembler->showBreakpointProperties(5);
+            CHECK_EQ(modals.seen(), 1);
+        }
+        CHECK(emulator.breakProps(0x8002).condition == "b=2" && emulator.breakProps(0x8002).passCount == 0);
+        editor->toggleBreakpoint(5);
+        CHECK_EQ(assembler->breakpointAddress(5), -1);
+    }
 
     if (!prefix.isEmpty()) {
         type(editor, "nolist\nread \"firmware.asm\"\n\nrun start\norg #8000\nlimit #a5ff\n\n.start\n"
