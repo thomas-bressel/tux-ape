@@ -23,6 +23,7 @@
 #include "assemblerdialog.h"
 #include "breakpointsdialog.h"
 #include "debuggerdialog.h"
+#include "graphicsdialog.h"
 #include "registersdialog.h"
 #include "discdialogs.h"
 #include "disceditordialog.h"
@@ -305,7 +306,7 @@ void MainWindow::createMenus()
     addItem(debug, tr("&Breakpoints"), {}, [this] { showBreakpoints(); });
     addItem(debug, tr("&Data Areas"), {}, [this] { showDataAreas(); });
     addItem(debug, tr("&Timers"), {}, [this] { showTimers(); });
-    addItem(debug, tr("&Find Graphics"));
+    addItem(debug, tr("&Find Graphics"), {}, [this] { showGraphics(); });
 
     // ---- Assembler ----
     QMenu* assembler = menuBar()->addMenu(tr("&Assembler"));
@@ -438,6 +439,14 @@ void MainWindow::showRegisters()
     registers_->raise();
 }
 
+void MainWindow::showGraphics()
+{
+    if (!graphics_)
+        graphics_ = new GraphicsDialog(emulator_, this);
+    graphics_->show();
+    graphics_->raise();
+}
+
 void MainWindow::showTimers()
 {
     if (!timers_)
@@ -478,6 +487,8 @@ void MainWindow::machineStopped()
         breakpoints_->refresh();
     if (timers_ && timers_->isVisible())
         timers_->refresh();
+    if (graphics_ && graphics_->isVisible())
+        graphics_->refresh();
     if (registers_ && registers_->isVisible())
         registers_->refresh();
     if (emulator_->isPaused())

@@ -19,6 +19,7 @@ class AssemblerDialog;
 class BreakpointsDialog;
 class TimersDialog;
 class DebuggerDialog;
+class GraphicsDialog;
 class RegistersDialog;
 class ScreenWidget;
 class TapeDialog;
@@ -41,6 +42,7 @@ public:
     RegistersDialog* registers() const { return registers_; }
     BreakpointsDialog* breakpoints() const { return breakpoints_; }
     TimersDialog* timers() const { return timers_; }
+    GraphicsDialog* graphics() const { return graphics_; }
 
     // Puts a disc image in a drive, reporting problems to the user.
     // Returns false if it could not be done.
@@ -96,6 +98,7 @@ private:
     RegistersDialog* registers_ = nullptr;
     BreakpointsDialog* breakpoints_ = nullptr;
     TimersDialog* timers_ = nullptr;
+    GraphicsDialog* graphics_ = nullptr;
     QAction* fullScreenAction_ = nullptr;
     QAction* pasteAction_ = nullptr;
     QAction* driveSetupAction_ = nullptr;
@@ -150,6 +153,7 @@ private:
     void showBreakpoints();
     void showDataAreas();
     void showTimers();
+    void showGraphics();
     void updateDebugActions();
     // Shows the Setup window on one of its pages (SetupDialog::Page).
     void showSetup(int page);
