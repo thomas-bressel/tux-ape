@@ -995,6 +995,12 @@ void Emulator::threadMain()
         }
 
         machineMutex_.lock();
+        // A pause asked for while this thread was waiting for the machine
+        // holds from now, not from the frame after.
+        if (paused_) {
+            machineMutex_.unlock();
+            continue;
+        }
         bool playbackOver = false;
         if (sessionPlayer_.active()) {
             // The keyboard is the recording's.

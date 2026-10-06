@@ -484,6 +484,14 @@ int main(int argc, char* argv[])
         CHECK(!dialog.settings().screenshotOnFlyback);
 
         emulator.setPaused(true);
+        // The tests above leave the machine anywhere in a frame: on to the
+        // start of the next one, for the beam to be where this test counts
+        // on.
+        emulator.withMachine([](tuxape::Cpc& cpc) {
+            const uint64_t frame = cpc.monitor().frameNumber();
+            while (cpc.monitor().frameNumber() == frame)
+                cpc.stepInstruction();
+        });
         // The firmware sets the colours again now and then, from its
         // interrupt: it is kept from doing so meanwhile.
         emulator.withMachine([](tuxape::Cpc& cpc) { cpc.cpu().iff1 = cpc.cpu().iff2 = false; });
