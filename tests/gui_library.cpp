@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QFile>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTest>
@@ -530,7 +531,8 @@ int main(int argc, char* argv[])
         CHECK(games.categories() == QStringList{"Games"});
         CHECK(games.listedSubcategories() == (QStringList{"", "Racing", "Racing", "Platform"}));
         // The names of the folders, in any case.
-        CHECK(libraryCategories() == (QStringList{"Games", "Educational", "Utilities", "Demos", "Compilations", "Miscellaneous"}));
+        CHECK(libraryCategories()
+              == (QStringList{"Games", "Educational", "Utilities", "Demos", "Compilations", "Miscellaneous", "SNR"}));
     }
 
     // An archive marked "(AI)" marks the programs it holds.
@@ -598,5 +600,61 @@ int main(int argc, char* argv[])
     pick("spring", "Thing on a Spring", 0);
     const int zippedMarker = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().read(0x8000); });
     CHECK_EQ(zippedMarker, 0x42);
+
+    // Recorded sessions: the files of the "SNR" folder have a tab of their
+    // own, "Let's Play", and a double click plays one back. Those WinAPE
+    // recorded are listed too, and cannot be played: that is said.
+    {
+        const QString played = folder.filePath("played");
+        QDir().mkpath(played + "/SNR");
+        QDir().mkpath(played + "/Games");
+        const QString session = played + "/SNR/Gryzor (UK) (1987) (5mn19s) [Somebody] [SESSION].snr";
+        window.startSessionRecording(session, false);
+        CHECK(window.stopSessionRecording());
+        {
+            QFile winApe(played + "/SNR/1943 (UK) (1988) (WinApe 2.0 Alpha 18) [SESSION].snr");
+            CHECK(winApe.open(QIODevice::WriteOnly));
+            winApe.write(QByteArray("RW - SNR") + QByteArray(0x200, '\0'));
+        }
+        CHECK(QFile::copy(gryzor, played + "/Games/Gryzor.dsk"));
+        const QList<LibraryEntry> entries = scanLibrary({played});
+        CHECK_EQ(entries.size(), 3);
+        for (const LibraryEntry& entry : entries) {
+            const bool disc = entry.path.endsWith(".dsk");
+            CHECK(entry.kind == (disc ? LibraryEntry::Disc : LibraryEntry::Session));
+            CHECK(entry.category == (disc ? "Games" : "SNR"));
+        }
+        CHECK(libraryCategoryTitle("SNR") == "Let's Play" && libraryCategoryTitle("Games") == "Games");
+        // The window, the tab, and a session chosen in it.
+        const auto play = [&](const QString& title, QString* said) {
+            Modals modals([&](QWidget* modal) {
+                auto* dialog = qobject_cast<LibraryDialog*>(modal);
+                if (!dialog) {
+                    // What the main window has to say of the session.
+                    if (auto* box = qobject_cast<QMessageBox*>(modal))
+                        *said = box->text();
+                    return modal->close(), void();
+                }
+                dialog->setFolders({played});
+                dialog->setSearch(QString());  // the window remembers the last one
+                CHECK(dialog->categories() == (QStringList{"Games", "Let's Play"}));
+                CHECK(dialog->setCategory("SNR") && dialog->category() == "SNR");
+                CHECK(dialog->listedTitles() == (QStringList{"1943", "Gryzor"}));
+                CHECK(dialog->listedTypes() == (QStringList{"Session", "Session"}));
+                auto* insertA = dialog->findChild<QPushButton*>("bInsertA");
+                auto* insertB = dialog->findChild<QPushButton*>("bInsertB");
+                CHECK(insertA && insertA->text() == "&Play" && insertB && !insertB->isEnabled());
+                CHECK(dialog->select(title) && dialog->choose(0));
+            });
+            action->trigger();
+        };
+        QString said;
+        play("Gryzor", &said);
+        CHECK(emulator.playingSession() && said.isEmpty());
+        emulator.stopPlayback();
+        play("1943", &said);
+        CHECK(!emulator.playingSession());
+        CHECK(said.contains("recorded by WinAPE"));
+    }
     return checkSummary("gui_library");
 }

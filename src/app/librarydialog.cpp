@@ -29,7 +29,8 @@ namespace {
 bool isProgram(const QString& name)
 {
     return name.endsWith(".dsk", Qt::CaseInsensitive) || name.endsWith(".cdt", Qt::CaseInsensitive)
-           || name.endsWith(".cpr", Qt::CaseInsensitive) || name.endsWith(".sna", Qt::CaseInsensitive);
+           || name.endsWith(".cpr", Qt::CaseInsensitive) || name.endsWith(".sna", Qt::CaseInsensitive)
+           || name.endsWith(".snr", Qt::CaseInsensitive);
 }
 
 constexpr int kSubcategoryColumn = 1;
@@ -86,7 +87,8 @@ QString releaseOf(const QString& note, bool* whole)
 
 LibraryEntry::Kind kindOf(const QString& name)
 {
-    return name.endsWith(".sna", Qt::CaseInsensitive)   ? LibraryEntry::Snapshot
+    return name.endsWith(".snr", Qt::CaseInsensitive)   ? LibraryEntry::Session
+           : name.endsWith(".sna", Qt::CaseInsensitive) ? LibraryEntry::Snapshot
            : name.endsWith(".cdt", Qt::CaseInsensitive) ? LibraryEntry::Tape
            : name.endsWith(".cpr", Qt::CaseInsensitive) ? LibraryEntry::Cartridge
                                                         : LibraryEntry::Disc;
@@ -126,7 +128,12 @@ QStringList libraryFoldersOrDefault(const QStringList& named)
 
 QStringList libraryCategories()
 {
-    return {"Games", "Educational", "Utilities", "Demos", "Compilations", "Miscellaneous"};
+    return {"Games", "Educational", "Utilities", "Demos", "Compilations", "Miscellaneous", "SNR"};
+}
+
+QString libraryCategoryTitle(const QString& category)
+{
+    return category == "SNR" ? LibraryDialog::tr("Let's Play") : category;
 }
 
 LibraryEntry libraryEntry(const QString& path)
@@ -175,7 +182,7 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
     QList<LibraryEntry> entries;
     QSet<QString> seen;
     for (const QString& folder : folders) {
-        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.cpr", "*.sna", "*.zip"}, QDir::Files,
+        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.cpr", "*.sna", "*.snr", "*.zip"}, QDir::Files,
                         QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
         while (it.hasNext()) {
             const QString path = QDir::cleanPath(it.next());
@@ -345,7 +352,7 @@ void LibraryDialog::fill()
             for (const QString& folder : folders_)
                 there = there || QDir(folder).dirName().compare(name, Qt::CaseInsensitive) == 0 || QDir(folder).exists(name);
             if (there)
-                tabs_->setTabData(tabs_->addTab(name), name);
+                tabs_->setTabData(tabs_->addTab(libraryCategoryTitle(name)), name);
         }
         if (filed(QString()) || tabs_->count() == 0)
             tabs_->setTabData(tabs_->addTab(tr("Unsorted")), QString());
@@ -363,13 +370,14 @@ void LibraryDialog::fill()
         const LibraryEntry& entry = entries_[i];
         const QString kind = entry.kind == LibraryEntry::Disc        ? tr("Disc")
                              : entry.kind == LibraryEntry::Tape      ? tr("Tape")
+                             : entry.kind == LibraryEntry::Session   ? tr("Session")
                              : entry.kind == LibraryEntry::Cartridge ? tr("Cartridge")
                                                                      : tr("Snapshot");
         // The kinds of release are names, not words to translate.
         // The type shows as a picture: a disc, a tape, a cartridge, or a
         // snapshot; its name is there for whoever points at it.
         static const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
-                                       makeIcon(IconId::Cartridge)};
+                                       makeIcon(IconId::Cartridge), makeIcon(IconId::Run)};
         auto* item = new QTreeWidgetItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release, QString(), entry.details});
         item->setIcon(kTypeColumn, kIcons[entry.kind]);
         item->setToolTip(kTypeColumn, kind);
@@ -427,7 +435,10 @@ void LibraryDialog::updateButtons()
 {
     const int index = current();
     const LibraryEntry::Kind kind = index >= 0 ? entries_[index].kind : LibraryEntry::Disc;
-    insertA_->setText(kind == LibraryEntry::Snapshot ? tr("&Load") : kind == LibraryEntry::Disc ? tr("Insert in &A:") : tr("&Insert"));
+    insertA_->setText(kind == LibraryEntry::Snapshot  ? tr("&Load")
+                      : kind == LibraryEntry::Session ? tr("&Play")
+                      : kind == LibraryEntry::Disc    ? tr("Insert in &A:")
+                                                      : tr("&Insert"));
     insertA_->setEnabled(index >= 0);
     insertB_->setEnabled(index >= 0 && kind == LibraryEntry::Disc);
 }
@@ -543,7 +554,7 @@ void LibraryDialog::editFolders()
     buttons->addStretch(1);
     buttons->addWidget(ok);
     auto* layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(tr("Discs (.dsk), tapes (.cdt), cartridges (.cpr) and snapshots (.sna), zipped or not, are looked for in:")));
+    layout->addWidget(new QLabel(tr("Discs (.dsk), tapes (.cdt), cartridges (.cpr), snapshots (.sna) and sessions (.snr), zipped or not, are looked for in:")));
     layout->addWidget(list, 1);
     layout->addLayout(buttons);
     dialog.resize(480, 260);

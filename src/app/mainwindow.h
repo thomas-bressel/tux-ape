@@ -62,6 +62,7 @@ public:
     void startSessionRecording(const QString& path, bool fromColdReset);
     bool stopSessionRecording();
     bool playSessionFile(const QString& path);
+    bool playSessionData(std::span<const uint8_t> data, const QString& name);
     // Plugs a cartridge (a CPR file) in. The machine becomes a Plus if it
     // was not one, and starts afresh, as one does when its cartridge is
     // changed.

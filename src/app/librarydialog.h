@@ -17,7 +17,7 @@ class QTreeWidget;
 // One program of the library: an image file, by itself or inside a ZIP
 // archive, and what its name says of it.
 struct LibraryEntry {
-    enum Kind { Disc, Snapshot, Tape, Cartridge };
+    enum Kind { Disc, Snapshot, Tape, Cartridge, Session };
     QString path;
     QString member;  // the file's name inside the archive `path`; empty for a file of its own
     Kind kind = Disc;
@@ -33,8 +33,12 @@ struct LibraryEntry {
 // The categories programs are filed under: the names of the folders a
 // library folder may hold ("Games", "Educational", "Utilities", "Demos",
 // "Compilations", "Miscellaneous"), each with sub-categories as folders of
-// its own. A library folder may also be one of them itself.
+// its own, and "SNR", for recorded sessions. A library folder may also be
+// one of them itself.
 QStringList libraryCategories();
+// What a category's tab says: its folder's name, but "Let's Play" for the
+// sessions of "SNR".
+QString libraryCategoryTitle(const QString& category);
 
 // What a file name says. Collections name their files in the manner of
 // TOSEC, "Gryzor (1987)(Ocean)(fr)[cr].dsk": a title, then notes in round
@@ -47,7 +51,8 @@ QStringList libraryCategories();
 // over from another machine, any note that ends in "Port": "[Atari ST
 // Port]", "[Amiga Port]", "[MSX Port]"...
 LibraryEntry libraryEntry(const QString& path);
-// The disc images, tapes, cartridges and snapshots (.dsk, .cdt, .cpr, .sna)
+// The disc images, tapes, cartridges, snapshots and recorded sessions
+// (.dsk, .cdt, .cpr, .sna, .snr)
 // in the folders and their sub-folders, those inside ZIP archives included,
 // in the order of their titles. An archive that holds a single program gives it its name;
 // the programs of one that holds several go by their own. The folders a

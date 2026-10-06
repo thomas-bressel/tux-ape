@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <functional>
+#include <cstring>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QApplication>
@@ -823,11 +824,20 @@ bool MainWindow::stopSessionRecording()
 bool MainWindow::playSessionFile(const QString& path)
 {
     const auto data = tuxape::readFile(path.toStdString());
-    const auto session = data ? tuxape::Session::parse(*data) : std::nullopt;
-    QString error = tr("it is not a session recorded by TuxAPE");
+    return playSessionData(data ? std::span<const uint8_t>(*data) : std::span<const uint8_t>(), QDir::toNativeSeparators(path));
+}
+
+bool MainWindow::playSessionData(std::span<const uint8_t> data, const QString& name)
+{
+    const auto session = tuxape::Session::parse(data);
+    // WinAPE's own recordings start with these words; TuxAPE's are not
+    // made the same way, and it cannot follow WinAPE's.
+    const bool winApe = data.size() >= 8 && std::memcmp(data.data(), "RW - SNR", 8) == 0;
+    QString error = winApe ? tr("it is a session recorded by WinAPE, which TuxAPE cannot play back")
+                           : tr("it is not a session recorded by TuxAPE");
     const bool playing = session && emulator_->playSession(*session, &error);
     if (!playing)
-        report(tr("Cannot play %1:\n%2.").arg(QDir::toNativeSeparators(path), error));
+        report(tr("Cannot play %1:\n%2.").arg(name, error));
     playSessionAction_->setChecked(playing);
     recordSessionAction_->setChecked(emulator_->recordingSession());
     updateDebugActions();
@@ -1070,6 +1080,8 @@ void MainWindow::showLibrary()
     if (chosen->member.isEmpty()) {
         if (chosen->kind == LibraryEntry::Snapshot)
             loadSnapshotFile(chosen->path);
+        else if (chosen->kind == LibraryEntry::Session)
+            playSessionFile(chosen->path);
         else if (chosen->kind == LibraryEntry::Tape)
             insertTapeFile(chosen->path);
         else if (chosen->kind == LibraryEntry::Cartridge)
@@ -1086,6 +1098,8 @@ void MainWindow::showLibrary()
         report(tr("Cannot read %1.").arg(name));
     else if (chosen->kind == LibraryEntry::Snapshot)
         loadSnapshotData(*data, name);
+    else if (chosen->kind == LibraryEntry::Session)
+        playSessionData(*data, name);
     else if (chosen->kind == LibraryEntry::Tape)
         insertTapeData(*data, name);
     else if (chosen->kind == LibraryEntry::Cartridge) {
