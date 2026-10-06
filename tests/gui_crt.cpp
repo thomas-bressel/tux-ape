@@ -14,6 +14,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QElapsedTimer>
 #include <QImage>
 #include <QLabel>
 #include <QPainter>
@@ -21,6 +22,7 @@
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
 #include <QTimer>
 
 #include "check.h"
@@ -318,5 +320,89 @@ int main(int argc, char* argv[])
         CHECK(emulator.isPaused() == pausedBefore);
     }
     emulator.setPaused(false);
+
+    // In step with the screen: on one that shows fifty pictures a second,
+    // or a whole number of times that, a frame to that many pictures; on
+    // any other, nothing.
+    CHECK_EQ(ScreenWidget::syncEveryFor(50.0), 1);
+    CHECK_EQ(ScreenWidget::syncEveryFor(49.97), 1);
+    CHECK_EQ(ScreenWidget::syncEveryFor(100.0), 2);
+    CHECK_EQ(ScreenWidget::syncEveryFor(150.0), 3);
+    CHECK_EQ(ScreenWidget::syncEveryFor(60.0), 0);
+    CHECK_EQ(ScreenWidget::syncEveryFor(59.94), 0);
+    CHECK_EQ(ScreenWidget::syncEveryFor(120.0), 0);
+    CHECK_EQ(ScreenWidget::syncEveryFor(75.0), 0);
+    CHECK_EQ(ScreenWidget::syncEveryFor(144.0), 0);
+    CHECK_EQ(ScreenWidget::syncEveryFor(25.0), 0);
+    // A setting, on unless turned off; without the graphics card's view
+    // there is no keeping step.
+    CHECK(window.settings().displaySync && window.screen()->displaySync());
+    if (!window.screen()->crtShader())
+        CHECK(window.screen()->displaySyncEvery() == 0 && !emulator.displayClock());
+    {
+        Settings off = window.settings();
+        off.displaySync = false;
+        SetupDialog dialog(off);
+        auto* box = dialog.findChild<QCheckBox*>("ckDisplaySync");
+        CHECK(box && !box->isChecked());
+        if (box)
+            box->setChecked(true);
+        CHECK(dialog.settings().displaySync);
+        window.applySettings(off);
+        CHECK(!window.screen()->displaySync());
+        CHECK(off.save());
+        Settings read;
+        read.load();
+        CHECK(!read.displaySync);
+    }
+
+    // The machine itself: told by the screen, it runs a frame to each
+    // telling; not told, it keeps its own time of fifty frames a second.
+    {
+        Emulator machine;
+        machine.setupMachine(tuxape::stockMachine(tuxape::CpcModel::Cpc6128), true);
+        machine.start();
+        const auto frames = [&] {
+            return machine.withMachine([](tuxape::Cpc& cpc) { return cpc.monitor().frameNumber(); });
+        };
+        // The frames run in a second, the screen telling every so many
+        // milliseconds, or not at all.
+        const auto count = [&](int tellEvery) {
+            QElapsedTimer clock;
+            clock.start();
+            const uint64_t before = frames();
+            double next = 0;
+            while (clock.elapsed() < 1000) {
+                if (tellEvery > 0 && static_cast<double>(clock.nsecsElapsed()) / 1e6 >= next) {
+                    machine.displayTick();
+                    next += tellEvery;
+                }
+                QThread::usleep(200);
+            }
+            return static_cast<int>(frames() - before);
+        };
+        const int own = count(0);
+        CHECK(own >= 47 && own <= 53);
+        machine.setDisplayClock(true);
+        CHECK(machine.displayClock());
+        const int untold = count(0);
+        CHECK(untold >= 47 && untold <= 53);
+        // A screen a little slow, 45 pictures a second: the machine is in
+        // step with it, not with its own clock.
+        const int slow = count(22);
+        CHECK(slow >= 43 && slow <= 47);
+        const int fifty = count(20);
+        CHECK(fifty >= 48 && fifty <= 52);
+        // The screen stops telling: the machine goes on by itself.
+        const int after = count(0);
+        CHECK(after >= 46 && after <= 53);
+        machine.setDisplayClock(false);
+        const int back = count(22);  // told, but no longer listening
+        CHECK(back >= 47 && back <= 53);
+        if (own < 47 || slow > 47 || fifty < 48)
+            std::printf("frames a second: own %d, untold %d, slow %d, fifty %d, after %d, back %d\n", own, untold, slow,
+                        fifty, after, back);
+        machine.stop();
+    }
     return checkSummary("gui_crt");
 }

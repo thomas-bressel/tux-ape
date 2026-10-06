@@ -34,6 +34,7 @@ struct Settings {
     bool palEmulation = false;        // pixels run into their neighbours, every other line dimmed
     bool crtShader = true;            // the picture as a CTM644 shows it, drawn by the graphics card
     CrtLook crtLook;                  // and how that is set
+    bool displaySync = true;          // a frame to each picture of a screen that shows fifty a second
     bool driveLed = false;            // a light on the picture while a drive is at work
     bool showDriveCylinders = false;  // with the cylinder its head is on
     // What the window shows around the picture, and how the picture is

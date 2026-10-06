@@ -42,6 +42,17 @@ public:
     void setCrtShader(bool on, bool colourTube = true, const CrtLook& look = {});
     bool crtShader() const { return crt_ != nullptr; }
     CrtView* crtView() const { return crt_; }
+    // In step with a 50 Hz screen: where the screen the window is on shows
+    // fifty pictures a second (or a hundred), and the graphics card draws
+    // the picture, the machine runs one frame to each picture shown, and
+    // what scrolls does so as smoothly as on a monitor. Any other screen
+    // is left alone. How many of the screen's pictures go to a frame; 0
+    // when not in step.
+    void setDisplaySync(bool wanted);
+    bool displaySync() const { return syncWanted_; }
+    int displaySyncEvery() const { return swapsPerFrame_; }
+    // What it would be on a screen of that refresh rate.
+    static int syncEveryFor(double hertz);
     // WinAPE's "AMX Mouse": the pointer's moves over the picture, and the
     // buttons pressed there, are the CPC's mouse's.
     void setAmxMouse(bool on);
@@ -82,6 +93,10 @@ private:
     QRect pictureRect() const;
     void paintDriveLight(QPainter& painter, const QRect& light) const;
     CrtView* crt_ = nullptr;
+    bool syncWanted_ = true;
+    int swapsPerFrame_ = 0;
+    int swaps_ = 0;
+    void updateDisplayClock();
     bool numLock_ = true;
 
     void fetchFrame();

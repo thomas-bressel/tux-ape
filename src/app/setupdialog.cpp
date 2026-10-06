@@ -452,6 +452,11 @@ QWidget* SetupDialog::createDisplayPage()
         shaderGrid->addWidget(value, row, column + 2);
         crtSliders_[i] = slider;
     }
+    displaySync_ = new QCheckBox(tr("In step with a 50 Hz screen"));
+    displaySync_->setObjectName("ckDisplaySync");
+    displaySync_->setToolTip(tr("On a screen set to 50 Hz (or 100 Hz) the machine runs one frame to each picture the screen "
+                                "shows: what scrolls is as smooth as on a CTM644. On any other screen this does nothing."));
+    shaderGrid->addWidget(displaySync_, 4, 0, 1, 6);
     shaderGrid->setColumnStretch(1, 1);
     shaderGrid->setColumnStretch(4, 1);
     connect(crtShader_, &QCheckBox::toggled, this, announce);
@@ -1190,6 +1195,7 @@ void SetupDialog::setSettings(const Settings& settings)
     pal_->setChecked(settings.palEmulation);
     crtShader_->setChecked(settings.crtShader);
     setLook(settings.crtLook);
+    displaySync_->setChecked(settings.displaySync);
     driveLed_->setChecked(settings.driveLed);
     showTrack_->setChecked(settings.showDriveCylinders);
     const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
@@ -1440,6 +1446,7 @@ Settings SetupDialog::settings() const
     settings.palEmulation = pal_->isChecked();
     settings.crtShader = crtShader_->isChecked();
     settings.crtLook = chosenLook();
+    settings.displaySync = displaySync_->isChecked();
     settings.driveLed = driveLed_->isChecked();
     settings.showDriveCylinders = showTrack_->isChecked();
     Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};

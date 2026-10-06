@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <optional>
 #include <string>
@@ -81,6 +82,15 @@ public:
     // off, and the speed above applies again.
     void setDisplayEvery(int frames);
     int displayEvery() const { return displayEvery_; }
+    // In step with the screen: while on, the machine runs one frame each
+    // time displayTick() is called, which the screen does as it shows a
+    // picture, when it shows fifty a second; scrolling is then as smooth
+    // as on a monitor. If the calls stop coming (the window is hidden),
+    // the machine keeps its own time. At another speed than 100 % it
+    // always does.
+    void setDisplayClock(bool on);
+    bool displayClock() const { return displayClock_; }
+    void displayTick();
 
     void setCrtcType(tuxape::CrtcType type);
     tuxape::CrtcType crtcType();
@@ -314,6 +324,11 @@ private:
     std::atomic<int> displayEvery_{0};
     std::mutex wakeMutex_;
     std::condition_variable wake_;
+    std::atomic<bool> displayClock_{false};
+    std::mutex tickMutex_;
+    std::condition_variable tick_;
+    bool ticked_ = false;                                  // a tick not yet answered
+    std::chrono::steady_clock::time_point lastTick_{};     // when the screen last gave one
 
     // Debugging. All but stopRequested_ are only touched with the
     // machine's lock held.

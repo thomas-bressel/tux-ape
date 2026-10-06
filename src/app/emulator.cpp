@@ -246,6 +246,27 @@ void Emulator::setPaused(bool paused)
     wake_.notify_all();
 }
 
+void Emulator::setDisplayClock(bool on)
+{
+    {
+        std::lock_guard lock(tickMutex_);
+        displayClock_ = on;
+        ticked_ = false;
+        lastTick_ = {};
+    }
+    tick_.notify_all();
+}
+
+void Emulator::displayTick()
+{
+    {
+        std::lock_guard lock(tickMutex_);
+        ticked_ = true;
+        lastTick_ = std::chrono::steady_clock::now();
+    }
+    tick_.notify_all();
+}
+
 // ---- recording -------------------------------------------------------------------
 
 // With the sound off the mixer is at rest: it is set running for a
@@ -999,6 +1020,33 @@ void Emulator::threadMain()
         if (every != 0) {
             // Flat out.
             deadline = now;
+            continue;
+        }
+        if (displayClock_ && speedPercent_ == 100) {
+            // In step with the screen: the next frame starts when the
+            // screen says it has shown a picture. `deadline` is when this
+            // frame started. While the screen keeps saying so, it is
+            // waited for a little past the machine's own time; when it
+            // stops, the machine's own time is kept exactly.
+            const auto period = duration_cast<Clock::duration>(duration<double, std::micro>(Cpc::kFrameMicroseconds));
+            const auto started = deadline, due = started + period;
+            bool told = false;
+            for (;;) {
+                std::unique_lock lock(tickMutex_);
+                const bool alive = lastTick_ != Clock::time_point() && Clock::now() - lastTick_ < 3 * period;
+                const auto limit = alive ? std::max(due, lastTick_ + period) + std::chrono::milliseconds(4) : due;
+                tick_.wait_until(lock, limit, [this] { return ticked_ || !running_ || !displayClock_; });
+                told = ticked_;
+                ticked_ = false;
+                lock.unlock();
+                // A tick that comes too soon is the last frame's: the
+                // screen's next one is this frame's.
+                if (!told || !running_ || !displayClock_ || Clock::now() >= started + period * 3 / 4)
+                    break;
+            }
+            deadline = told ? Clock::now() : due;
+            if (deadline < Clock::now() - std::chrono::milliseconds(100))
+                deadline = Clock::now();
             continue;
         }
         deadline += duration_cast<Clock::duration>(

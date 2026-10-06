@@ -723,6 +723,7 @@ void MainWindow::applySettings(const Settings& settings)
     screen_->setDriveLight(settings.driveLed, settings.showDriveCylinders);
     screen_->setPalEmulation(settings.palEmulation);
     screen_->setCrtShader(settings.crtShader, settings.monitorType == 0, settings.crtLook);
+    screen_->setDisplaySync(settings.displaySync);
     emulator_->setVerticalHold(settings.verticalHold);
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
                         settings.soundVolume, settings.soundBufferSync / 10.0);

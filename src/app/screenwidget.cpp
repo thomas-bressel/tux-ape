@@ -1,10 +1,14 @@
 #include "screenwidget.h"
 
+#include <cmath>
 #include <cstring>
 
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QScreen>
+#include <QTimer>
+#include <QWindow>
 
 #include "crtview.h"
 #include "emulator.h"
@@ -28,6 +32,10 @@ ScreenWidget::ScreenWidget(Emulator* emulator, QWidget* parent)
     connect(emulator_, &Emulator::frameReady, this, &ScreenWidget::fetchFrame, Qt::QueuedConnection);
     connect(emulator_, &Emulator::driveLightChanged, this, [this] { showDriveLight(emulator_->driveLight()); },
             Qt::QueuedConnection);
+    // The window may go to another screen, or the screen to another rate.
+    auto* watch = new QTimer(this);
+    connect(watch, &QTimer::timeout, this, &ScreenWidget::updateDisplayClock);
+    watch->start(2000);
 }
 
 QSize ScreenWidget::sizeHint() const
@@ -133,17 +141,57 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
         crt_->overlay = [this](QPainter& painter) { paintDriveLight(painter, driveLightRect().translated(-crt_->pos())); };
         // A graphics card that will not have the shaders: plain drawing.
         connect(crt_, &CrtView::unusable, this, [this] { setCrtShader(false); }, Qt::QueuedConnection);
+        // Each picture the screen has shown: the machine's cue for its
+        // next frame, when in step with the screen.
+        connect(crt_, &QOpenGLWidget::frameSwapped, this, [this] {
+            if (swapsPerFrame_ <= 0 || !crt_)
+                return;
+            if (++swaps_ >= swapsPerFrame_) {
+                swaps_ = 0;
+                emulator_->displayTick();
+            } else {
+                crt_->update();  // the same picture once more: a screen at a hundred a second
+            }
+        });
         crt_->setFrame(image_);
         crt_->show();
     } else if (!on && crt_) {
         crt_->deleteLater();
         crt_ = nullptr;
     }
+    updateDisplayClock();
     if (crt_) {
         crt_->setMask(colourTube);
         crt_->setLook(look);
     }
     update();
+}
+
+void ScreenWidget::setDisplaySync(bool wanted)
+{
+    syncWanted_ = wanted;
+    updateDisplayClock();
+}
+
+// A screen that shows fifty pictures a second, or a whole number of times
+// that, within a hundredth: one frame of the CPC to that many pictures.
+int ScreenWidget::syncEveryFor(double hertz)
+{
+    const int times = static_cast<int>(std::lround(hertz / 50.0));
+    return times >= 1 && times <= 4 && std::abs(hertz / times - 50.0) < 0.6 ? times : 0;
+}
+
+void ScreenWidget::updateDisplayClock()
+{
+    int every = 0;
+    const QWindow* handle = window() ? window()->windowHandle() : nullptr;
+    if (syncWanted_ && crt_ && !crt_->failed() && isVisible() && handle && handle->screen())
+        every = syncEveryFor(handle->screen()->refreshRate());
+    if (every == swapsPerFrame_ && emulator_->displayClock() == (every > 0))
+        return;
+    swapsPerFrame_ = every;
+    swaps_ = 0;
+    emulator_->setDisplayClock(every > 0);
 }
 
 void ScreenWidget::resizeEvent(QResizeEvent* event)
