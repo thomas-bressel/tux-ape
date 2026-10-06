@@ -1142,9 +1142,12 @@ void MainWindow::showLibrary()
     LibraryDialog dialog(folders, this);
     dialog.setCategory(libraryCategory_);
     dialog.setSearch(librarySearch_);
+    dialog.setSort(librarySortColumn_, librarySortOrder_);
     const int closed = dialog.exec();
     librarySearch_ = dialog.search();
     libraryCategory_ = dialog.category();
+    librarySortColumn_ = dialog.sortColumn();
+    librarySortOrder_ = dialog.sortOrder();
     if (dialog.folders() != folders) {
         settings_.libraryFolders = dialog.folders();
         if (!settings_.save())

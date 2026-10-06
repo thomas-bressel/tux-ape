@@ -5,12 +5,14 @@
 //   gui_library [prefix]   also saves a picture of the window as
 //                          <prefix>library.png
 
+#include <cstdio>
 #include <functional>
 
 #include <QAction>
 #include <QApplication>
 #include <QDir>
 #include <QFile>
+#include <QHeaderView>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -260,6 +262,61 @@ int main(int argc, char* argv[])
         dialog.setSearch(QString());
         CHECK(programs && !(programs->topLevelItem(0)->flags() & Qt::ItemIsUserCheckable));
         CHECK(count->text() == "4 of 4");
+
+        // A click on a column's heading sorts by it, from A to Z; a second
+        // click, from Z to A. By title to start with.
+        if (programs) {
+            QHeaderView* header = programs->header();
+            const auto click = [&](int column) {
+                QTest::mouseClick(header->viewport(), Qt::LeftButton, {},
+                                  QPoint(header->sectionViewportPosition(column) + header->sectionSize(column) / 2,
+                                         header->height() / 2));
+            };
+            const auto sorted = [&](int column, Qt::SortOrder order, const QStringList& titles) {
+                const bool same = dialog.sortColumn() == column && dialog.sortOrder() == order &&
+                                  dialog.listedTitles() == titles;
+                if (!same)
+                    std::printf("column %d, order %d: %s\n", dialog.sortColumn(), int(dialog.sortOrder()),
+                                qPrintable(dialog.listedTitles().join(", ")));
+                return same;
+            };
+            CHECK(header->isSortIndicatorShown() && header->sectionsClickable());
+            CHECK(sorted(0, Qt::AscendingOrder, {"boulder dash", "Gryzor", "Sorcery+", "The Last Ninja"}));
+            click(0);
+            CHECK(sorted(0, Qt::DescendingOrder, {"The Last Ninja", "Sorcery+", "Gryzor", "boulder dash"}));
+            // The rows still stand for their programs.
+            CHECK(dialog.select("Sorcery+") && insertA->text() == "&Load");
+            CHECK(dialog.select("Gryzor") && insertA->text() == "Insert in &A:");
+            click(0);
+            CHECK(sorted(0, Qt::AscendingOrder, {"boulder dash", "Gryzor", "Sorcery+", "The Last Ninja"}));
+            // The year: none, 1985, 1987, 1988.
+            click(2);
+            CHECK(sorted(2, Qt::AscendingOrder, {"boulder dash", "Sorcery+", "Gryzor", "The Last Ninja"}));
+            click(2);
+            CHECK(sorted(2, Qt::DescendingOrder, {"The Last Ninja", "Gryzor", "Sorcery+", "boulder dash"}));
+            // The type, by its name; programs of one type stay in the order
+            // of their titles, whichever way the column goes.
+            click(3);
+            CHECK(sorted(3, Qt::AscendingOrder, {"boulder dash", "Gryzor", "The Last Ninja", "Sorcery+"}));
+            click(3);
+            CHECK(sorted(3, Qt::DescendingOrder, {"Sorcery+", "boulder dash", "Gryzor", "The Last Ninja"}));
+            // The release type, and the AI boxes: unticked first.
+            click(4);
+            CHECK(sorted(4, Qt::AscendingOrder, {"boulder dash", "Sorcery+", "The Last Ninja", "Gryzor"}));
+            click(4);
+            CHECK(sorted(4, Qt::DescendingOrder, {"Gryzor", "boulder dash", "Sorcery+", "The Last Ninja"}));
+            click(5);
+            CHECK(sorted(5, Qt::AscendingOrder, {"Gryzor", "Sorcery+", "The Last Ninja", "boulder dash"}));
+            click(5);
+            CHECK(sorted(5, Qt::DescendingOrder, {"boulder dash", "Gryzor", "Sorcery+", "The Last Ninja"}));
+            // A search keeps the order.
+            dialog.setSort(0, Qt::DescendingOrder);
+            dialog.setSearch("o");
+            CHECK(sorted(0, Qt::DescendingOrder, {"Sorcery+", "Gryzor", "boulder dash"}));
+            dialog.setSearch(QString());
+            dialog.setSort(0, Qt::AscendingOrder);
+            CHECK(sorted(0, Qt::AscendingOrder, {"boulder dash", "Gryzor", "Sorcery+", "The Last Ninja"}));
+        }
         CHECK(insertA->isEnabled() && insertA->text() == "Insert in &A:");
         if (!prefix.isEmpty()) {
             QTest::qWait(50);
@@ -655,6 +712,25 @@ int main(int argc, char* argv[])
         play("1943", &said);
         CHECK(!emulator.playingSession());
         CHECK(said.contains("recorded by WinAPE"));
+
+        // The window comes back sorted as it was left.
+        const auto withLibrary = [&](const std::function<void(LibraryDialog*)>& act) {
+            Modals modals([&](QWidget* modal) {
+                if (auto* dialog = qobject_cast<LibraryDialog*>(modal))
+                    act(dialog);
+                modal->close();
+            });
+            action->trigger();
+        };
+        withLibrary([](LibraryDialog* dialog) {
+            CHECK(dialog->sortColumn() == 0 && dialog->sortOrder() == Qt::AscendingOrder);
+            dialog->setSort(2, Qt::DescendingOrder);
+        });
+        withLibrary([](LibraryDialog* dialog) {
+            CHECK(dialog->sortColumn() == 2 && dialog->sortOrder() == Qt::DescendingOrder);
+            CHECK(dialog->setCategory("SNR") && dialog->listedTitles() == (QStringList{"1943", "Gryzor"}));
+            dialog->setSort(0, Qt::AscendingOrder);
+        });
     }
     return checkSummary("gui_library");
 }

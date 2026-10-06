@@ -97,6 +97,11 @@ public:
     // is no such tab.
     QString category() const;
     bool setCategory(const QString& name);
+    // The list's order: a click on a column's heading sorts by it from A
+    // to Z, a second click from Z to A. By title to start with.
+    int sortColumn() const;
+    Qt::SortOrder sortOrder() const;
+    void setSort(int column, Qt::SortOrder order);
     QStringList listedTitles() const;
     QStringList listedSubcategories() const;
     // The Type column shows pictures; these are the names behind them:

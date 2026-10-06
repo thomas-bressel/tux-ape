@@ -38,6 +38,33 @@ constexpr int kTypeColumn = 3;
 constexpr int kReleaseColumn = 4;
 constexpr int kAiColumn = 5;
 
+// A row of the list. A click on a column's heading sorts by that column,
+// from A to Z, and a second click from Z to A: text without regard to
+// case, the Type by its name, the AI boxes unticked first. Rows that say
+// the same there stay in the order of their titles, whichever way.
+class LibraryItem : public QTreeWidgetItem {
+public:
+    using QTreeWidgetItem::QTreeWidgetItem;
+
+    bool operator<(const QTreeWidgetItem& other) const override
+    {
+        const QTreeWidget* list = treeWidget();
+        const int column = list ? list->sortColumn() : 0;
+        const auto key = [column](const QTreeWidgetItem& item) {
+            return column == kTypeColumn ? item.toolTip(column)
+                   : column == kAiColumn ? QString(item.checkState(column) == Qt::Checked ? '1' : '0')
+                                         : item.text(column);
+        };
+        if (const int order = key(*this).compare(key(other), Qt::CaseInsensitive))
+            return order < 0;
+        int tie = column == 0 ? 0 : text(0).compare(other.text(0), Qt::CaseInsensitive);
+        if (!tie)
+            tie = data(0, Qt::UserRole).toInt() - other.data(0, Qt::UserRole).toInt();
+        // From Z to A the list asks the question the other way round.
+        return list && list->header()->sortIndicatorOrder() == Qt::DescendingOrder ? tie > 0 : tie < 0;
+    }
+};
+
 // The category and the sub-category the folders give a program found in
 // a library folder: "<library>/Games/Racing/Outrun.dsk". The library
 // folder may be a category's own.
@@ -273,6 +300,9 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setIconSize(QSize(18, 18));
     list_->setColumnWidth(kReleaseColumn, 100);
     list_->setColumnWidth(kAiColumn, 36);
+    // The headings are for clicking: by title to start with.
+    list_->setSortingEnabled(true);
+    list_->sortByColumn(0, Qt::AscendingOrder);
     count_ = new QLabel;
     count_->setObjectName("lCount");
     count_->setWordWrap(true);
@@ -366,6 +396,8 @@ void LibraryDialog::fill()
         tabs_->setVisible(tabs_->count() > 1);
     }
     list_->clear();
+    // Sorted once they are all there, not one by one.
+    list_->setSortingEnabled(false);
     for (int i = 0; i < entries_.size(); ++i) {
         const LibraryEntry& entry = entries_[i];
         const QString kind = entry.kind == LibraryEntry::Disc        ? tr("Disc")
@@ -378,7 +410,7 @@ void LibraryDialog::fill()
         // snapshot; its name is there for whoever points at it.
         static const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
                                        makeIcon(IconId::Cartridge), makeIcon(IconId::Run)};
-        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release, QString(), entry.details});
+        auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release, QString(), entry.details});
         item->setIcon(kTypeColumn, kIcons[entry.kind]);
         item->setToolTip(kTypeColumn, kind);
         item->setData(0, Qt::UserRole, i);
@@ -388,7 +420,24 @@ void LibraryDialog::fill()
         item->setToolTip(kAiColumn, entry.ai ? tr("\"(AI)\" is in the file's name") : QString());
         item->setToolTip(0, libraryDisplayPath(entry));
     }
+    list_->setSortingEnabled(true);
     filter();
+}
+
+int LibraryDialog::sortColumn() const
+{
+    return list_->sortColumn();
+}
+
+Qt::SortOrder LibraryDialog::sortOrder() const
+{
+    return list_->header()->sortIndicatorOrder();
+}
+
+void LibraryDialog::setSort(int column, Qt::SortOrder order)
+{
+    if (column >= 0 && column < list_->columnCount())
+        list_->sortByColumn(column, order);
 }
 
 void LibraryDialog::filter()

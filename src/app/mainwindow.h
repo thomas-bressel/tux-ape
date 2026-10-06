@@ -145,6 +145,8 @@ private:
     QString cartridgeFolder_;
     QString librarySearch_;    // what the Library window was last searching for
     QString libraryCategory_;  // and the tab it was on
+    int librarySortColumn_ = 0;  // and the order of its list
+    Qt::SortOrder librarySortOrder_ = Qt::AscendingOrder;
     struct DriveActions {
         QAction* edit = nullptr;
         QAction* format = nullptr;
