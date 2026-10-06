@@ -138,6 +138,10 @@ void testNames()
     CHECK(libraryEntry("Zub (1986)[h XOR].dsk").release == "Hack" && libraryEntry("Zub (1986)[h XOR].dsk").details == "h XOR");
     CHECK(libraryEntry("Zub (1986)[cr NPS][t].dsk").release == "Crack");
     CHECK(libraryEntry("Zub (Original) (Hack).dsk").release == "Original");
+    // A program that never came out on a disc or a tape of its own.
+    CHECK(libraryEntry("Outrun 2026 (AI) (File) (2026).dsk").release == "File");
+    CHECK(libraryEntry("Outrun 2026 (AI) (File) (2026).dsk").ai && libraryEntry("Outrun 2026 (AI) (File) (2026).dsk").details.isEmpty());
+    CHECK(libraryEntry("Zub [file].dsk").release == "File" && libraryEntry("Zub (Files).dsk").release.isEmpty());
     CHECK(libraryEntry("Zub (Hackers) (Crackdown) (Originals).dsk").release.isEmpty());
     CHECK(libraryEntry("Hack.dsk").release.isEmpty() && libraryEntry("Hack.dsk").title == "Hack");
     // "(AI)", in any case, is a mark of its own and not a note.

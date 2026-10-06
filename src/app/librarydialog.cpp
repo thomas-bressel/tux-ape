@@ -40,7 +40,10 @@ QString releaseOf(const QString& note, bool* whole)
     static const struct {
         const char* release;
         QStringList words;
-    } kKinds[] = {{"Original", {"original"}}, {"Crack", {"crack", "cracked", "cr"}}, {"Hack", {"hack", "hacked", "h"}}};
+    } kKinds[] = {{"Original", {"original"}},
+                  {"Crack", {"crack", "cracked", "cr"}},
+                  {"Hack", {"hack", "hacked", "h"}},
+                  {"File", {"file"}}};
     for (const auto& kind : kKinds) {
         for (const QString& word : kind.words) {
             *whole = text == word;
@@ -265,7 +268,7 @@ void LibraryDialog::fill()
                              : entry.kind == LibraryEntry::Tape      ? tr("Tape")
                              : entry.kind == LibraryEntry::Cartridge ? tr("Cartridge")
                                                                      : tr("Snapshot");
-        // The three kinds of release are names, not words to translate.
+        // The kinds of release are names, not words to translate.
         auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, entry.release, QString(), entry.details});
         item->setData(0, Qt::UserRole, i);
         // A box that shows, ticked or not, and is not for clicking.
