@@ -565,6 +565,8 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setCrtcType(static_cast<tuxape::CrtcType>(settings.crtcType));
     emulator_->setFastDisc(settings.fastDisc);
     emulator_->setSpeedPercent(settings.speedPercent);
+    emulator_->setTurbo(settings.turbo);
+    emulator_->setPlusPpi(settings.plusPpi);
     emulator_->setDisplayEvery(settings.displayEvery ? settings.displayEveryFrames : 0);
     emulator_->setMonitor(settings.monitorType, settings.linearPalette, settings.brightness);
     screen_->setDriveLight(settings.driveLed, settings.showDriveCylinders);

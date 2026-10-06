@@ -118,6 +118,18 @@ public:
     void setCartridge(const Cartridge* cartridge, bool discRom = true);
     bool plus() const { return plus_; }
     Asic& asic() { return asic_; }
+    // WinAPE's "Turbo Mode": every instruction takes one microsecond, an
+    // output two. Nothing like a real machine, and a good deal faster.
+    void setTurbo(bool on) { turbo_ = on; }
+    bool turbo() const { return turbo_; }
+    // WinAPE's "Plus PPI Emulation": the 8255 behaves as the one inside a
+    // Plus's ASIC does, on a machine that is not a Plus.
+    void setPlusPpi(bool on)
+    {
+        plusPpi_ = on;
+        ppi_.setPlus(plus_ || plusPpi_);
+    }
+    bool plusPpi() const { return plusPpi_; }
     // WinAPE's "Tape Loading Sounds": what the tape plays is heard while
     // a program listens to it.
     void setTapeSound(bool on) { tapeSound_ = on; }
@@ -191,6 +203,8 @@ public:
         // it (OUT (C),r): soon enough to have a say in what the chip does
         // with its HSYNC on that character (Compendium 14.5.4).
         const bool early = (clk_ & 3) == 3;
+        if (turbo_) [[unlikely]]
+            turboLeft_ += 4;  // an output takes a second microsecond
         advance(2);
         const bool lateCrtc = crtc_.type() == CrtcType::AsicPlus || crtc_.type() == CrtcType::PreAsic;
         ioWrite(port, value);
@@ -276,6 +290,9 @@ private:
     ExecHook execHook_;
     bool stopRun_ = false;
     bool breakInstructions_ = false;
+    bool turbo_ = false;
+    unsigned turboLeft_ = 4;  // T-states the instruction in hand may still take
+    bool plusPpi_ = false;
     bool tapeSound_ = false;
     bool tapeHeard_ = false;  // the tape's level when it was last listened to
     bool breakInstructionHit_ = false;
@@ -289,6 +306,11 @@ private:
 
     void advance(unsigned tstates)
     {
+        if (turbo_) [[unlikely]] {
+            // The instruction has had its microsecond: the rest is free.
+            tstates = tstates < turboLeft_ ? tstates : turboLeft_;
+            turboLeft_ -= tstates;
+        }
         clk_ += tstates;
         runVideo(clk_);
     }

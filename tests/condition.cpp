@@ -1,6 +1,7 @@
 // Breakpoint conditions, and the hooks on memory and on input and output
 // that memory and I/O breakpoints stand on. No ROM is needed.
 
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -170,9 +171,56 @@ void testHooks()
 
 }  // namespace
 
+// Turbo: every instruction in a microsecond, an output in two. And the
+// PPI of a Plus, on a machine that is not one.
+void testTurbo()
+{
+    // 8000 INC HL / 8001 JR 8000: two and three microseconds on a CPC.
+    // 8010 OUT (C),C / 8012 INC HL / 8013 JR 8010: four, two and three.
+    const auto counted = [](bool turbo, uint16_t start) {
+        Cpc cpc;
+        cpc.out(0x7F00, 0x8C);
+        const uint8_t loop[] = {0x23, 0x18, 0xFD};
+        const uint8_t output[] = {0xED, 0x49, 0x23, 0x18, 0xFB};
+        for (size_t i = 0; i < sizeof loop; ++i)
+            cpc.memory().write(static_cast<uint16_t>(0x8000 + i), loop[i]);
+        for (size_t i = 0; i < sizeof output; ++i)
+            cpc.memory().write(static_cast<uint16_t>(0x8010 + i), output[i]);
+        cpc.cpu().pc = start;
+        cpc.cpu().iff1 = cpc.cpu().iff2 = false;
+        cpc.cpu().reg[cpc.cpu().H] = cpc.cpu().reg[cpc.cpu().L] = 0;
+        cpc.cpu().reg[cpc.cpu().B] = 0xEF;  // the printer's port: nobody minds
+        cpc.setTurbo(turbo);
+        CHECK(cpc.turbo() == turbo);
+        const uint64_t before = cpc.microseconds();
+        cpc.run(20000);
+        CHECK(cpc.microseconds() - before >= 20000 && cpc.microseconds() - before < 20010);
+        return cpc.cpu().reg[cpc.cpu().H] << 8 | cpc.cpu().reg[cpc.cpu().L];
+    };
+    CHECK_EQ(counted(false, 0x8000), 4000);
+    CHECK_EQ(counted(true, 0x8000), 10000);
+    CHECK(std::abs(counted(false, 0x8010) - 20000 / 9) <= 1);
+    CHECK_EQ(counted(true, 0x8010), 5000);
+
+    // The Plus's PPI: port B is always an input, whatever the control
+    // word says; a CPC's can be made an output, and then reads back what
+    // was written.
+    Cpc cpc;
+    CHECK(!cpc.plusPpi());
+    cpc.out(0xF700, 0x80);  // all three ports outputs
+    cpc.out(0xF500, 0xA5);
+    CHECK_EQ(cpc.in(0xF500), 0xA5);
+    cpc.setPlusPpi(true);
+    CHECK(cpc.plusPpi());
+    CHECK(cpc.in(0xF500) != 0xA5);
+    cpc.setPlusPpi(false);
+    CHECK_EQ(cpc.in(0xF500), 0xA5);
+}
+
 int main()
 {
     testConditions();
     testHooks();
+    testTurbo();
     return checkSummary("condition");
 }

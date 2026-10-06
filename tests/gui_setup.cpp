@@ -861,9 +861,14 @@ void testDialog(const QString& picture)
 
     // What TuxAPE cannot do yet is greyed out.
     for (const char* name :
-         {"ckPlusPPI", "ckFourDrives", "ckFlyback", "ckDisableUpdate", "bUpdate", "ckTurbo"}) {
+         {"ckFourDrives", "ckFlyback", "ckDisableUpdate", "bUpdate"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
+    }
+    // Turbo and the Plus's PPI are there to tick.
+    for (const char* name : {"ckPlusPPI", "ckTurbo"}) {
+        const auto* box = dialog.findChild<QCheckBox*>(name);
+        CHECK(box && box->isEnabled() && !box->isChecked());
     }
 
     // Either the speed or the number of frames is in charge.

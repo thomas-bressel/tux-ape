@@ -245,8 +245,9 @@ QWidget* SetupDialog::createGeneralPage()
     enablePlus_ = new QCheckBox(tr("Enable Plus Features"));
     enablePlus_->setObjectName("ckEnablePlus");
     enablePlus_->setToolTip(tr("Needs a cartridge, on the Memory page"));
-    auto* plusPpi = notYet(new QCheckBox(tr("Plus PPI Emulation")));
-    plusPpi->setObjectName("ckPlusPPI");
+    plusPpi_ = new QCheckBox(tr("Plus PPI Emulation"));
+    plusPpi_->setObjectName("ckPlusPPI");
+    auto* plusPpi = plusPpi_;
     auto* fourDrives = notYet(new QCheckBox(tr("Enable Four Drives (Non-Standard)")));
     fourDrives->setObjectName("ckFourDrives");
     fastDisc_ = new QCheckBox(tr("&Fast Disc Emulation"));
@@ -295,8 +296,10 @@ QWidget* SetupDialog::createGeneralPage()
     everyRow->addWidget(new QLabel(tr("frame(s)")));
     everyRow->addStretch(1);
 
-    auto* turbo = notYet(new QCheckBox(tr("Turbo Mode")));
-    turbo->setObjectName("ckTurbo");
+    turbo_ = new QCheckBox(tr("Turbo Mode"));
+    turbo_->setObjectName("ckTurbo");
+    turbo_->setToolTip(tr("Every instruction takes a microsecond: faster, and unlike a real CPC"));
+    auto* turbo = turbo_;
 
     auto* timingLayout = new QVBoxLayout(timingBox);
     timingLayout->setSpacing(3);
@@ -1035,6 +1038,8 @@ void SetupDialog::setSettings(const Settings& settings)
     setCartridge(QString::fromStdString(settings.machine.cartridge));
     fastDisc_->setChecked(settings.fastDisc);
     speed_->setValue(settings.speedPercent);
+    turbo_->setChecked(settings.turbo);
+    plusPpi_->setChecked(settings.plusPpi);
     displayEvery_->setChecked(settings.displayEvery);
     displayEveryFrames_->setValue(settings.displayEveryFrames);
     updateTiming();
@@ -1220,6 +1225,8 @@ Settings SetupDialog::settings() const
     settings.crtcType = crtcType_->currentIndex();
     settings.fastDisc = fastDisc_->isChecked();
     settings.speedPercent = speed_->value();
+    settings.turbo = turbo_->isChecked();
+    settings.plusPpi = plusPpi_->isChecked();
     settings.displayEvery = displayEvery_->isChecked();
     settings.displayEveryFrames = displayEveryFrames_->value();
 

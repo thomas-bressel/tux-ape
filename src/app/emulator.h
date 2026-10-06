@@ -82,6 +82,9 @@ public:
 
     void setCrtcType(tuxape::CrtcType type);
     tuxape::CrtcType crtcType();
+    // WinAPE's "Turbo Mode" and "Plus PPI Emulation" (see core/cpc.h).
+    void setTurbo(bool on);
+    void setPlusPpi(bool on);
     // Disc drives without their mechanical delays.
     void setFastDisc(bool fast);
     bool fastDisc();

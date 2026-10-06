@@ -667,6 +667,16 @@ tuxape::CrtcType Emulator::crtcType()
     return withMachine([](Cpc& cpc) { return cpc.crtc().type(); });
 }
 
+void Emulator::setTurbo(bool on)
+{
+    withMachine([on](Cpc& cpc) { cpc.setTurbo(on); });
+}
+
+void Emulator::setPlusPpi(bool on)
+{
+    withMachine([on](Cpc& cpc) { cpc.setPlusPpi(on); });
+}
+
 void Emulator::setFastDisc(bool fast)
 {
     withMachine([fast](Cpc& cpc) { cpc.fdc().setFast(fast); });

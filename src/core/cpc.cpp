@@ -18,7 +18,7 @@ void Cpc::setCartridge(const Cartridge* cartridge, bool discRom)
     plus_ = cartridge != nullptr && cartridge->pages() > 0;
     memory_.setCartridge(plus_ ? std::span<const uint8_t>(cartridge->data) : std::span<const uint8_t>(), discRom);
     gateArray_.setPlus(plus_);
-    ppi_.setPlus(plus_);
+    ppi_.setPlus(plus_ || plusPpi_);
     asic_.reset();
 }
 
@@ -48,7 +48,7 @@ void Cpc::run(uint32_t microseconds)
     if (runUntil_ < clk_)
         runUntil_ = clk_;
     runUntil_ += static_cast<uint64_t>(microseconds) * 4;
-    if (watchedCount_ == 0 && !breakInstructions_ && memoryWatched_ == 0 && !ioHook_) {
+    if (watchedCount_ == 0 && !breakInstructions_ && memoryWatched_ == 0 && !ioHook_ && !turbo_) {
         while (clk_ < runUntil_)
             cpu_.step();
     } else {
@@ -60,6 +60,7 @@ void Cpc::run(uint32_t microseconds)
                 execHook_(cpu_.pc);
             if (stopRun_)
                 break;
+            turboLeft_ = 4;
             cpu_.step();
             if (stopRun_)
                 break;
@@ -83,6 +84,7 @@ void Cpc::alignClocks()
 
 void Cpc::stepInstruction()
 {
+    turboLeft_ = 4;
     cpu_.step();
     runUntil_ = clk_;
     syncSound();

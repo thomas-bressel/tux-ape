@@ -83,6 +83,8 @@ void Settings::read(const tuxape::IniFile& ini)
 {
     crtcType = std::clamp(ini.getInt(kConfiguration, "CRTC Type", crtcType), 0, 4);
     speedPercent = std::clamp(ini.getInt(kConfiguration, "Emulation Speed", speedPercent), 5, 1000);
+    turbo = ini.getBool(kConfiguration, "Turbo Mode", turbo);
+    plusPpi = ini.getBool(kConfiguration, "Plus PPI", plusPpi);
     // As in WinAPE.ini: the number of frames, or 0 for "show every frame at
     // the chosen speed".
     if (ini.has(kConfiguration, "Frame Skip")) {
@@ -171,6 +173,8 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt(kConfiguration, "CRTC Type", crtcType);
     if (parts & SpeedPart) {
         ini.setInt(kConfiguration, "Emulation Speed", speedPercent);
+        ini.setBool(kConfiguration, "Turbo Mode", turbo);
+        ini.setBool(kConfiguration, "Plus PPI", plusPpi);
         ini.setInt(kConfiguration, "Frame Skip", displayEvery ? displayEveryFrames : 0);
     }
     if (parts & FastDiscPart)
