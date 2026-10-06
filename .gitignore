@@ -26,3 +26,6 @@
 *.CPR
 
 CMakeUserPresets.json
+
+# The user's own programs for the Library window.
+/library/
