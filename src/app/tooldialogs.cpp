@@ -1,5 +1,7 @@
 #include "tooldialogs.h"
 
+#include "help.h"
+
 #include <cstring>
 
 #include <QCheckBox>
@@ -24,8 +26,7 @@ namespace {
 QDialogButtonBox* okCancelHelp(QDialog* dialog)
 {
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
-    buttons->button(QDialogButtonBox::Help)->setEnabled(false);
-    buttons->button(QDialogButtonBox::Help)->setToolTip(QDialog::tr("Not available yet"));
+    wireHelp(buttons->button(QDialogButtonBox::Help));
     QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
     return buttons;

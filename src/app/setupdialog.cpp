@@ -1,5 +1,7 @@
 #include "setupdialog.h"
 
+#include "help.h"
+
 #include <algorithm>
 
 #include <QLineEdit>
@@ -165,7 +167,7 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     tabs_->addTab(createOtherPage(), tr("Other"));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
-    notYet(buttons->button(QDialogButtonBox::Help));
+    wireHelp(buttons->button(QDialogButtonBox::Help));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
@@ -1306,7 +1308,7 @@ ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
     tree_->expandAll();
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
-    notYet(buttons->button(QDialogButtonBox::Help));
+    wireHelp(buttons->button(QDialogButtonBox::Help));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     auto* layout = new QVBoxLayout(this);

@@ -1,5 +1,7 @@
 #include "breakpointsdialog.h"
 
+#include "help.h"
+
 #include <set>
 
 #include <QCheckBox>
@@ -107,7 +109,8 @@ BreakpointsDialog::BreakpointsDialog(Emulator* emulator, QWidget* parent)
     auto* close = new QPushButton(tr("&Close"));
     close->setObjectName("bClose");
     auto* help = new QPushButton(tr("&Help"));
-    help->setEnabled(false);
+    help->setObjectName("bHelp");
+    wireHelp(help);
     buttons->addWidget(add_);
     buttons->addWidget(clear_);
     buttons->addWidget(clearAll_);
@@ -520,7 +523,8 @@ TimersDialog::TimersDialog(Emulator* emulator, QWidget* parent)
     auto* close = new QPushButton(tr("&Close"));
     close->setObjectName("bClose");
     auto* help = new QPushButton(tr("&Help"));
-    help->setEnabled(false);
+    help->setObjectName("bHelp");
+    wireHelp(help);
     buttons->addWidget(clearAll);
     buttons->addStretch();
     buttons->addWidget(close);

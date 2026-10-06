@@ -1,5 +1,7 @@
 #include "discdialogs.h"
 
+#include "help.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -27,7 +29,7 @@ FormatDialog::FormatDialog(QWidget* parent)
     clear_ = new QCheckBox(tr("Clear unused tracks"), this);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help, this);
-    buttons->button(QDialogButtonBox::Help)->setEnabled(false);
+    wireHelp(buttons->button(QDialogButtonBox::Help));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
@@ -136,7 +138,8 @@ DriveSetupDialog::DriveSetupDialog(DiscManager* discs, QWidget* parent)
     ok->setDefault(true);
     auto* cancel = new QPushButton(tr("&Cancel"), this);
     auto* help = new QPushButton(tr("&Help"), this);
-    help->setEnabled(false);
+    help->setObjectName("bHelp");
+    wireHelp(help);
     auto* swap = new QPushButton(tr("&Swap"), this);
     auto* right = new QVBoxLayout;
     right->addWidget(ok);

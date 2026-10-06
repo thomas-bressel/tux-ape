@@ -12,6 +12,8 @@
 #include <QTemporaryDir>
 #include <QPushButton>
 #include <QTabBar>
+#include <QDialog>
+#include <QTextBrowser>
 #include <QTest>
 
 #include "check.h"
@@ -142,6 +144,21 @@ int main(int argc, char* argv[])
     DriveSetupDialog setup(discs, &window);
     setup.show();
     QTest::qWait(50);
+    // The Help button opens TuxAPE's help, as the Help buttons of the
+    // other windows do.
+    {
+        auto* help = setup.findChild<QPushButton*>("bHelp");
+        CHECK(help && help->isEnabled());
+        CHECK(window.findChild<QDialog*>("Help") == nullptr);
+        if (help)
+            help->click();
+        auto* shown = window.findChild<QDialog*>("Help");
+        CHECK(shown && shown->isVisible());
+        auto* text = shown ? shown->findChild<QTextBrowser*>("HelpText") : nullptr;
+        CHECK(text && text->toPlainText().contains("Getting started"));
+        if (shown)
+            shown->close();
+    }
     // Edit asks for the disc editor, for a drive with a disc in it.
     {
         auto* edit = setup.findChild<QPushButton*>("bEdit");

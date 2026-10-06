@@ -19,11 +19,13 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QMimeData>
+#include <QPointer>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
 #include "assemblerdialog.h"
+#include "help.h"
 #include "breakpointsdialog.h"
 #include "debuggerdialog.h"
 #include "graphicsdialog.h"
@@ -87,6 +89,11 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
 {
     setWindowTitle(tr("TuxAPE"));
     setAcceptDrops(true);
+    // The other windows' Help buttons come here.
+    setHelpHandler([self = QPointer<MainWindow>(this)] {
+        if (self)
+            self->showHelp();
+    });
 
     auto* central = new QWidget(this);
     auto* layout = new QVBoxLayout(central);
@@ -555,6 +562,21 @@ QString MainWindow::helpText() const
 
 void MainWindow::showHelp()
 {
+    // Asked for from a window that keeps all others still, the help is a
+    // window of that one's, or it could not be read.
+    if (QWidget* modal = QApplication::activeModalWidget()) {
+        QDialog box(modal);
+        box.setObjectName("Help");
+        box.setWindowTitle(tr("TuxAPE Help"));
+        auto* layout = new QVBoxLayout(&box);
+        auto* text = new QTextBrowser;
+        text->setObjectName("HelpText");
+        text->setHtml(helpText());
+        layout->addWidget(text);
+        box.resize(600, 640);
+        box.exec();
+        return;
+    }
     if (!help_) {
         help_ = new QDialog(this);
         help_->setObjectName("Help");

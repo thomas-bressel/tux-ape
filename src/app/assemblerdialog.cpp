@@ -1,5 +1,7 @@
 #include "assemblerdialog.h"
 
+#include "help.h"
+
 #include <array>
 #include <map>
 #include <memory>
@@ -548,9 +550,10 @@ void AssemblerDialog::buildMenus(QMenuBar* bar)
     add(assembleMenu, tr("&Options"), {}, [this] { showOptions(); });
 
     QMenu* help = bar->addMenu(tr("&Help"));
-    later(help, tr("Contents"));
+    // TuxAPE's help is one page: both entries open it.
+    add(help, tr("Contents"), {}, [] { requestHelp(); });
     help->addSeparator();
-    later(help, tr("Assembler"), Qt::Key_F1);
+    add(help, tr("Assembler"), Qt::Key_F1, [] { requestHelp(); });
 }
 
 // ---- Files --------------------------------------------------------------------
