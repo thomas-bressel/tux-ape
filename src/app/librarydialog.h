@@ -28,6 +28,7 @@ struct LibraryEntry {
     QString release;  // "Original", "Crack", "Hack", "File" or "<machine> Port" if the name says so, or empty
     QString category;     // the category folder it is filed under ("Games"...), or empty
     QString subcategory;  // the folder under that ("Racing"...), or empty
+    QString root;         // the library folder it was found in
 };
 
 // The categories programs are filed under: the names of the folders a
@@ -69,6 +70,22 @@ QStringList libraryFoldersOrDefault(const QStringList& named);
 std::optional<std::vector<uint8_t>> libraryData(const LibraryEntry& entry);
 // The program's file as shown to the user: "archive.zip » file.dsk".
 QString libraryDisplayPath(const LibraryEntry& entry);
+
+// Thumbnails: the pictures of the programs, kept in a "thumbnails" folder
+// of the library folder, each under a name made of what is known of its
+// program: the title, the year, the kind of program (its sub-category, or
+// its category), what it is on and the kind of release, as in
+// "Gryzor (1987) (Run and Gun) (Disc) [Original].png". What is not known
+// is left out.
+QString libraryThumbnailName(const LibraryEntry& entry);  // without the folder and the suffix
+QString libraryThumbnailFolder(const LibraryEntry& entry);
+// The program's picture: the file of that name, or failing that one of the
+// same title and year, so that a program keeps its picture when it is
+// filed elsewhere. Empty if it has none.
+QString libraryThumbnail(const LibraryEntry& entry);
+// Gives the program a picture: a copy of the file, under the program's
+// name, in place of the one it had. What went wrong, or nothing.
+QString setLibraryThumbnail(const LibraryEntry& entry, const QString& picture);
 
 // The Library window, TuxAPE's own (WinAPE has none): the programs found
 // in the folders the user has named, a tab for each category with a
@@ -114,6 +131,18 @@ public:
     QStringList listedReleases() const;
     bool select(const QString& title);
 
+    // Several programs may be selected, with the mouse or the keyboard
+    // (Ctrl, Shift), to give them a picture: the Thumbnail button asks for
+    // the file, and each of them gets a copy under its own name. The
+    // Thumbnail column says which programs have one, and the picture shows
+    // beside the pointer while it is over such a program.
+    QStringList selectedTitles() const;
+    // False, with a word to the user, if a program could not be given it.
+    bool setThumbnail(const QString& picture);
+    QStringList listedThumbnailTitles() const;
+    // The picture beside the pointer; hidden when there is none to show.
+    QLabel* preview() const { return preview_; }
+
     // Closes the window on the program selected, as a double click does
     // (a disc goes in drive A) or the button for drive B. False if there is
     // none, or if it is not a disc and drive B is asked for.
@@ -134,7 +163,17 @@ private:
     QLabel* count_;
     QPushButton* insertA_;
     QPushButton* insertB_;
+    QPushButton* thumbnail_;
+    QLabel* preview_;
+    QString previewed_;         // the file the picture shown was read from
+    QStringList thumbnails_;    // each program's picture, or nothing
 
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+    QList<int> selection() const;
+    void chooseThumbnail();
+    void updateThumbnails();
+    void showPreview(const QPoint& at);
     int current() const;
     void fill();
     void filter();

@@ -6,15 +6,20 @@
 //                          <prefix>library.png
 
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 
 #include <QAction>
 #include <QApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
 #include <QHeaderView>
+#include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTest>
@@ -241,8 +246,9 @@ int main(int argc, char* argv[])
         // The AI column: ticked for the files with "(AI)" in their name.
         CHECK(dialog.listedAiTitles() == QStringList{"boulder dash"});
         auto* programs = dialog.findChild<QTreeWidget*>("lvLibrary");
-        CHECK(programs && programs->columnCount() == 7 && programs->headerItem()->text(5) == "AI");
-        CHECK(programs && programs->topLevelItem(0)->text(6).isEmpty());  // not among the notes as well
+        CHECK(programs && programs->columnCount() == 8 && programs->headerItem()->text(5) == "AI");
+        CHECK(programs && programs->headerItem()->text(7) == "Notes");
+        CHECK(programs && programs->topLevelItem(0)->text(7).isEmpty());  // not among the notes as well
         // No category folder here: no tab, and nothing in the column.
         CHECK(dialog.categories() == QStringList{"Unsorted"} && dialog.category().isEmpty());
         auto* tabs = dialog.findChild<QTabBar*>("tabCategories");
@@ -256,7 +262,7 @@ int main(int argc, char* argv[])
         // The Release Type column: Original, Crack or Hack, from the name.
         CHECK(programs && programs->headerItem()->text(4) == "Release Type");
         CHECK(dialog.listedReleases() == (QStringList{"", "Original", "", ""}));
-        CHECK(programs && programs->topLevelItem(1)->text(6) == "UK, CPM");
+        CHECK(programs && programs->topLevelItem(1)->text(7) == "UK, CPM");
         dialog.setSearch("original");
         CHECK(dialog.listedTitles() == QStringList{"Gryzor"});
         dialog.setSearch(QString());
@@ -731,6 +737,192 @@ int main(int argc, char* argv[])
             CHECK(dialog->setCategory("SNR") && dialog->listedTitles() == (QStringList{"1943", "Gryzor"}));
             dialog->setSort(0, Qt::AscendingOrder);
         });
+    }
+    // Thumbnails: several programs selected, with the mouse or the
+    // keyboard, are given a picture, which is copied for each under a name
+    // made of what is known of the program, into the library's
+    // "thumbnails" folder. A column says who has one, and the picture
+    // shows beside the pointer.
+    {
+        const QString shelf = folder.filePath("shelf");
+        QDir().mkpath(shelf + "/Games/Run and Gun");
+        QDir().mkpath(shelf + "/Games/Platform");
+        const QString disc = shelf + "/Games/Run and Gun/Gryzor (UK) (1987) [Original].dsk";
+        const QString crack = shelf + "/Games/Run and Gun/Gryzor (UK) (1987) [cr].dsk";
+        const QString tape = shelf + "/Games/Run and Gun/Gryzor (1987).cdt";
+        const QString other = shelf + "/Games/Platform/Sorcery+ (1985).dsk";
+        const QString loose = shelf + "/Zub.dsk";
+        for (const QString& file : {disc, crack, tape, other, loose})
+            CHECK(QFile::copy(gryzor, file));
+        const QString cover = folder.filePath("cover.png"), photo = folder.filePath("photo.bmp");
+        {
+            QImage small(64, 48, QImage::Format_RGB32), large(800, 400, QImage::Format_RGB32);
+            small.fill(Qt::red);
+            large.fill(Qt::blue);
+            CHECK(small.save(cover) && large.save(photo));
+        }
+        const auto entryOf = [&](const QString& path) {
+            for (const LibraryEntry& entry : scanLibrary({shelf}))
+                if (entry.path == path)
+                    return entry;
+            return LibraryEntry();
+        };
+        CHECK(entryOf(disc).root == shelf);
+        CHECK(libraryThumbnailName(entryOf(disc)) == "Gryzor (1987) (Run and Gun) (Disc) [Original]");
+        CHECK(libraryThumbnailName(entryOf(crack)) == "Gryzor (1987) (Run and Gun) (Disc) [Crack]");
+        CHECK(libraryThumbnailName(entryOf(tape)) == "Gryzor (1987) (Run and Gun) (Tape)");
+        CHECK(libraryThumbnailName(entryOf(loose)) == "Zub (Disc)");
+        CHECK(libraryThumbnailFolder(entryOf(disc)) == shelf + "/thumbnails");
+        // With no sub-category the category stands for the kind of program;
+        // what a file's name cannot hold is left out of it.
+        LibraryEntry odd;
+        odd.title = "What? Where: A/B";
+        odd.kind = LibraryEntry::Cartridge;
+        odd.category = "Demos";
+        CHECK(libraryThumbnailName(odd) == "What_ Where_ A_B (Demos) (Cartridge)");
+        CHECK(libraryThumbnail(entryOf(disc)).isEmpty());
+
+        LibraryDialog dialog({shelf});
+        dialog.show();
+        auto* programs = dialog.findChild<QTreeWidget*>("lvLibrary");
+        auto* button = dialog.findChild<QPushButton*>("bThumbnail");
+        auto* insertA = dialog.findChild<QPushButton*>("bInsertA");
+        QLabel* preview = dialog.preview();
+        CHECK(programs && button && insertA && preview);
+        if (!(programs && button && insertA && preview))
+            return checkSummary("gui_library");
+        CHECK(programs->headerItem()->text(6) == "Thumbnail");
+        CHECK(dialog.setCategory("Games"));
+        CHECK(dialog.listedTitles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
+        CHECK(dialog.listedTypes() == (QStringList{"Tape", "Disc", "Disc", "Disc"}));
+        CHECK(dialog.listedReleases() == (QStringList{"", "Original", "Crack", ""}));
+        CHECK(dialog.listedThumbnailTitles().isEmpty());
+        QTest::qWait(50);
+        const auto at = [&](int row) { return programs->visualItemRect(programs->topLevelItem(row)).center(); };
+
+        // One program selected is the one to put in the machine; several
+        // are for the Thumbnail button only. The keyboard: Shift and the
+        // arrows. The mouse: Ctrl and a click.
+        QTest::mouseClick(programs->viewport(), Qt::LeftButton, {}, at(0));
+        CHECK(dialog.selectedTitles() == QStringList{"Gryzor"});
+        CHECK(insertA->isEnabled() && button->isEnabled());
+        QTest::keyClick(programs, Qt::Key_Down, Qt::ShiftModifier);
+        CHECK_EQ(dialog.selectedTitles().size(), 2);
+        CHECK(!insertA->isEnabled() && button->isEnabled());
+        CHECK(!dialog.choose());
+        QTest::mouseClick(programs->viewport(), Qt::LeftButton, Qt::ControlModifier, at(3));
+        CHECK(dialog.selectedTitles() == (QStringList{"Gryzor", "Gryzor", "Sorcery+"}));
+        QTest::mouseClick(programs->viewport(), Qt::LeftButton, Qt::ControlModifier, at(3));
+        QTest::mouseClick(programs->viewport(), Qt::LeftButton, Qt::ControlModifier, at(2));
+        CHECK(dialog.selectedTitles() == (QStringList{"Gryzor", "Gryzor", "Gryzor"}));
+
+        // The picture goes to each of them, under its own name.
+        CHECK(dialog.setThumbnail(cover));
+        const QDir thumbnails(shelf + "/thumbnails");
+        CHECK(thumbnails.entryList(QDir::Files, QDir::Name) ==
+              (QStringList{"Gryzor (1987) (Run and Gun) (Disc) [Crack].png",
+                           "Gryzor (1987) (Run and Gun) (Disc) [Original].png", "Gryzor (1987) (Run and Gun) (Tape).png"}));
+        CHECK(QFile::exists(cover));  // a copy: the file given stays where it was
+        CHECK(dialog.listedThumbnailTitles() == (QStringList{"Gryzor", "Gryzor", "Gryzor"}));
+        CHECK_EQ(dialog.selectedTitles().size(), 3);
+        CHECK(libraryThumbnail(entryOf(disc)) == shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Disc) [Original].png");
+        CHECK(programs->topLevelItem(0)->toolTip(6) == "Gryzor (1987) (Run and Gun) (Tape).png");
+        // The column sorts as the others do: those without first.
+        dialog.setSort(6, Qt::AscendingOrder);
+        CHECK(dialog.listedTitles() == (QStringList{"Sorcery+", "Gryzor", "Gryzor", "Gryzor"}));
+        dialog.setSort(0, Qt::AscendingOrder);
+
+        // The button asks for the file. No file, no change.
+        CHECK(dialog.select("Sorcery+") && dialog.selectedTitles() == QStringList{"Sorcery+"});
+        {
+            Modals modals([](QWidget* modal) {
+                CHECK(qobject_cast<QFileDialog*>(modal) != nullptr && modal->windowTitle() == "Thumbnail");
+                modal->close();
+            });
+            button->click();
+            CHECK_EQ(modals.seen(), 1);
+            CHECK_EQ(dialog.listedThumbnailTitles().size(), 3);
+        }
+        {
+            Modals modals([&](QWidget* modal) {
+                auto* files = qobject_cast<QFileDialog*>(modal);
+                if (!files)
+                    return modal->close(), void();
+                // The name is typed: selectFile() leaves the box alone when
+                // it has the keyboard, which it may or may not have yet.
+                auto* name = files->findChild<QLineEdit*>("fileNameEdit");
+                CHECK(name != nullptr);
+                if (!name)
+                    return modal->close(), void();
+                name->setText(photo);
+                static_cast<QDialog*>(files)->accept();
+            });
+            button->click();
+            CHECK_EQ(modals.seen(), 1);
+        }
+        CHECK(QFile::exists(shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).bmp"));
+        CHECK_EQ(dialog.listedThumbnailTitles().size(), 4);
+
+        // The picture shows beside the pointer while it is over a program
+        // that has one: as it is when small, made smaller when large.
+        const auto hover = [&](const QPoint& where) {
+            QMouseEvent move(QEvent::MouseMove, where, programs->viewport()->mapToGlobal(where), Qt::NoButton, Qt::NoButton,
+                             Qt::NoModifier);
+            QApplication::sendEvent(programs->viewport(), &move);
+        };
+        CHECK(!preview->isVisible());
+        hover(at(1));
+        CHECK(preview->isVisible());
+        CHECK(preview->pixmap().size() == QSize(64, 48));
+        const QPoint pointer = programs->viewport()->mapToGlobal(at(1));
+        CHECK(!preview->geometry().contains(pointer));
+        CHECK(std::abs(preview->geometry().left() - pointer.x()) < 40 || std::abs(preview->geometry().right() - pointer.x()) < 40);
+        if (!prefix.isEmpty()) {
+            QTest::qWait(50);
+            dialog.grab().save(prefix + "thumbnails.png");
+        }
+        hover(at(3));
+        CHECK(preview->isVisible() && preview->pixmap().size() == QSize(320, 160));
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(programs->viewport(), &leave);
+        CHECK(!preview->isVisible());
+        // A program without one shows none. All selected: those listed.
+        CHECK(dialog.setCategory(QString()));
+        CHECK(dialog.listedTitles() == QStringList{"Zub"} && dialog.listedThumbnailTitles().isEmpty());
+        QTest::qWait(50);
+        hover(at(4));
+        CHECK(!preview->isVisible());
+        programs->selectAll();
+        CHECK(dialog.selectedTitles() == QStringList{"Zub"});
+        // What is not a picture is refused, with a word to the user.
+        {
+            Modals modals([](QWidget* modal) {
+                CHECK(qobject_cast<QMessageBox*>(modal) != nullptr);
+                modal->close();
+            });
+            CHECK(!dialog.setThumbnail(disc));
+            CHECK_EQ(modals.seen(), 1);
+            CHECK(dialog.listedThumbnailTitles().isEmpty());
+        }
+
+        // A new picture takes the place of the old one, of whatever kind.
+        CHECK(dialog.setCategory("Games") && dialog.select("Sorcery+"));
+        CHECK(dialog.setThumbnail(cover));
+        CHECK(!QFile::exists(shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).bmp"));
+        CHECK(QFile::exists(shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).png"));
+        CHECK_EQ(thumbnails.entryList(QDir::Files).size(), 4);
+        // A program filed elsewhere, or another form of it, keeps the
+        // picture of its title and year.
+        const QString snapshot = shelf + "/Gryzor (1987).sna";
+        CHECK(QFile::copy(sorcery, snapshot));
+        CHECK(libraryThumbnailName(entryOf(snapshot)) == "Gryzor (1987) (Snapshot)");
+        CHECK(libraryThumbnail(entryOf(snapshot)) == shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Disc) [Crack].png");
+        LibraryEntry sequel = entryOf(snapshot);
+        sequel.title = "Gryzor 2";
+        CHECK(libraryThumbnail(sequel).isEmpty());
+        sequel.title = "Gryzor";
+        sequel.year = "1989";
+        CHECK(libraryThumbnail(sequel).isEmpty());
     }
     return checkSummary("gui_library");
 }

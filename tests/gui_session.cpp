@@ -88,8 +88,8 @@ int main(int argc, char* argv[])
     CHECK(emulator.playingSession() && play->isChecked() && !emulator.recordingSession());
     QTest::keyClick(window.screen(), Qt::Key_X);
     CHECK(QTest::qWaitFor([&] { return !emulator.playingSession(); }, 20000));
-    QApplication::processEvents();
-    CHECK(!play->isChecked());
+    // The window hears of it from the machine's thread, a moment later.
+    CHECK(QTest::qWaitFor([&] { return !play->isChecked(); }, 2000));
     CHECK(screenText() == recorded);
     CHECK(screenText().find("other") == std::string::npos);
     // The keyboard is the user's again.

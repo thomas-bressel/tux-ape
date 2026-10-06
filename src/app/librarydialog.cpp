@@ -6,15 +6,23 @@
 
 #include <QDir>
 #include <QDirIterator>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QHash>
 #include <QHeaderView>
+#include <QImage>
+#include <QImageReader>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QCoreApplication>
+#include <QMessageBox>
+#include <QMouseEvent>
+#include <QPixmap>
 #include <QPushButton>
+#include <QScreen>
 #include <QTabBar>
 #include <QRegularExpression>
 #include <QSet>
@@ -37,10 +45,11 @@ constexpr int kSubcategoryColumn = 1;
 constexpr int kTypeColumn = 3;
 constexpr int kReleaseColumn = 4;
 constexpr int kAiColumn = 5;
+constexpr int kThumbnailColumn = 6;
 
 // A row of the list. A click on a column's heading sorts by that column,
 // from A to Z, and a second click from Z to A: text without regard to
-// case, the Type by its name, the AI boxes unticked first. Rows that say
+// case, the Type by its name, the boxes unticked first. Rows that say
 // the same there stay in the order of their titles, whichever way.
 class LibraryItem : public QTreeWidgetItem {
 public:
@@ -52,7 +61,8 @@ public:
         const int column = list ? list->sortColumn() : 0;
         const auto key = [column](const QTreeWidgetItem& item) {
             return column == kTypeColumn ? item.toolTip(column)
-                   : column == kAiColumn ? QString(item.checkState(column) == Qt::Checked ? '1' : '0')
+                   : column == kAiColumn || column == kThumbnailColumn
+                       ? QString(item.checkState(column) == Qt::Checked ? '1' : '0')
                                          : item.text(column);
         };
         if (const int order = key(*this).compare(key(other), Qt::CaseInsensitive))
@@ -71,6 +81,7 @@ public:
 void classify(LibraryEntry& entry, const QString& folder)
 {
     const QDir root(QDir::cleanPath(folder));
+    entry.root = root.path();
     QStringList parts = root.relativeFilePath(entry.path).split('/', Qt::SkipEmptyParts);
     if (!parts.isEmpty())
         parts.removeLast();  // the file itself
@@ -130,7 +141,99 @@ QString memberName(const std::string& name)
                                                       : text;
 }
 
+const char* kindName(LibraryEntry::Kind kind)
+{
+    static const char* const kNames[] = {"Disc", "Snapshot", "Tape", "Cartridge", "Session"};
+    return kNames[kind];
+}
+
+// A text as part of a file's name.
+QString asFileName(QString text)
+{
+    static const QRegularExpression unfit("[\\\\/:*?\"<>|\\x00-\\x1F]");
+    return text.replace(unfit, "_").simplified();
+}
+
+// The pictures of a folder, in the order of their names.
+QStringList picturesIn(const QString& folder)
+{
+    QStringList patterns;
+    for (const QByteArray& format : QImageReader::supportedImageFormats())
+        patterns << "*." + QString::fromLatin1(format);
+    return QDir(folder).entryList(patterns, QDir::Files, QDir::Name | QDir::IgnoreCase);
+}
+
+// A program's picture among those of its thumbnails folder.
+QString pictureOf(const LibraryEntry& entry, const QStringList& pictures)
+{
+    const QString name = libraryThumbnailName(entry);
+    for (const QString& picture : pictures)
+        if (QFileInfo(picture).completeBaseName().compare(name, Qt::CaseInsensitive) == 0)
+            return picture;
+    // Failing that, one of the same title and year.
+    const QString start = asFileName(entry.title) + (entry.year.isEmpty() ? QString() : " (" + entry.year + ")");
+    for (const QString& picture : pictures) {
+        const QString base = QFileInfo(picture).completeBaseName();
+        if (base.compare(start, Qt::CaseInsensitive) == 0 || base.startsWith(start + " (", Qt::CaseInsensitive) ||
+            base.startsWith(start + " [", Qt::CaseInsensitive))
+            return picture;
+    }
+    return {};
+}
+
 }  // namespace
+
+QString libraryThumbnailName(const LibraryEntry& entry)
+{
+    QString name = entry.title;
+    if (!entry.year.isEmpty())
+        name += " (" + entry.year + ")";
+    if (const QString& genre = entry.subcategory.isEmpty() ? entry.category : entry.subcategory; !genre.isEmpty())
+        name += " (" + genre + ")";
+    name += QStringLiteral(" (") + kindName(entry.kind) + ")";
+    if (!entry.release.isEmpty())
+        name += " [" + entry.release + "]";
+    return asFileName(name);
+}
+
+QString libraryThumbnailFolder(const LibraryEntry& entry)
+{
+    return (entry.root.isEmpty() ? QFileInfo(entry.path).absolutePath() : entry.root) + "/thumbnails";
+}
+
+QString libraryThumbnail(const LibraryEntry& entry)
+{
+    const QString folder = libraryThumbnailFolder(entry);
+    const QString picture = pictureOf(entry, picturesIn(folder));
+    return picture.isEmpty() ? QString() : folder + '/' + picture;
+}
+
+QString setLibraryThumbnail(const LibraryEntry& entry, const QString& picture)
+{
+    QImageReader reader(picture);
+    if (!reader.canRead())
+        return LibraryDialog::tr("%1 is not a picture.").arg(QDir::toNativeSeparators(picture));
+    const QString folder = libraryThumbnailFolder(entry);
+    if (!QDir().mkpath(folder))
+        return LibraryDialog::tr("Cannot make the folder %1.").arg(QDir::toNativeSeparators(folder));
+    const QString name = libraryThumbnailName(entry);
+    QString suffix = QFileInfo(picture).suffix().toLower();
+    if (suffix.isEmpty())
+        suffix = QString::fromLatin1(reader.format());
+    const QString target = folder + '/' + name + '.' + suffix;
+    // Its own picture given again: there is nothing to do.
+    const QString source = QFileInfo(picture).canonicalFilePath();
+    if (source == QFileInfo(target).canonicalFilePath())
+        return {};
+    // The one it had goes, whatever kind of picture it was.
+    for (const QString& old : picturesIn(folder))
+        if (QFileInfo(old).completeBaseName().compare(name, Qt::CaseInsensitive) == 0 &&
+            QFileInfo(folder + '/' + old).canonicalFilePath() != source)
+            QFile::remove(folder + '/' + old);
+    if (!QFile::copy(picture, target))
+        return LibraryDialog::tr("Cannot write %1.").arg(QDir::toNativeSeparators(target));
+    return {};
+}
 
 QString defaultLibraryFolder()
 {
@@ -288,7 +391,10 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     tabs_->setObjectName("tabCategories");
     tabs_->setExpanding(false);
     tabs_->setDrawBase(false);
-    list_->setHeaderLabels({tr("Title"), tr("Sub-category"), tr("Year"), tr("Type"), tr("Release Type"), tr("AI"), tr("Notes")});
+    list_->setHeaderLabels({tr("Title"), tr("Sub-category"), tr("Year"), tr("Type"), tr("Release Type"), tr("AI"),
+                            tr("Thumbnail"), tr("Notes")});
+    // Several programs at once, to give them a picture.
+    list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     list_->setRootIsDecorated(false);
     list_->setUniformRowHeights(true);
     list_->setAlternatingRowColors(true);
@@ -300,6 +406,16 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setIconSize(QSize(18, 18));
     list_->setColumnWidth(kReleaseColumn, 100);
     list_->setColumnWidth(kAiColumn, 36);
+    list_->setColumnWidth(kThumbnailColumn, 84);
+    // A program's picture, beside the pointer while it is over the program.
+    preview_ = new QLabel(this, Qt::ToolTip | Qt::FramelessWindowHint);
+    preview_->setObjectName("lPreview");
+    preview_->setFrameShape(QFrame::Box);
+    preview_->setAttribute(Qt::WA_ShowWithoutActivating);
+    preview_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    preview_->hide();
+    list_->viewport()->setMouseTracking(true);
+    list_->viewport()->installEventFilter(this);
     // The headings are for clicking: by title to start with.
     list_->setSortingEnabled(true);
     list_->sortByColumn(0, Qt::AscendingOrder);
@@ -316,10 +432,15 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     insertB_ = new QPushButton(tr("Insert in &B:"));
     insertB_->setObjectName("bInsertB");
     insertB_->setAutoDefault(false);
+    thumbnail_ = new QPushButton(tr("&Thumbnail..."));
+    thumbnail_->setObjectName("bThumbnail");
+    thumbnail_->setAutoDefault(false);
+    thumbnail_->setToolTip(tr("Gives a picture to the programs selected"));
     auto* close = new QPushButton(tr("Close"));
     close->setAutoDefault(false);
     auto* buttons = new QHBoxLayout;
     buttons->addWidget(foldersButton);
+    buttons->addWidget(thumbnail_);
     buttons->addWidget(count_, 1);
     buttons->addWidget(insertA_);
     buttons->addWidget(insertB_);
@@ -335,6 +456,8 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     connect(search_, &QLineEdit::textChanged, this, [this] { filter(); });
     connect(tabs_, &QTabBar::currentChanged, this, [this] { filter(); });
     connect(list_, &QTreeWidget::currentItemChanged, this, [this] { updateButtons(); });
+    connect(list_, &QTreeWidget::itemSelectionChanged, this, [this] { updateButtons(); });
+    connect(thumbnail_, &QPushButton::clicked, this, [this] { chooseThumbnail(); });
     connect(list_, &QTreeWidget::itemActivated, this, [this] { choose(0); });
     connect(insertA_, &QPushButton::clicked, this, [this] { choose(0); });
     connect(insertB_, &QPushButton::clicked, this, [this] { choose(1); });
@@ -410,7 +533,8 @@ void LibraryDialog::fill()
         // snapshot; its name is there for whoever points at it.
         static const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
                                        makeIcon(IconId::Cartridge), makeIcon(IconId::Run)};
-        auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release, QString(), entry.details});
+        auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release, QString(),
+                                             QString(), entry.details});
         item->setIcon(kTypeColumn, kIcons[entry.kind]);
         item->setToolTip(kTypeColumn, kind);
         item->setData(0, Qt::UserRole, i);
@@ -420,8 +544,169 @@ void LibraryDialog::fill()
         item->setToolTip(kAiColumn, entry.ai ? tr("\"(AI)\" is in the file's name") : QString());
         item->setToolTip(0, libraryDisplayPath(entry));
     }
+    updateThumbnails();
     list_->setSortingEnabled(true);
     filter();
+}
+
+// Looks for each program's picture, and ticks the boxes of those that
+// have one.
+void LibraryDialog::updateThumbnails()
+{
+    QHash<QString, QStringList> pictures;  // of each thumbnails folder
+    thumbnails_.clear();
+    for (const LibraryEntry& entry : entries_) {
+        const QString folder = libraryThumbnailFolder(entry);
+        if (!pictures.contains(folder))
+            pictures.insert(folder, picturesIn(folder));
+        const QString picture = pictureOf(entry, pictures.value(folder));
+        thumbnails_ << (picture.isEmpty() ? QString() : folder + '/' + picture);
+    }
+    for (int row = 0; row < list_->topLevelItemCount(); ++row) {
+        QTreeWidgetItem* item = list_->topLevelItem(row);
+        const QString& picture = thumbnails_[item->data(0, Qt::UserRole).toInt()];
+        item->setCheckState(kThumbnailColumn, picture.isEmpty() ? Qt::Unchecked : Qt::Checked);
+        item->setToolTip(kThumbnailColumn, QFileInfo(picture).fileName());
+    }
+    previewed_.clear();
+    preview_->hide();
+}
+
+// The rows selected, of those listed.
+QList<int> LibraryDialog::selection() const
+{
+    QList<int> rows;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row) {
+        const QTreeWidgetItem* item = list_->topLevelItem(row);
+        if (item->isSelected() && !item->isHidden())
+            rows << item->data(0, Qt::UserRole).toInt();
+    }
+    return rows;
+}
+
+QStringList LibraryDialog::selectedTitles() const
+{
+    QStringList titles;
+    for (int index : selection())
+        titles << entries_[index].title;
+    return titles;
+}
+
+QStringList LibraryDialog::listedThumbnailTitles() const
+{
+    QStringList titles;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row)
+        if (!list_->topLevelItem(row)->isHidden() && list_->topLevelItem(row)->checkState(kThumbnailColumn) == Qt::Checked)
+            titles << list_->topLevelItem(row)->text(0);
+    return titles;
+}
+
+bool LibraryDialog::setThumbnail(const QString& picture)
+{
+    QString error;
+    for (int index : selection()) {
+        error = setLibraryThumbnail(entries_[index], picture);
+        if (!error.isEmpty())
+            break;
+    }
+    // The list keeps its order while the boxes change.
+    list_->setSortingEnabled(false);
+    updateThumbnails();
+    list_->setSortingEnabled(true);
+    if (!error.isEmpty())
+        QMessageBox::warning(this, windowTitle(), error);
+    return error.isEmpty();
+}
+
+// The Thumbnail button: the picture is chosen among the user's files.
+void LibraryDialog::chooseThumbnail()
+{
+    if (selection().isEmpty())
+        return;
+    static QString folder;  // where the last one was taken
+    QStringList patterns;
+    for (const char* format : {"png", "jpg", "jpeg", "gif", "bmp", "webp"})
+        if (QImageReader::supportedImageFormats().contains(format))
+            patterns << QStringLiteral("*.") + format;
+    const QString picture = QFileDialog::getOpenFileName(this, tr("Thumbnail"), folder,
+                                                         tr("Pictures (%1);;All files (*)").arg(patterns.join(' ')));
+    if (picture.isEmpty())
+        return;
+    folder = QFileInfo(picture).absolutePath();
+    setThumbnail(picture);
+}
+
+// Shows the picture of the program at a place of the list, beside the
+// pointer; or none if the program has none.
+void LibraryDialog::showPreview(const QPoint& at)
+{
+    const QTreeWidgetItem* item = list_->itemAt(at);
+    const QString picture = item ? thumbnails_.value(item->data(0, Qt::UserRole).toInt()) : QString();
+    if (picture.isEmpty()) {
+        preview_->hide();
+        return;
+    }
+    if (picture != previewed_) {
+        // Read at the size it shows at: no larger than this, and never
+        // made larger than it is.
+        constexpr QSize kLargest(320, 320);
+        QImageReader reader(picture);
+        reader.setAutoTransform(true);
+        const QSize size = reader.size();
+        if (size.isValid() && (size.width() > kLargest.width() || size.height() > kLargest.height()))
+            reader.setScaledSize(size.scaled(kLargest, Qt::KeepAspectRatio));
+        QImage image = reader.read();
+        if (image.isNull()) {
+            preview_->hide();
+            return;
+        }
+        if (image.width() > kLargest.width() || image.height() > kLargest.height())
+            image = image.scaled(kLargest, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        preview_->setPixmap(QPixmap::fromImage(image));
+        preview_->adjustSize();
+        previewed_ = picture;
+    }
+    // Below the pointer and to its right, or on the other side where the
+    // screen ends.
+    const QPoint pointer = list_->viewport()->mapToGlobal(at);
+    const QRect area = screen() ? screen()->availableGeometry() : QRect(pointer, preview_->size() * 2);
+    QPoint corner = pointer + QPoint(18, 18);
+    if (corner.x() + preview_->width() > area.right())
+        corner.setX(pointer.x() - 18 - preview_->width());
+    if (corner.y() + preview_->height() > area.bottom())
+        corner.setY(pointer.y() - 18 - preview_->height());
+    preview_->move(corner);
+    preview_->show();
+}
+
+bool LibraryDialog::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == list_->viewport()) {
+        switch (event->type()) {
+        case QEvent::MouseMove:
+            showPreview(static_cast<QMouseEvent*>(event)->position().toPoint());
+            break;
+        case QEvent::Leave:
+        case QEvent::Wheel:
+        case QEvent::MouseButtonPress:
+            preview_->hide();
+            break;
+        case QEvent::ToolTip:
+            // The picture is what there is to say of the program.
+            if (preview_->isVisible())
+                return true;
+            break;
+        default:
+            break;
+        }
+    }
+    return QDialog::eventFilter(watched, event);
+}
+
+void LibraryDialog::hideEvent(QHideEvent* event)
+{
+    preview_->hide();
+    QDialog::hideEvent(event);
 }
 
 int LibraryDialog::sortColumn() const
@@ -465,8 +750,9 @@ void LibraryDialog::filter()
             first = item;
     }
     // The first of what is left is ready for Enter.
+    // It alone is selected, whatever keys are held down.
     if (!list_->currentItem() || list_->currentItem()->isHidden())
-        list_->setCurrentItem(first);
+        list_->setCurrentItem(first, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     if (folders_.isEmpty())
         count_->setText(tr("Click Folders... to say where your discs, tapes, cartridges and snapshots are."));
     else
@@ -474,10 +760,12 @@ void LibraryDialog::filter()
     updateButtons();
 }
 
+// The program to put in the machine: the one selected, when there is
+// only one.
 int LibraryDialog::current() const
 {
-    const QTreeWidgetItem* item = list_->currentItem();
-    return item && !item->isHidden() ? item->data(0, Qt::UserRole).toInt() : -1;
+    const QList<int> rows = selection();
+    return rows.size() == 1 ? rows.first() : -1;
 }
 
 void LibraryDialog::updateButtons()
@@ -490,6 +778,7 @@ void LibraryDialog::updateButtons()
                                                       : tr("&Insert"));
     insertA_->setEnabled(index >= 0);
     insertB_->setEnabled(index >= 0 && kind == LibraryEntry::Disc);
+    thumbnail_->setEnabled(!selection().isEmpty());
 }
 
 QStringList LibraryDialog::categories() const
@@ -566,7 +855,7 @@ bool LibraryDialog::select(const QString& title)
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         QTreeWidgetItem* item = list_->topLevelItem(row);
         if (!item->isHidden() && item->text(0) == title) {
-            list_->setCurrentItem(item);
+            list_->setCurrentItem(item, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
             return true;
         }
     }
