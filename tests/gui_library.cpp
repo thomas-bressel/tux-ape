@@ -142,10 +142,13 @@ void testNames()
     CHECK(libraryEntry("Outrun 2026 (AI) (File) (2026).dsk").release == "File");
     CHECK(libraryEntry("Outrun 2026 (AI) (File) (2026).dsk").ai && libraryEntry("Outrun 2026 (AI) (File) (2026).dsk").details.isEmpty());
     CHECK(libraryEntry("Zub [file].dsk").release == "File" && libraryEntry("Zub (Files).dsk").release.isEmpty());
-    // One brought over from another machine.
-    CHECK(libraryEntry("Flicky (Portage) (2026).dsk").release == "Portage");
-    CHECK(libraryEntry("Flicky (Portage) (2026).dsk").details.isEmpty() && libraryEntry("Flicky (Portage) (2026).dsk").year == "2026");
-    CHECK(libraryEntry("Flicky [port].dsk").release == "Portage" && libraryEntry("Flicky (Portugal).dsk").release.isEmpty());
+    // One brought over from another machine, which the note names.
+    CHECK(libraryEntry("Flicky [Atari ST Port] (2026).dsk").release == "Atari ST Port");
+    CHECK(libraryEntry("Flicky [Atari ST Port] (2026).dsk").details.isEmpty() && libraryEntry("Flicky [Atari ST Port] (2026).dsk").year == "2026");
+    CHECK(libraryEntry("Flicky [Amiga Port].dsk").release == "Amiga Port" && libraryEntry("Flicky (MSX Port).dsk").release == "MSX Port");
+    CHECK(libraryEntry("Flicky [Colecovision port] (AI).dsk").release == "Colecovision port" && libraryEntry("Flicky [Colecovision port] (AI).dsk").ai);
+    CHECK(libraryEntry("Flicky (Portugal).dsk").release.isEmpty() && libraryEntry("Flicky (Port).dsk").release.isEmpty());
+    CHECK(libraryEntry("Flicky (Airport).dsk").release.isEmpty() && libraryEntry("Flicky (Portage).dsk").release.isEmpty());
     CHECK(libraryEntry("Zub (Hackers) (Crackdown) (Originals).dsk").release.isEmpty());
     CHECK(libraryEntry("Hack.dsk").release.isEmpty() && libraryEntry("Hack.dsk").title == "Hack");
     // "(AI)", in any case, is a mark of its own and not a note.

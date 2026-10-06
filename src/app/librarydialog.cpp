@@ -43,8 +43,7 @@ QString releaseOf(const QString& note, bool* whole)
     } kKinds[] = {{"Original", {"original"}},
                   {"Crack", {"crack", "cracked", "cr"}},
                   {"Hack", {"hack", "hacked", "h"}},
-                  {"File", {"file"}},
-                  {"Portage", {"portage", "port"}}};
+                  {"File", {"file"}}};
     for (const auto& kind : kKinds) {
         for (const QString& word : kind.words) {
             *whole = text == word;
@@ -52,7 +51,10 @@ QString releaseOf(const QString& note, bool* whole)
                 return kind.release;
         }
     }
-    return {};
+    // A port from another machine names it: "Atari ST Port".
+    static const QRegularExpression port("^\\S.* port$", QRegularExpression::CaseInsensitiveOption);
+    *whole = port.match(note).hasMatch();
+    return *whole ? note : QString();
 }
 
 LibraryEntry::Kind kindOf(const QString& name)
