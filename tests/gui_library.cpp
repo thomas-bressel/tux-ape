@@ -11,6 +11,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -18,6 +19,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPushButton>
@@ -133,6 +135,18 @@ void testNames()
     CHECK(entry.kind == LibraryEntry::Disc);
     CHECK(entry.path == "/games/Gryzor (UK) (1987) (CPM) [Original].dsk");
 
+    CHECK(entry.side.isEmpty());
+    // Which side or disc of the program it is: kept apart, and among the
+    // notes as before.
+    entry = libraryEntry("/games/The Simpsons (UK) (Face A) (1991) [Original].dsk");
+    CHECK(entry.title == "The Simpsons" && entry.side == "Face A" && entry.year == "1991");
+    CHECK(entry.details == "UK, Face A" && entry.release == "Original");
+    CHECK(libraryEntry("/games/Robocop (face 2b).dsk").side == "face 2b");
+    CHECK(libraryEntry("/games/Robocop (Side B).cdt").side == "Side B");
+    CHECK(libraryEntry("/games/Robocop (Disc 1 of 2).dsk").side == "Disc 1 of 2");
+    CHECK(libraryEntry("/games/Robocop (Disk 2) (Face A).dsk").side == "Disk 2, Face A");
+    CHECK(libraryEntry("/games/Robocop (Disc and Tape Tools) (Side Arms) (Disc).dsk").side.isEmpty());
+
     entry = libraryEntry("/games/Last Ninja, The (1988)(System 3)(fr)[cr].DSK");
     CHECK(entry.title == "The Last Ninja");
     CHECK(entry.year == "1988");
@@ -187,6 +201,13 @@ QAction* actionNamed(MainWindow& window, const char* text)
         if (action->text().remove(QLatin1Char('&')) == QLatin1String(text))
             return action;
     return nullptr;
+}
+
+// Whether the Library shows its tabs.
+bool tabs_shown(const LibraryDialog& dialog)
+{
+    const auto* tabs = dialog.findChild<QTabBar*>("tabCategories");
+    return tabs && tabs->isVisible();
 }
 
 }  // namespace
@@ -728,15 +749,27 @@ int main(int argc, char* argv[])
             });
             action->trigger();
         };
-        withLibrary([](LibraryDialog* dialog) {
+        withLibrary([&](LibraryDialog* dialog) {
             CHECK(dialog->sortColumn() == 0 && dialog->sortOrder() == Qt::AscendingOrder);
             dialog->setSort(2, Qt::DescendingOrder);
+            // The thumbnail view is a setting, kept from one day to the next.
+            CHECK(!dialog->thumbnailView() && !window.settings().libraryThumbnailView);
+            dialog->setThumbnailView(true);
         });
+        CHECK(window.settings().libraryThumbnailView);
+        {
+            Settings kept;
+            kept.load();
+            CHECK(kept.libraryThumbnailView);
+        }
         withLibrary([](LibraryDialog* dialog) {
             CHECK(dialog->sortColumn() == 2 && dialog->sortOrder() == Qt::DescendingOrder);
             CHECK(dialog->setCategory("SNR") && dialog->listedTitles() == (QStringList{"1943", "Gryzor"}));
             dialog->setSort(0, Qt::AscendingOrder);
+            CHECK(dialog->thumbnailView());
+            dialog->setThumbnailView(false);
         });
+        CHECK(!window.settings().libraryThumbnailView);
     }
     // Thumbnails: several programs selected, with the mouse or the
     // keyboard, are given a picture, which is copied for each under a name
@@ -882,7 +915,7 @@ int main(int argc, char* argv[])
             dialog.grab().save(prefix + "thumbnails.png");
         }
         hover(at(3));
-        CHECK(preview->isVisible() && preview->pixmap().size() == QSize(320, 160));
+        CHECK(preview->isVisible() && preview->pixmap().size() == QSize(480, 240));
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(programs->viewport(), &leave);
         CHECK(!preview->isVisible());
@@ -911,6 +944,139 @@ int main(int argc, char* argv[])
         CHECK(!QFile::exists(shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).bmp"));
         CHECK(QFile::exists(shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).png"));
         CHECK_EQ(thumbnails.entryList(QDir::Files).size(), 4);
+        // The side is part of the name: one side's levels are not the
+        // other's. A picture that names no side stands for all of them
+        // until a side has its own.
+        {
+            const QString faceA = shelf + "/Games/Platform/The Simpsons (UK) (Face A) (1991) [Original].dsk";
+            const QString faceB = shelf + "/Games/Platform/The Simpsons (UK) (Face B) (1991) [Original].dsk";
+            CHECK(QFile::copy(gryzor, faceA) && QFile::copy(gryzor, faceB));
+            CHECK(libraryThumbnailName(entryOf(faceA)) == "The Simpsons (1991) (Platform) (Disc) (Face A) [Original]");
+            CHECK(libraryThumbnailName(entryOf(faceB)) == "The Simpsons (1991) (Platform) (Disc) (Face B) [Original]");
+            const QString whole = shelf + "/thumbnails/The Simpsons (1991) (Platform) (Disc) [Original].png";
+            CHECK(QFile::copy(cover, whole));
+            CHECK(libraryThumbnail(entryOf(faceA)) == whole && libraryThumbnail(entryOf(faceB)) == whole);
+            CHECK(setLibraryThumbnail(entryOf(faceB), photo).isEmpty());
+            const QString ownB = shelf + "/thumbnails/The Simpsons (1991) (Platform) (Disc) (Face B) [Original].bmp";
+            CHECK(QFile::exists(ownB));
+            CHECK(libraryThumbnail(entryOf(faceA)) == whole && libraryThumbnail(entryOf(faceB)) == ownB);
+            // A side's picture is not another side's; it is the same
+            // side's, filed elsewhere or released otherwise.
+            CHECK(QFile::remove(whole));
+            CHECK(libraryThumbnail(entryOf(faceA)).isEmpty());
+            LibraryEntry crackB = entryOf(faceB);
+            crackB.release = "Crack";
+            crackB.subcategory = "Action";
+            CHECK(libraryThumbnailName(crackB) == "The Simpsons (1991) (Action) (Disc) (Face B) [Crack]");
+            CHECK(libraryThumbnail(crackB) == ownB);
+            CHECK(QFile::remove(ownB) && QFile::remove(faceA) && QFile::remove(faceB));
+        }
+
+        // The thumbnail view: a box to tick shows the tab's programs as
+        // their pictures instead of the list, in the same order, and back.
+        {
+            auto* view = dialog.findChild<QCheckBox*>("ckThumbnailView");
+            auto* grid = dialog.findChild<QListWidget*>("lvThumbnails");
+            auto* count = dialog.findChild<QLabel*>("lCount");
+            CHECK(view && grid && count);
+            if (!view || !grid || !count)
+                return checkSummary("gui_library");
+            const auto tiles = [&] {
+                QStringList titles;
+                for (int i = 0; i < grid->count(); ++i)
+                    titles << grid->item(i)->text();
+                return titles;
+            };
+            const auto colourOf = [&](int tile) {
+                return grid->viewport()->grab().toImage().pixelColor(grid->visualItemRect(grid->item(tile)).center());
+            };
+            CHECK(!dialog.thumbnailView() && !view->isChecked());
+            CHECK(programs->isVisible() && !grid->isVisible());
+            dialog.resize(1100, 760);  // room for two rows of tiles
+            CHECK(dialog.setCategory("Games") && dialog.select("Sorcery+"));
+            view->click();
+            CHECK(dialog.thumbnailView() && view->isChecked());
+            CHECK(grid->isVisible() && !programs->isVisible());
+            CHECK(tabs_shown(dialog));
+            CHECK(tiles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
+            CHECK(tiles() == dialog.listedTitles());  // each of them has a picture
+            // What was selected in the list is selected here.
+            CHECK(dialog.selectedTitles() == QStringList{"Sorcery+"} && grid->item(3)->isSelected());
+            CHECK(insertA->isEnabled() && button->isEnabled());
+            // The pointer over a picture brings up the name and what the
+            // columns said.
+            const QString said = grid->item(1)->toolTip();
+            CHECK(said.contains("<b>Gryzor</b>"));
+            for (const char* part : {"Sub-category:", "Run and Gun", "Year:", "1987", "Type:", "Disc", "Release Type:",
+                                     "Original", "Notes:", "UK"})
+                CHECK(said.contains(part));
+            CHECK(!said.contains("AI:") && !said.contains("Thumbnail"));
+            CHECK(grid->item(0)->toolTip().contains("Tape") && !grid->item(0)->toolTip().contains("Release Type"));
+            // The pictures come as they are read: here all red.
+            QTest::qWait(50);
+            CHECK(QTest::qWaitFor([&] { return colourOf(0) == QColor(Qt::red) && colourOf(3) == QColor(Qt::red); }, 3000));
+            // Each in a box of 240 pixels, a margin around it.
+            CHECK(grid->visualItemRect(grid->item(0)).size() == QSize(252, 252));
+            CHECK(grid->viewport()->rect().contains(grid->visualItemRect(grid->item(3))));
+            if (!prefix.isEmpty())
+                dialog.grab().save(prefix + "thumbnail_view.png");
+            // The search and the order are the list's.
+            dialog.setSearch("gry");
+            CHECK(tiles() == (QStringList{"Gryzor", "Gryzor", "Gryzor"}));
+            dialog.setSearch(QString());
+            dialog.setSort(0, Qt::DescendingOrder);
+            CHECK(tiles() == (QStringList{"Sorcery+", "Gryzor", "Gryzor", "Gryzor"}));
+            dialog.setSort(0, Qt::AscendingOrder);
+            CHECK(tiles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
+            // The tabs too. A program without a picture is not shown: no
+            // tile stands in for it.
+            CHECK(count->text() == "4 of 4");
+            CHECK(dialog.setCategory(QString()));
+            CHECK(dialog.listedTitles() == QStringList{"Zub"} && tiles().isEmpty());
+            CHECK(dialog.selectedTitles().isEmpty() && !insertA->isEnabled() && !button->isEnabled());
+            CHECK(count->text() == "0 of 1");
+            // A program whose picture is taken away leaves the view.
+            CHECK(dialog.setCategory("Games"));
+            {
+                const QString taken = shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).png";
+                const QString aside = folder.filePath("aside.png");
+                CHECK(QFile::rename(taken, aside));
+                dialog.setFolders({shelf});
+                CHECK(dialog.setCategory("Games"));
+                CHECK(tiles() == (QStringList{"Gryzor", "Gryzor", "Gryzor"}) && dialog.listedTitles().size() == 4);
+                CHECK(count->text() == "3 of 4");
+                CHECK(QFile::rename(aside, taken));
+                dialog.setFolders({shelf});
+                CHECK(dialog.setCategory("Games"));
+                CHECK(tiles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
+            }
+            // Several tiles selected, with the mouse, are given a picture.
+            CHECK(dialog.setCategory("Games"));
+            QTest::qWait(50);
+            QTest::mouseClick(grid->viewport(), Qt::LeftButton, {}, grid->visualItemRect(grid->item(0)).center());
+            QTest::mouseClick(grid->viewport(), Qt::LeftButton, Qt::ControlModifier,
+                              grid->visualItemRect(grid->item(3)).center());
+            CHECK(dialog.selectedTitles() == (QStringList{"Gryzor", "Sorcery+"}));
+            CHECK(!insertA->isEnabled() && button->isEnabled());
+            CHECK(dialog.setThumbnail(photo));
+            CHECK(dialog.selectedTitles() == (QStringList{"Gryzor", "Sorcery+"}));
+            CHECK(QTest::qWaitFor([&] { return colourOf(0) == QColor(Qt::blue) && colourOf(3) == QColor(Qt::blue); }, 3000));
+            CHECK(colourOf(1) == QColor(Qt::red));
+            // Back to the list, with what was selected; and the pictures
+            // as they were, for what follows.
+            view->click();
+            CHECK(!dialog.thumbnailView() && programs->isVisible() && !grid->isVisible());
+            CHECK(dialog.selectedTitles() == (QStringList{"Gryzor", "Sorcery+"}));
+            CHECK(dialog.setThumbnail(cover));
+            dialog.setThumbnailView(true);
+            CHECK(view->isChecked() && dialog.selectedTitles() == (QStringList{"Gryzor", "Sorcery+"}));
+            // A double click on a tile, or Enter, puts the program in the
+            // machine, as in the list.
+            CHECK(dialog.select("Sorcery+") && dialog.selectedTitles() == QStringList{"Sorcery+"});
+            dialog.setThumbnailView(false);
+            CHECK(!view->isChecked());
+        }
+
         // A program filed elsewhere, or another form of it, keeps the
         // picture of its title and year.
         const QString snapshot = shelf + "/Gryzor (1987).sna";

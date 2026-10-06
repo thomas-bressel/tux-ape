@@ -3,16 +3,23 @@
 #include <optional>
 #include <vector>
 
+#include <QCache>
 #include <QDialog>
 #include <QList>
+#include <QPixmap>
 #include <QString>
 #include <QStringList>
 
+class QCheckBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QPushButton;
+class QStackedWidget;
 class QTabBar;
+class QTimer;
 class QTreeWidget;
+class QTreeWidgetItem;
 
 // One program of the library: an image file, by itself or inside a ZIP
 // archive, and what its name says of it.
@@ -29,6 +36,7 @@ struct LibraryEntry {
     QString category;     // the category folder it is filed under ("Games"...), or empty
     QString subcategory;  // the folder under that ("Racing"...), or empty
     QString root;         // the library folder it was found in
+    QString side;         // "Face A", "Disc 2"... if the name says which side or disc it is, or empty
 };
 
 // The categories programs are filed under: the names of the folders a
@@ -74,14 +82,15 @@ QString libraryDisplayPath(const LibraryEntry& entry);
 // Thumbnails: the pictures of the programs, kept in a "thumbnails" folder
 // of the library folder, each under a name made of what is known of its
 // program: the title, the year, the kind of program (its sub-category, or
-// its category), what it is on and the kind of release, as in
-// "Gryzor (1987) (Run and Gun) (Disc) [Original].png". What is not known
-// is left out.
+// its category), what it is on, which side of it and the kind of release,
+// as in "Gryzor (1987) (Run and Gun) (Disc) (Face A) [Original].png". What
+// is not known is left out.
 QString libraryThumbnailName(const LibraryEntry& entry);  // without the folder and the suffix
 QString libraryThumbnailFolder(const LibraryEntry& entry);
-// The program's picture: the file of that name, or failing that one of the
-// same title and year, so that a program keeps its picture when it is
-// filed elsewhere. Empty if it has none.
+// The program's picture: the file of that name; failing that one of the
+// same title, year and side, so that a program keeps its picture when it
+// is filed elsewhere; failing that one of the same title and year that
+// names no side. Empty if it has none.
 QString libraryThumbnail(const LibraryEntry& entry);
 // Gives the program a picture: a copy of the file, under the program's
 // name, in place of the one it had. What went wrong, or nothing.
@@ -143,6 +152,16 @@ public:
     // The picture beside the pointer; hidden when there is none to show.
     QLabel* preview() const { return preview_; }
 
+    // The other way to look at a tab: the pictures, side by side, instead
+    // of the list; a program without one is not shown there. The name and
+    // what the columns say come up when the pointer is over a picture.
+    // The tabs, the search, the order and the buttons work as in the list.
+    bool thumbnailView() const;
+    void setThumbnailView(bool on);
+    // A picture at the size the thumbnail view shows it; nothing while it
+    // has yet to be read, which is done when the window has a moment.
+    const QPixmap* tile(const QString& file);
+
     // Closes the window on the program selected, as a double click does
     // (a disc goes in drive A) or the button for drive B. False if there is
     // none, or if it is not a disc and drive B is asked for.
@@ -164,6 +183,13 @@ private:
     QPushButton* insertA_;
     QPushButton* insertB_;
     QPushButton* thumbnail_;
+    QCheckBox* viewBox_;
+    QStackedWidget* views_;
+    QListWidget* grid_;
+    QCache<QString, QPixmap> tiles_;  // the pictures of the thumbnail view, the last used
+    QStringList wanted_;              // those still to read
+    int filed_ = 0;                   // how many programs the tab in front has
+    QTimer* loader_;
     QLabel* preview_;
     QString previewed_;         // the file the picture shown was read from
     QStringList thumbnails_;    // each program's picture, or nothing
@@ -174,6 +200,10 @@ private:
     void chooseThumbnail();
     void updateThumbnails();
     void showPreview(const QPoint& at);
+    void fillGrid();
+    void loadTile();
+    void setSelection(const QList<int>& rows);
+    QString summary(const QTreeWidgetItem* item) const;
     int current() const;
     void fill();
     void filter();

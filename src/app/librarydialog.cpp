@@ -3,7 +3,10 @@
 #include "icons.h"
 
 #include <algorithm>
+#include <functional>
+#include <utility>
 
+#include <QCheckBox>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -20,9 +23,15 @@
 #include <QCoreApplication>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QScreen>
+#include <QScrollBar>
+#include <QSignalBlocker>
+#include <QStackedWidget>
+#include <QStyledItemDelegate>
+#include <QTimer>
 #include <QTabBar>
 #include <QRegularExpression>
 #include <QSet>
@@ -163,23 +172,111 @@ QStringList picturesIn(const QString& folder)
     return QDir(folder).entryList(patterns, QDir::Files, QDir::Name | QDir::IgnoreCase);
 }
 
-// A program's picture among those of its thumbnails folder.
-QString pictureOf(const LibraryEntry& entry, const QStringList& pictures)
+// The pictures of a thumbnails folder, to find a program's among them.
+struct Pictures {
+    QHash<QString, QString> named;  // by their names without the suffix, in lower case
+    QHash<QString, QString> alike;  // by title, year and side
+};
+
+QString likeness(const QString& title, const QString& year, const QString& side)
 {
-    const QString name = libraryThumbnailName(entry);
-    for (const QString& picture : pictures)
-        if (QFileInfo(picture).completeBaseName().compare(name, Qt::CaseInsensitive) == 0)
-            return picture;
-    // Failing that, one of the same title and year.
-    const QString start = asFileName(entry.title) + (entry.year.isEmpty() ? QString() : " (" + entry.year + ")");
-    for (const QString& picture : pictures) {
-        const QString base = QFileInfo(picture).completeBaseName();
-        if (base.compare(start, Qt::CaseInsensitive) == 0 || base.startsWith(start + " (", Qt::CaseInsensitive) ||
-            base.startsWith(start + " [", Qt::CaseInsensitive))
-            return picture;
+    return asFileName(title).replace('_', ' ').simplified().toLower() + '|' + year + '|' + side.toLower();
+}
+
+Pictures picturesOf(const QString& folder)
+{
+    Pictures pictures;
+    for (const QString& file : picturesIn(folder)) {
+        const QString name = QFileInfo(file).completeBaseName().toLower();
+        if (!pictures.named.contains(name))
+            pictures.named.insert(name, file);
+        // What the picture's name says of its program, read as a
+        // program's name is.
+        const LibraryEntry said = libraryEntry(file);
+        const QString like = likeness(said.title, said.year, said.side);
+        if (!pictures.alike.contains(like))
+            pictures.alike.insert(like, file);
     }
+    return pictures;
+}
+
+// A program's picture among those of its thumbnails folder: its own;
+// failing that, one of the same title, year and side; failing that, one of
+// the same title and year that names no side, which stands for them all.
+QString pictureOf(const LibraryEntry& entry, const Pictures& pictures)
+{
+    if (const auto own = pictures.named.constFind(libraryThumbnailName(entry).toLower()); own != pictures.named.constEnd())
+        return *own;
+    for (const QString& side : entry.side.isEmpty() ? QStringList{QString()} : QStringList{entry.side, QString()})
+        if (const auto like = pictures.alike.constFind(likeness(entry.title, entry.year, side)); like != pictures.alike.constEnd())
+            return *like;
     return {};
 }
+
+// A picture read at the size it shows at: no larger than asked, and never
+// made larger than it is. Null if it cannot be read.
+QImage readPicture(const QString& file, const QSize& largest)
+{
+    QImageReader reader(file);
+    reader.setAutoTransform(true);
+    const QSize size = reader.size();
+    if (size.isValid() && (size.width() > largest.width() || size.height() > largest.height()))
+        reader.setScaledSize(size.scaled(largest, Qt::KeepAspectRatio));
+    QImage image = reader.read();
+    if (!image.isNull() && (image.width() > largest.width() || image.height() > largest.height()))
+        image = image.scaled(largest, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return image;
+}
+
+// The thumbnail view: each program that has a picture is that picture, in
+// a box of this size; its title stands in for it while it is not read yet,
+// or if it cannot be read.
+constexpr int kTile = 240;
+// The picture beside the pointer, in the list, is no larger than this.
+constexpr QSize kPreview(480, 480);
+constexpr int kTileMargin = 6;
+constexpr int kTileRole = Qt::UserRole + 1;  // the picture's file
+
+class TileDelegate : public QStyledItemDelegate {
+public:
+    using Source = std::function<const QPixmap*(const QString&)>;
+
+    TileDelegate(Source source, QObject* parent)
+        : QStyledItemDelegate(parent)
+        , source_(std::move(source))
+    {
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const override
+    {
+        return QSize(kTile + 2 * kTileMargin, kTile + 2 * kTileMargin);
+    }
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
+    {
+        painter->save();
+        if (option.state & QStyle::State_Selected)
+            painter->fillRect(option.rect, option.palette.highlight());
+        const QRect box = option.rect.adjusted(kTileMargin, kTileMargin, -kTileMargin, -kTileMargin);
+        const QString file = index.data(kTileRole).toString();
+        const QPixmap* picture = file.isEmpty() ? nullptr : source_(file);
+        if (picture && !picture->isNull()) {
+            painter->drawPixmap(box.x() + (box.width() - picture->width()) / 2,
+                                box.y() + (box.height() - picture->height()) / 2, *picture);
+        } else {
+            painter->fillRect(box, option.palette.alternateBase());
+            painter->setPen(option.palette.color(QPalette::Mid));
+            painter->drawRect(box.adjusted(0, 0, -1, -1));
+            painter->setPen(option.palette.color(QPalette::Text));
+            painter->drawText(box.adjusted(6, 6, -6, -6), Qt::AlignCenter | Qt::TextWordWrap,
+                              index.data(Qt::DisplayRole).toString());
+        }
+        painter->restore();
+    }
+
+private:
+    Source source_;
+};
 
 }  // namespace
 
@@ -191,6 +288,8 @@ QString libraryThumbnailName(const LibraryEntry& entry)
     if (const QString& genre = entry.subcategory.isEmpty() ? entry.category : entry.subcategory; !genre.isEmpty())
         name += " (" + genre + ")";
     name += QStringLiteral(" (") + kindName(entry.kind) + ")";
+    if (!entry.side.isEmpty())
+        name += " (" + entry.side + ")";
     if (!entry.release.isEmpty())
         name += " [" + entry.release + "]";
     return asFileName(name);
@@ -204,7 +303,7 @@ QString libraryThumbnailFolder(const LibraryEntry& entry)
 QString libraryThumbnail(const LibraryEntry& entry)
 {
     const QString folder = libraryThumbnailFolder(entry);
-    const QString picture = pictureOf(entry, picturesIn(folder));
+    const QString picture = pictureOf(entry, picturesOf(folder));
     return picture.isEmpty() ? QString() : folder + '/' + picture;
 }
 
@@ -286,6 +385,10 @@ LibraryEntry libraryEntry(const QString& path)
     if (notes > 0) {
         static const QRegularExpression note("[(\\[]([^)\\]]*)[)\\]]");
         static const QRegularExpression year("^((19|20)[0-9]{2})(-.*)?$");
+        // "Face A", "Side 2", "Disc 1 of 3": which side or disc of the
+        // program it is. It stays among the notes.
+        static const QRegularExpression side("^(face|side|disc|disk)\\s+\\w{1,3}(\\s+of\\s+\\w+)?$",
+                                             QRegularExpression::CaseInsensitiveOption);
         QStringList details;
         for (auto it = note.globalMatch(name, notes); it.hasNext();) {
             const QString text = it.next().captured(1).simplified();
@@ -295,6 +398,8 @@ LibraryEntry libraryEntry(const QString& path)
                 entry.release = release;
             if (!release.isEmpty() && whole)
                 continue;
+            if (side.match(text).hasMatch())
+                entry.side += (entry.side.isEmpty() ? "" : ", ") + text;
             if (text.compare("AI", Qt::CaseInsensitive) == 0)
                 entry.ai = true;
             else if (const auto match = year.match(text); match.hasMatch() && entry.year.isEmpty())
@@ -385,6 +490,9 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     search_->setObjectName("edSearch");
     search_->setPlaceholderText(tr("Search"));
     search_->setClearButtonEnabled(true);
+    viewBox_ = new QCheckBox(tr("Thumbnail &view"));
+    viewBox_->setObjectName("ckThumbnailView");
+    viewBox_->setToolTip(tr("Shows the programs as their pictures, instead of the list"));
     list_ = new QTreeWidget;
     list_->setObjectName("lvLibrary");
     tabs_ = new QTabBar;
@@ -419,6 +527,26 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     // The headings are for clicking: by title to start with.
     list_->setSortingEnabled(true);
     list_->sortByColumn(0, Qt::AscendingOrder);
+    // The thumbnail view: the same programs, in the same order, as their
+    // pictures.
+    grid_ = new QListWidget;
+    grid_->setObjectName("lvThumbnails");
+    grid_->setViewMode(QListView::IconMode);
+    grid_->setResizeMode(QListView::Adjust);
+    grid_->setMovement(QListView::Static);
+    grid_->setUniformItemSizes(true);
+    grid_->setSpacing(2);
+    grid_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    grid_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    grid_->setItemDelegate(new TileDelegate([this](const QString& file) { return tile(file); }, grid_));
+    views_ = new QStackedWidget;
+    views_->addWidget(list_);
+    views_->addWidget(grid_);
+    // Pictures are read one at a time between two events, and no more of
+    // them kept than a large screen shows: 48 MB at the very most.
+    tiles_.setMaxCost(48 * 1024);
+    loader_ = new QTimer(this);
+    loader_->setInterval(0);
     count_ = new QLabel;
     count_->setObjectName("lCount");
     count_->setWordWrap(true);
@@ -447,9 +575,12 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     buttons->addWidget(close);
 
     auto* layout = new QVBoxLayout(this);
-    layout->addWidget(search_);
+    auto* top = new QHBoxLayout;
+    top->addWidget(search_, 1);
+    top->addWidget(viewBox_);
+    layout->addLayout(top);
     layout->addWidget(tabs_);
-    layout->addWidget(list_, 1);
+    layout->addWidget(views_, 1);
     layout->addLayout(buttons);
     resize(900, 520);
 
@@ -458,6 +589,12 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     connect(list_, &QTreeWidget::currentItemChanged, this, [this] { updateButtons(); });
     connect(list_, &QTreeWidget::itemSelectionChanged, this, [this] { updateButtons(); });
     connect(thumbnail_, &QPushButton::clicked, this, [this] { chooseThumbnail(); });
+    connect(viewBox_, &QCheckBox::toggled, this, [this](bool on) { setThumbnailView(on); });
+    connect(grid_, &QListWidget::itemSelectionChanged, this, [this] { updateButtons(); });
+    connect(grid_, &QListWidget::itemActivated, this, [this] { choose(0); });
+    // What has gone out of sight need not be read.
+    connect(grid_->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { wanted_.clear(); });
+    connect(loader_, &QTimer::timeout, this, [this] { loadTile(); });
     connect(list_, &QTreeWidget::itemActivated, this, [this] { choose(0); });
     connect(insertA_, &QPushButton::clicked, this, [this] { choose(0); });
     connect(insertB_, &QPushButton::clicked, this, [this] { choose(1); });
@@ -553,13 +690,14 @@ void LibraryDialog::fill()
 // have one.
 void LibraryDialog::updateThumbnails()
 {
-    QHash<QString, QStringList> pictures;  // of each thumbnails folder
+    QHash<QString, Pictures> pictures;  // of each thumbnails folder
     thumbnails_.clear();
     for (const LibraryEntry& entry : entries_) {
         const QString folder = libraryThumbnailFolder(entry);
-        if (!pictures.contains(folder))
-            pictures.insert(folder, picturesIn(folder));
-        const QString picture = pictureOf(entry, pictures.value(folder));
+        auto found = pictures.find(folder);
+        if (found == pictures.end())
+            found = pictures.insert(folder, picturesOf(folder));
+        const QString picture = pictureOf(entry, *found);
         thumbnails_ << (picture.isEmpty() ? QString() : folder + '/' + picture);
     }
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
@@ -572,10 +710,16 @@ void LibraryDialog::updateThumbnails()
     preview_->hide();
 }
 
-// The rows selected, of those listed.
+// The programs selected, of those listed, in the view shown.
 QList<int> LibraryDialog::selection() const
 {
     QList<int> rows;
+    if (thumbnailView()) {
+        for (int i = 0; i < grid_->count(); ++i)
+            if (grid_->item(i)->isSelected())
+                rows << grid_->item(i)->data(Qt::UserRole).toInt();
+        return rows;
+    }
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         const QTreeWidgetItem* item = list_->topLevelItem(row);
         if (item->isSelected() && !item->isHidden())
@@ -613,6 +757,10 @@ bool LibraryDialog::setThumbnail(const QString& picture)
     list_->setSortingEnabled(false);
     updateThumbnails();
     list_->setSortingEnabled(true);
+    // A picture may have changed under the name it had.
+    tiles_.clear();
+    fillGrid();
+    updateButtons();
     if (!error.isEmpty())
         QMessageBox::warning(this, windowTitle(), error);
     return error.isEmpty();
@@ -647,21 +795,11 @@ void LibraryDialog::showPreview(const QPoint& at)
         return;
     }
     if (picture != previewed_) {
-        // Read at the size it shows at: no larger than this, and never
-        // made larger than it is.
-        constexpr QSize kLargest(320, 320);
-        QImageReader reader(picture);
-        reader.setAutoTransform(true);
-        const QSize size = reader.size();
-        if (size.isValid() && (size.width() > kLargest.width() || size.height() > kLargest.height()))
-            reader.setScaledSize(size.scaled(kLargest, Qt::KeepAspectRatio));
-        QImage image = reader.read();
+        const QImage image = readPicture(picture, kPreview);
         if (image.isNull()) {
             preview_->hide();
             return;
         }
-        if (image.width() > kLargest.width() || image.height() > kLargest.height())
-            image = image.scaled(kLargest, Qt::KeepAspectRatio, Qt::SmoothTransformation);
         preview_->setPixmap(QPixmap::fromImage(image));
         preview_->adjustSize();
         previewed_ = picture;
@@ -723,6 +861,8 @@ void LibraryDialog::setSort(int column, Qt::SortOrder order)
 {
     if (column >= 0 && column < list_->columnCount())
         list_->sortByColumn(column, order);
+    // The thumbnail view has no headings to click: its order is the list's.
+    fillGrid();
 }
 
 void LibraryDialog::filter()
@@ -757,7 +897,133 @@ void LibraryDialog::filter()
         count_->setText(tr("Click Folders... to say where your discs, tapes, cartridges and snapshots are."));
     else
         count_->setText(tr("%1 of %2").arg(shown).arg(filed));
+    filed_ = filed;
+    fillGrid();
     updateButtons();
+}
+
+bool LibraryDialog::thumbnailView() const
+{
+    return views_->currentWidget() == grid_;
+}
+
+void LibraryDialog::setThumbnailView(bool on)
+{
+    viewBox_->setChecked(on);
+    if (thumbnailView() == on)
+        return;
+    // What was selected in one view is selected in the other.
+    const QList<int> rows = selection();
+    views_->setCurrentWidget(on ? static_cast<QWidget*>(grid_) : list_);
+    preview_->hide();
+    fillGrid();
+    setSelection(rows);
+    updateButtons();
+}
+
+// What the columns say of a program, for the thumbnail view, where the
+// pointer over a picture brings it up.
+QString LibraryDialog::summary(const QTreeWidgetItem* item) const
+{
+    QString text = "<b>" + item->text(0).toHtmlEscaped() + "</b><table>";
+    for (int column = 1; column < list_->columnCount(); ++column) {
+        if (column == kThumbnailColumn)
+            continue;
+        const QString value = column == kTypeColumn ? item->toolTip(column)
+                              : column == kAiColumn ? (item->checkState(column) == Qt::Checked ? tr("Yes") : QString())
+                                                    : item->text(column);
+        if (!value.isEmpty())
+            text += "<tr><td>" + list_->headerItem()->text(column).toHtmlEscaped() + ":&nbsp;</td><td>" +
+                    value.toHtmlEscaped() + "</td></tr>";
+    }
+    return text + "</table>";
+}
+
+// The thumbnail view's tiles: those of the programs the list shows that
+// have a picture, in its order. The others are not there at all.
+void LibraryDialog::fillGrid()
+{
+    if (!thumbnailView())
+        return;
+    const QList<int> rows = selection();
+    const QSet<int> selected(rows.begin(), rows.end());
+    const QSignalBlocker quiet(grid_);
+    grid_->clear();
+    wanted_.clear();
+    for (int row = 0; row < list_->topLevelItemCount(); ++row) {
+        const QTreeWidgetItem* item = list_->topLevelItem(row);
+        if (item->isHidden())
+            continue;
+        const int index = item->data(0, Qt::UserRole).toInt();
+        const QString picture = thumbnails_.value(index);
+        if (picture.isEmpty())
+            continue;
+        auto* tile = new QListWidgetItem(item->text(0), grid_);
+        tile->setData(Qt::UserRole, index);
+        tile->setData(kTileRole, picture);
+        tile->setToolTip(summary(item));
+        tile->setSelected(selected.contains(index));
+    }
+    // The first is ready for Enter, as in the list.
+    if (grid_->selectedItems().isEmpty() && grid_->count())
+        grid_->setCurrentItem(grid_->item(0), QItemSelectionModel::ClearAndSelect);
+    // How many pictures, of how many programs in the tab.
+    if (!folders_.isEmpty())
+        count_->setText(tr("%1 of %2").arg(grid_->count()).arg(filed_));
+}
+
+const QPixmap* LibraryDialog::tile(const QString& file)
+{
+    if (const QPixmap* picture = tiles_.object(file))
+        return picture;
+    if (!wanted_.contains(file))
+        wanted_ << file;
+    if (!loader_->isActive())
+        loader_->start();
+    return nullptr;
+}
+
+void LibraryDialog::loadTile()
+{
+    if (!wanted_.isEmpty()) {
+        const QString file = wanted_.takeFirst();
+        // One that cannot be read is kept too, as nothing: it is not asked
+        // for again.
+        const QImage image = readPicture(file, QSize(kTile, kTile));
+        tiles_.insert(file, new QPixmap(QPixmap::fromImage(image)), 1 + image.width() * image.height() * 4 / 1024);
+        grid_->viewport()->update();
+    }
+    if (wanted_.isEmpty())
+        loader_->stop();
+}
+
+// Selects these programs, and no other, in the view shown.
+void LibraryDialog::setSelection(const QList<int>& rows)
+{
+    const QSet<int> wanted(rows.begin(), rows.end());
+    if (thumbnailView()) {
+        QListWidgetItem* first = nullptr;
+        for (int i = 0; i < grid_->count(); ++i) {
+            QListWidgetItem* tile = grid_->item(i);
+            const bool selected = wanted.contains(tile->data(Qt::UserRole).toInt());
+            tile->setSelected(selected);
+            if (selected && !first)
+                first = tile;
+        }
+        if (first)
+            grid_->setCurrentItem(first, QItemSelectionModel::NoUpdate);
+        return;
+    }
+    QTreeWidgetItem* first = nullptr;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row) {
+        QTreeWidgetItem* item = list_->topLevelItem(row);
+        const bool selected = !item->isHidden() && wanted.contains(item->data(0, Qt::UserRole).toInt());
+        item->setSelected(selected);
+        if (selected && !first)
+            first = item;
+    }
+    if (first)
+        list_->setCurrentItem(first, 0, QItemSelectionModel::NoUpdate);
 }
 
 // The program to put in the machine: the one selected, when there is
@@ -852,6 +1118,15 @@ QStringList LibraryDialog::listedReleases() const
 
 bool LibraryDialog::select(const QString& title)
 {
+    if (thumbnailView()) {
+        for (int i = 0; i < grid_->count(); ++i) {
+            if (grid_->item(i)->text() == title) {
+                grid_->setCurrentItem(grid_->item(i), QItemSelectionModel::ClearAndSelect);
+                return true;
+            }
+        }
+        return false;
+    }
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         QTreeWidgetItem* item = list_->topLevelItem(row);
         if (!item->isHidden() && item->text(0) == title) {

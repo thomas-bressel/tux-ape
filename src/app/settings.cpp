@@ -171,6 +171,7 @@ void Settings::read(const tuxape::IniFile& ini)
         for (int n = 1; ini.has("Library", "Folder" + std::to_string(n)); ++n)
             libraryFolders << QString::fromStdString(ini.get("Library", "Folder" + std::to_string(n)));
     }
+    libraryThumbnailView = ini.getBool("Library", "Thumbnail View", libraryThumbnailView);
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -246,6 +247,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt("Library", "Folders", static_cast<int>(libraryFolders.size()));
         for (qsizetype n = 0; n < libraryFolders.size(); ++n)
             ini.set("Library", "Folder" + std::to_string(n + 1), libraryFolders[n].toStdString());
+        ini.setBool("Library", "Thumbnail View", libraryThumbnailView);
     }
 }
 

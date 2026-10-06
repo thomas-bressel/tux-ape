@@ -76,6 +76,8 @@ struct Settings {
 
     // The folders the Library window finds its programs in.
     QStringList libraryFolders;
+    // And whether it shows them as their pictures, not as a list.
+    bool libraryThumbnailView = false;
 
     // The assembler's options: where files named by read and incbin are
     // looked for (folders between semicolons), whether Run pushes the
