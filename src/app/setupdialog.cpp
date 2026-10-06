@@ -243,8 +243,10 @@ QWidget* SetupDialog::createGeneralPage()
     plusPpi_ = new QCheckBox(tr("Plus PPI Emulation"));
     plusPpi_->setObjectName("ckPlusPPI");
     auto* plusPpi = plusPpi_;
-    auto* fourDrives = notYet(new QCheckBox(tr("Enable Four Drives (Non-Standard)")));
-    fourDrives->setObjectName("ckFourDrives");
+    fourDrives_ = new QCheckBox(tr("Enable Four Drives (Non-Standard)"));
+    fourDrives_->setObjectName("ckFourDrives");
+    fourDrives_->setToolTip(tr("Drives C: and D:, for CP/M Plus and the few programs that know of them"));
+    auto* fourDrives = fourDrives_;
     fastDisc_ = new QCheckBox(tr("&Fast Disc Emulation"));
     fastDisc_->setObjectName("ckFastDisc");
     auto* flyback = notYet(new QCheckBox(tr("Save Screenshot on Frame Flyback")));
@@ -1148,6 +1150,7 @@ void SetupDialog::setSettings(const Settings& settings)
     enableCartridge_->setChecked(settings.machine.cartridgeEnabled);
     setCartridge(QString::fromStdString(settings.machine.cartridge));
     fastDisc_->setChecked(settings.fastDisc);
+    fourDrives_->setChecked(settings.fourDrives);
     speed_->setValue(settings.speedPercent);
     turbo_->setChecked(settings.turbo);
     plusPpi_->setChecked(settings.plusPpi);
@@ -1335,6 +1338,7 @@ Settings SetupDialog::settings() const
     Settings settings = opened_;
     settings.crtcType = crtcType_->currentIndex();
     settings.fastDisc = fastDisc_->isChecked();
+    settings.fourDrives = fourDrives_->isChecked();
     settings.speedPercent = speed_->value();
     settings.turbo = turbo_->isChecked();
     settings.plusPpi = plusPpi_->isChecked();

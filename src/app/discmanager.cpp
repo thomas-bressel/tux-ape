@@ -124,6 +124,19 @@ void DiscManager::flip(int drive)
     emit changed();
 }
 
+void DiscManager::setFourDrives(bool enabled)
+{
+    if (enabled == fourDrives_)
+        return;
+    fourDrives_ = enabled;
+    if (!enabled) {
+        remove(2);
+        remove(3);
+    }
+    emulator_->withMachine([enabled](Cpc& cpc) { cpc.fdc().setFourDrives(enabled); });
+    emit changed();
+}
+
 void DiscManager::swap()
 {
     emulator_->withMachine([](Cpc& cpc) { std::swap(cpc.fdc().drive(0).disc, cpc.fdc().drive(1).disc); });

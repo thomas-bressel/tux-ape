@@ -54,7 +54,7 @@ private:
     QCheckBox* temporaryWrites_;
     QCheckBox* promptToSave_;
     QPushButton* flip_;
-    bool singleSidedChoice_[2] = {};
+    bool singleSidedChoice_[4] = {};  // one for each drive there may be
 
     int drive() const;
     void refresh();

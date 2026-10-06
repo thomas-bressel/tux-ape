@@ -5,6 +5,8 @@
 //
 // With TUXAPE_TEST_GRAB_DIR set, pictures of the dialogs are saved there.
 
+#include <QMenu>
+#include <QAction>
 #include <QApplication>
 #include <QFile>
 #include <QTemporaryDir>
@@ -199,6 +201,57 @@ int main(int argc, char* argv[])
         Settings saved;
         saved.load();
         CHECK(saved.driveLed && saved.showDriveCylinders && saved.palEmulation);
+    }
+
+    // Four drives: C: and D: come with their menus and their lights, and
+    // are the controller's third and fourth drives, not A: and B: again.
+    {
+        const auto driveMenu = [&](const char* title) -> QAction* {
+            for (QMenu* menu : window.findChildren<QMenu*>())
+                if (menu->title() == QLatin1String(title))
+                    return menu->menuAction();
+            return nullptr;
+        };
+        QAction* driveC = driveMenu("Drive &C:");
+        QAction* driveD = driveMenu("Drive &D:");
+        CHECK(driveMenu("Drive &A:") && driveMenu("Drive &A:")->isVisible());
+        CHECK(driveC && driveD && !driveC->isVisible() && !driveD->isVisible());
+        CHECK(!window.discs()->fourDrives() && window.discs()->drives() == 2);
+        // What the controller says of a unit: bit 5 of its third status
+        // byte is "ready".
+        const auto ready = [&](int unit) {
+            return emulator.withMachine([&](tuxape::Cpc& cpc) {
+                const uint64_t now = cpc.microseconds();
+                cpc.fdc().writeMotor(1, now);
+                cpc.fdc().writeData(0x04, now + 2000000);
+                cpc.fdc().writeData(static_cast<uint8_t>(unit), now + 2000000);
+                return (cpc.fdc().readData(now + 2000000) & 0x20) != 0;
+            });
+        };
+        const bool discInB = window.discs()->info(1).present;
+        CHECK_EQ(ready(3), discInB);  // unit 3 is B: again
+        Settings settings = window.settings();
+        settings.fourDrives = true;
+        window.applySettings(settings);
+        CHECK(window.discs()->fourDrives() && window.discs()->drives() == 4);
+        CHECK(driveC && driveC->isVisible() && driveD && driveD->isVisible());
+        CHECK(!ready(2) && !ready(3));
+        CHECK(window.discs()->createBlank(2, folder.filePath("third.dsk"), tuxape::defaultDiscFormat()).isEmpty());
+        CHECK(window.discs()->info(2).present && !window.discs()->info(3).present);
+        CHECK(ready(2) && !ready(3));
+        grab(window, "four_drives.png");
+        // Kept with the settings.
+        CHECK(settings.save());
+        Settings saved;
+        saved.load();
+        CHECK(saved.fourDrives);
+        // Without them, their discs are taken out and their menus go.
+        settings.fourDrives = false;
+        window.applySettings(settings);
+        CHECK(!window.discs()->fourDrives() && !window.discs()->info(2).present);
+        CHECK(driveC && !driveC->isVisible());
+        CHECK_EQ(ready(3), discInB);
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.fdc().writeMotor(0, cpc.microseconds() + 2000000); });
     }
 
     if (g_failures)

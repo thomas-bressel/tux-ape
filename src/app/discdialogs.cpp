@@ -59,6 +59,10 @@ DriveSetupDialog::DriveSetupDialog(DiscManager* discs, QWidget* parent)
     tabs_ = new QTabBar(this);
     tabs_->addTab(tr("&A:"));
     tabs_->addTab(tr("&B:"));
+    if (discs_->fourDrives()) {
+        tabs_->addTab(tr("&C:"));
+        tabs_->addTab(tr("&D:"));
+    }
 
     auto* page = new QFrame(this);
     page->setFrameShape(QFrame::StyledPanel);

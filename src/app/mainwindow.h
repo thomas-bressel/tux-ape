@@ -6,6 +6,7 @@
 #include <QKeySequence>
 #include <QMainWindow>
 
+#include "discmanager.h"
 #include "settings.h"
 
 class DiscManager;
@@ -82,7 +83,9 @@ private:
     ScreenWidget* screen_ = nullptr;
     QWidget* controlPanel_ = nullptr;
     QLabel* statusLabel_ = nullptr;
-    QFrame* driveLed_[2] = {};
+    QFrame* driveLed_[DiscManager::kDrives] = {};
+    QWidget* driveLedBox_[DiscManager::kDrives] = {};  // a light with its letter
+    QMenu* driveMenu_[DiscManager::kDrives] = {};
     int litDrive_ = -1;
     QString discFolder_;  // where the last disc image was opened
     QString snapshotFolder_;  // where the last snapshot was read or written
@@ -137,7 +140,7 @@ private:
         QAction* format = nullptr;
         QAction* flip = nullptr;
         QAction* remove = nullptr;
-    } driveActions_[2];
+    } driveActions_[DiscManager::kDrives];
 
     // Adds a menu entry. Entries given no handler stand for WinAPE functions
     // that are not written yet; they show greyed out.

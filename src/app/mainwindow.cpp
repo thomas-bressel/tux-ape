@@ -167,7 +167,7 @@ void MainWindow::dropEvent(QDropEvent* event)
             insertCartridgeFile(path);
             continue;
         }
-        if (drive >= DiscManager::kDrives)
+        if (drive >= discs_->drives())
             continue;
         if (saveBeforeLeaving(drive) && insertDiscFile(drive, path))
             ++drive;
@@ -202,10 +202,23 @@ void MainWindow::createMenus()
     // TuxAPE's own: WinAPE has no library.
     libraryAction_ = addItem(file, tr("Li&brary..."), CTRL | Qt::Key_L, [this] { showLibrary(); });
     file->addSeparator();
-    const char* driveNames[2] = {QT_TR_NOOP("Drive &A:"), QT_TR_NOOP("Drive &B:")};
-    for (int drive = 0; drive < 2; ++drive) {
+    // C: and D: are there with "Enable Four Drives", and have no keys.
+    const char* driveNames[DiscManager::kDrives] = {QT_TR_NOOP("Drive &A:"), QT_TR_NOOP("Drive &B:"),
+                                                    QT_TR_NOOP("Drive &C:"), QT_TR_NOOP("Drive &D:")};
+    for (int drive = 0; drive < DiscManager::kDrives; ++drive) {
         const Qt::Key key = drive == 0 ? Qt::Key_F1 : Qt::Key_F2;
         QMenu* menu = file->addMenu(tr(driveNames[drive]));
+        driveMenu_[drive] = menu;
+        if (drive >= 2) {
+            menu->menuAction()->setVisible(false);
+            addItem(menu, tr("&Insert Disc Image..."), {}, [this, drive] { chooseDisc(drive); });
+            addItem(menu, tr("&New Blank Disc..."), {}, [this, drive] { newBlankDisc(drive); });
+            driveActions_[drive].format = addItem(menu, tr("&Format Disc Image..."), {}, [this, drive] { formatDisc(drive); });
+            driveActions_[drive].edit = addItem(menu, tr("&Edit Disc..."), {}, [this, drive] { editDisc(drive); });
+            driveActions_[drive].flip = addItem(menu, tr("F&lip Disc"), {}, [this, drive] { flipDisc(drive); });
+            driveActions_[drive].remove = addItem(menu, tr("&Remove Disc"), {}, [this, drive] { removeDisc(drive); });
+            continue;
+        }
         addItem(menu, tr("&Insert Disc Image..."), CTRL | key, [this, drive] { chooseDisc(drive); });
         addItem(menu, tr("&New Blank Disc..."), {}, [this, drive] { newBlankDisc(drive); });
         driveActions_[drive].format =
@@ -383,11 +396,13 @@ void MainWindow::createControlPanel()
     // Drive activity lights.
     QFont small = font();
     small.setPointSizeF(small.pointSizeF() * 0.8);
-    for (int drive = 0; drive < 2; ++drive) {
-        auto* column = new QVBoxLayout;
+    for (int drive = 0; drive < DiscManager::kDrives; ++drive) {
+        driveLedBox_[drive] = new QWidget(controlPanel_);
+        driveLedBox_[drive]->setVisible(drive < 2);
+        auto* column = new QVBoxLayout(driveLedBox_[drive]);
         column->setContentsMargins(4, 0, 4, 0);
         column->setSpacing(0);
-        auto* label = new QLabel(drive == 0 ? tr("A:") : tr("B:"), controlPanel_);
+        auto* label = new QLabel(QString(driveLetter(drive)) + ':', controlPanel_);
         label->setFont(small);
         label->setAlignment(Qt::AlignHCenter);
         driveLed_[drive] = new QFrame(controlPanel_);
@@ -398,7 +413,7 @@ void MainWindow::createControlPanel()
         driveLed_[drive]->setStyleSheet(QLatin1String(kLedOff));
         column->addWidget(label);
         column->addWidget(driveLed_[drive], 0, Qt::AlignHCenter);
-        row->addLayout(column);
+        row->addWidget(driveLedBox_[drive]);
     }
 
     statusLabel_ = new QLabel(controlPanel_);
@@ -673,6 +688,20 @@ void MainWindow::applySettings(const Settings& settings)
     }
     emulator_->setCrtcType(static_cast<tuxape::CrtcType>(settings.crtcType));
     emulator_->setFastDisc(settings.fastDisc);
+    // Drives C: and D: come and go with their menus and their lights. A
+    // disc with changes in one of them is offered to be saved first; if
+    // that is turned down, the drives stay.
+    if (discs_->fourDrives() != settings.fourDrives) {
+        const bool keep = !settings.fourDrives && !(saveBeforeLeaving(2) && saveBeforeLeaving(3));
+        if (keep)
+            settings_.fourDrives = true;
+        else
+            discs_->setFourDrives(settings.fourDrives);
+        for (int drive = 2; drive < DiscManager::kDrives; ++drive) {
+            driveMenu_[drive]->menuAction()->setVisible(discs_->fourDrives());
+            driveLedBox_[drive]->setVisible(discs_->fourDrives());
+        }
+    }
     emulator_->setSpeedPercent(settings.speedPercent);
     emulator_->setTurbo(settings.turbo);
     emulator_->setPlusPpi(settings.plusPpi);

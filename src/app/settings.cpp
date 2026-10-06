@@ -94,6 +94,7 @@ void Settings::read(const tuxape::IniFile& ini)
             displayEveryFrames = std::min(skip, 50);
     }
     fastDisc = ini.getBool(kDrives, "Fast Disc", fastDisc);
+    fourDrives = ini.getBool(kDrives, "Four Drives Enabled", fourDrives);
 
     // "Extended RAM" counts the choices of the Memory page from the top.
     machine.ram = static_cast<tuxape::RamExpansion>(
@@ -182,8 +183,10 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kConfiguration, "Plus PPI", plusPpi);
         ini.setInt(kConfiguration, "Frame Skip", displayEvery ? displayEveryFrames : 0);
     }
-    if (parts & FastDiscPart)
+    if (parts & FastDiscPart) {
         ini.setBool(kDrives, "Fast Disc", fastDisc);
+        ini.setBool(kDrives, "Four Drives Enabled", fourDrives);
+    }
     if (parts & RamPart) {
         ini.setInt(kConfiguration, "Extended RAM", static_cast<int>(machine.ram));
         ini.setBool(kConfiguration, "Silicon Disc", machine.siliconDisc);

@@ -17,7 +17,13 @@ class DiscManager : public QObject {
     Q_OBJECT
 
 public:
-    static constexpr int kDrives = 2;
+    // Drives there may be: A: and B:, and C: and D: with WinAPE's "Enable
+    // Four Drives".
+    static constexpr int kDrives = 4;
+    int drives() const { return fourDrives_ ? 4 : 2; }
+    bool fourDrives() const { return fourDrives_; }
+    // The discs in C: and D: are taken out when the two drives go.
+    void setFourDrives(bool enabled);
 
     struct Info {
         bool present = false;
@@ -83,6 +89,7 @@ private:
     };
 
     Emulator* emulator_;
+    bool fourDrives_ = false;
     Slot current_[kDrives];  // the disc itself lives in the emulated drive
     Slot spare_[kDrives];
     bool allowTemporaryWrites_ = false;

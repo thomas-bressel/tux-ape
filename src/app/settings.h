@@ -16,6 +16,7 @@ class KeyMap;
 struct Settings {
     int crtcType = 0;             // 0 to 4, numbered as in WinAPE
     bool fastDisc = false;
+    bool fourDrives = false;      // drives C: and D: as well
     int speedPercent = 100;       // 5 to 1000
     bool turbo = false;           // every instruction in a microsecond
     bool plusPpi = false;         // the PPI as a Plus has it, on any machine

@@ -92,6 +92,7 @@ private:
     QCheckBox* plusPpi_ = nullptr;
     QCheckBox* tapeSounds_ = nullptr;
     QCheckBox* amDrum_ = nullptr;
+    QCheckBox* fourDrives_ = nullptr;
     QCheckBox* amxMouse_ = nullptr;
     // The Other page: what is on the printer's port, by Settings::PrinterMode.
     QRadioButton* printer_[5] = {};
