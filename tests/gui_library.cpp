@@ -931,25 +931,46 @@ int main(int argc, char* argv[])
         CHECK(QFile::exists(shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).bmp"));
         CHECK_EQ(dialog.listedThumbnailTitles().size(), 4);
 
-        // The picture shows beside the pointer while it is over a program
-        // that has one: as it is when small, made smaller when large.
+        // The picture shows beside the pointer while it is over the camera
+        // of a program that has one, and nowhere else along the row: as it
+        // is when small, made smaller when large.
         const auto hover = [&](const QPoint& where) {
             QMouseEvent move(QEvent::MouseMove, where, programs->viewport()->mapToGlobal(where), Qt::NoButton, Qt::NoButton,
                              Qt::NoModifier);
             QApplication::sendEvent(programs->viewport(), &move);
         };
+        int thumbnailColumn = -1;
+        for (int column = 0; column < programs->columnCount(); ++column)
+            if (programs->headerItem()->text(column) == "Thumbnail")
+                thumbnailColumn = column;
+        CHECK(thumbnailColumn > 0);
+        const auto camera = [&](int row) {
+            return QPoint(programs->columnViewportPosition(thumbnailColumn) + 9, at(row).y());
+        };
         CHECK(!preview->isVisible());
-        hover(at(1));
+        hover(QPoint(40, at(1).y()));  // on the title
+        CHECK(!preview->isVisible());
+        hover(camera(1));
         CHECK(preview->isVisible());
         CHECK(preview->pixmap().size() == QSize(64, 48));
-        const QPoint pointer = programs->viewport()->mapToGlobal(at(1));
+        // Off the camera, on the same row: gone. Further along the same
+        // column, past the camera: gone too.
+        hover(QPoint(40, at(1).y()));
+        CHECK(!preview->isVisible());
+        hover(camera(1) + QPoint(40, 0));
+        CHECK(!preview->isVisible());
+        hover(QPoint(programs->columnViewportPosition(thumbnailColumn) - 6, at(1).y()));
+        CHECK(!preview->isVisible());
+        hover(camera(1));
+        CHECK(preview->isVisible());
+        const QPoint pointer = programs->viewport()->mapToGlobal(camera(1));
         CHECK(!preview->geometry().contains(pointer));
         CHECK(std::abs(preview->geometry().left() - pointer.x()) < 40 || std::abs(preview->geometry().right() - pointer.x()) < 40);
         if (!prefix.isEmpty()) {
             QTest::qWait(50);
             dialog.grab().save(prefix + "thumbnails.png");
         }
-        hover(at(3));
+        hover(camera(3));
         // No larger than 720 pixels, nor than four fifths of the screen.
         const QSize largest = QSize(720, 720).boundedTo(dialog.screen()->availableGeometry().size() * 4 / 5);
         CHECK(preview->isVisible() && preview->pixmap().size() == QSize(800, 400).scaled(largest, Qt::KeepAspectRatio));
@@ -961,7 +982,7 @@ int main(int argc, char* argv[])
         CHECK(dialog.setCategory(QString()));
         CHECK(dialog.listedTitles() == QStringList{"Zub"} && dialog.listedThumbnailTitles().isEmpty());
         QTest::qWait(50);
-        hover(at(4));
+        hover(camera(4));
         CHECK(!preview->isVisible());
         programs->selectAll();
         CHECK(dialog.selectedTitles() == QStringList{"Zub"});

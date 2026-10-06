@@ -171,8 +171,8 @@ public:
     // Several programs may be selected, with the mouse or the keyboard
     // (Ctrl, Shift), to give them a picture: the Thumbnail button asks for
     // the file, and each of them gets a copy under its own name. The
-    // Thumbnail column says which programs have one, and the picture shows
-    // beside the pointer while it is over such a program.
+    // Thumbnail column says which programs have one, with a camera, and
+    // the picture shows beside the pointer while it is over that camera.
     QStringList selectedTitles() const;
     // False, with a word to the user, if a program could not be given it.
     bool setThumbnail(const QString& picture);

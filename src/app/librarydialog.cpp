@@ -973,8 +973,12 @@ void LibraryDialog::chooseThumbnail()
 // pointer; or none if the program has none.
 void LibraryDialog::showPreview(const QPoint& at)
 {
+    // Only over the camera of the Thumbnail column: a picture that came
+    // up wherever the pointer went along the row was in the way.
     const QTreeWidgetItem* item = list_->itemAt(at);
-    const QString picture = item ? thumbnails_.value(item->data(0, Qt::UserRole).toInt()) : QString();
+    const int left = list_->columnViewportPosition(kThumbnailColumn);
+    const bool onCamera = item && at.x() >= left && at.x() < left + list_->iconSize().width() + 8;
+    const QString picture = onCamera ? thumbnails_.value(item->data(0, Qt::UserRole).toInt()) : QString();
     if (picture.isEmpty()) {
         preview_->hide();
         return;
