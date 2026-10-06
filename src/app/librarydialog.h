@@ -5,6 +5,7 @@
 
 #include <QCache>
 #include <QDialog>
+#include <QImage>
 #include <QList>
 #include <QPixmap>
 #include <QString>
@@ -100,6 +101,19 @@ QString libraryThumbnail(const LibraryEntry& entry);
 // Gives the program a picture: a copy of the file, under the program's
 // name, in place of the one it had. What went wrong, or nothing.
 QString setLibraryThumbnail(const LibraryEntry& entry, const QString& picture);
+// The same for a picture that is no file yet, such as one of the screen:
+// written as a PNG.
+QString setLibraryThumbnail(const LibraryEntry& entry, const QImage& picture);
+// Pictures kept beside a program's thumbnail, without taking its place:
+// in a "snapshots" folder of the library folder, under the program's name
+// and a number, "Gryzor (1987) (Run and Gun) (Disc) 01.png". Gives the
+// file written; if it cannot be, nothing, and why.
+QString libraryScreenshotFolder(const LibraryEntry& entry);
+QString addLibraryScreenshot(const LibraryEntry& entry, const QImage& picture, QString* error = nullptr);
+// The program a file is, as the Library lists it: with the library folder
+// it is in, among those given, its category and its sub-category. A file
+// outside them all is a program too, with no category.
+LibraryEntry libraryEntryIn(const QString& path, const QStringList& folders);
 
 // The Library window, TuxAPE's own (WinAPE has none): the programs found
 // in the folders the user has named, a tab for each category with a

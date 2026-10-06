@@ -882,9 +882,9 @@ int main(int argc, char* argv[])
         CHECK(!programs->topLevelItem(0)->icon(7).isNull() && programs->topLevelItem(3)->icon(7).isNull());
         CHECK(programs->topLevelItem(3)->text(0) == "Sorcery+" && programs->topLevelItem(3)->toolTip(7).isEmpty());
         for (int row = 0; row < 4; ++row)
-            CHECK(!programs->topLevelItem(row)->data(6, Qt::CheckStateRole).isValid());
+            CHECK(!programs->topLevelItem(row)->data(7, Qt::CheckStateRole).isValid());
         // The column sorts as the others do: those without first.
-        dialog.setSort(6, Qt::AscendingOrder);
+        dialog.setSort(7, Qt::AscendingOrder);
         CHECK(dialog.listedTitles() == (QStringList{"Sorcery+", "Gryzor", "Gryzor", "Gryzor"}));
         dialog.setSort(0, Qt::AscendingOrder);
 

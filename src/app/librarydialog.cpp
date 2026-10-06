@@ -363,6 +363,73 @@ QString setLibraryThumbnail(const LibraryEntry& entry, const QString& picture)
     return {};
 }
 
+QString setLibraryThumbnail(const LibraryEntry& entry, const QImage& picture)
+{
+    if (picture.isNull())
+        return LibraryDialog::tr("There is no picture to keep.");
+    const QString folder = libraryThumbnailFolder(entry);
+    if (!QDir().mkpath(folder))
+        return LibraryDialog::tr("Cannot make the folder %1.").arg(QDir::toNativeSeparators(folder));
+    const QString name = libraryThumbnailName(entry);
+    // Written beside the old one first: a picture that cannot be written
+    // costs the program the one it had.
+    const QString target = folder + '/' + name + ".png", fresh = target + ".new";
+    if (!picture.save(fresh, "PNG"))
+        return LibraryDialog::tr("Cannot write %1.").arg(QDir::toNativeSeparators(target));
+    for (const QString& old : picturesIn(folder))
+        if (QFileInfo(old).completeBaseName().compare(name, Qt::CaseInsensitive) == 0)
+            QFile::remove(folder + '/' + old);
+    if (!QFile::rename(fresh, target)) {
+        QFile::remove(fresh);
+        return LibraryDialog::tr("Cannot write %1.").arg(QDir::toNativeSeparators(target));
+    }
+    return {};
+}
+
+QString libraryScreenshotFolder(const LibraryEntry& entry)
+{
+    return (entry.root.isEmpty() ? QFileInfo(entry.path).absolutePath() : entry.root) + "/snapshots";
+}
+
+QString addLibraryScreenshot(const LibraryEntry& entry, const QImage& picture, QString* error)
+{
+    const auto fail = [&](const QString& why) {
+        if (error)
+            *error = why;
+        return QString();
+    };
+    if (picture.isNull())
+        return fail(LibraryDialog::tr("There is no picture to keep."));
+    const QString folder = libraryScreenshotFolder(entry);
+    if (!QDir().mkpath(folder))
+        return fail(LibraryDialog::tr("Cannot make the folder %1.").arg(QDir::toNativeSeparators(folder)));
+    // The first number not taken yet.
+    const QString name = folder + '/' + libraryThumbnailName(entry);
+    QString target;
+    for (int number = 1; number < 10000; ++number) {
+        target = QStringLiteral("%1 %2.png").arg(name).arg(number, 2, 10, QLatin1Char('0'));
+        if (!QFile::exists(target))
+            break;
+    }
+    if (!picture.save(target, "PNG"))
+        return fail(LibraryDialog::tr("Cannot write %1.").arg(QDir::toNativeSeparators(target)));
+    return target;
+}
+
+LibraryEntry libraryEntryIn(const QString& path, const QStringList& folders)
+{
+    const QString file = QDir::cleanPath(path);
+    LibraryEntry entry = libraryEntry(file);
+    for (const QString& folder : folders) {
+        const QString root = QDir::cleanPath(folder);
+        if (file.startsWith(root + '/')) {
+            classify(entry, root);
+            break;
+        }
+    }
+    return entry;
+}
+
 QString defaultLibraryFolder()
 {
     // Said from outside, it is that folder or none.
