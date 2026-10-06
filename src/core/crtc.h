@@ -44,7 +44,7 @@ public:
 
     // Outputs.
     bool hsync() const { return hsync_; }
-    bool vsync() const { return vsync_; }
+    bool vsync() const { return vsync_ && !ghostVsync_; }
     // How a write to R3 cut the HSYNC short during the character in
     // progress, and during the one before it.
     enum class HsyncCut : uint8_t {
@@ -139,6 +139,24 @@ private:
     bool r7Match_ = false;         // C4 = R7 has been noted: no VSYNC from it again
     bool vsyncFresh_ = false;      // VSYNC began mid-line: its line count restarts
 
+    // ---- CRTC 2 (MC6845) -------------------------------------------------
+    // This chip too decides ahead that a line is the frame's last, but when
+    // it looks is another matter (Compendium 12.4.1, 15.6): as the line
+    // begins, and whenever R4 or R9 is written, though not during an HSYNC
+    // and, on a frame's first line, not before that line's HSYNC has found
+    // the frame's end unmet. A line the HSYNC found at the frame's end does
+    // not let the next one be the last as it begins: two frames of a single
+    // line in a row need R4 or R9 moved away and back. lastLine_ above is
+    // what it decided.
+    bool lastLineOpen_ = false;    // a write to R4 or R9 may still make this line the last
+    bool previousLast_ = false;    // the last HSYNC ended with C4 and C9 at the frame's end
+    bool hsyncJudged_ = false;     // ... which the HSYNC in progress has already been asked
+    // A VSYNC that comes on the heels of an HSYNC is counted like any
+    // other and keeps the next one away, but the pin stays low: the "ghost
+    // VSYNC" (15.6, 16.4.3).
+    bool ghostVsync_ = false;
+    uint8_t r9AtStart_ = 0;        // R9 as the line began: what its first character goes by
+
     // ---- Interlace (R8, Compendium chapter 19) ---------------------------
     // Frames are told apart by a parity that the chip keeps whatever R8
     // holds. With an interlace mode set, even frames get one more line and
@@ -158,6 +176,14 @@ private:
     void startRow();
     void startFrame();
     void startVsync();
+
+    // ---- Type 2 ----------------------------------------------------------
+    void endOfLine2();
+    void countLine2();
+    void lineStart2();
+    void judgeLineStart2();
+    void frameEndWritten2(bool r4);
+    void hsyncEnds2();
 
     // ---- Types 3 and 4 (the 6845 inside Amstrad's ASICs) -----------------
     bool asic() const { return type_ == CrtcType::AsicPlus || type_ == CrtcType::PreAsic; }

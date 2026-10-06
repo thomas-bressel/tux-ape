@@ -28,6 +28,9 @@ void Crtc::reset()
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
     c9Enabled_ = c4CountArmed_ = c9MatchAtEnd_ = false;
     vsyncAllowed_ = r7Match_ = vsyncFresh_ = false;
+    lastLineOpen_ = previousLast_ = hsyncJudged_ = false;
+    ghostVsync_ = false;
+    r9AtStart_ = 0;
     parityFrame_ = parityR6_ = parityC9_ = false;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
     c9Out_ = 0;
@@ -51,6 +54,7 @@ void Crtc::write(uint8_t value, bool early)
             if (!none) {
                 hsync_ = true;
                 hsc_ = 0;
+                hsyncJudged_ = false;
             }
         }
         break;
@@ -80,12 +84,18 @@ void Crtc::write(uint8_t value, bool early)
                 // Cut on its very first character with a width of 0, types
                 // 0 and 1 give the half character it had begun with
                 // (14.5.4).
-                if (type_ == CrtcType::MC6845)
+                if (type_ == CrtcType::MC6845) {
                     hsyncCut_ = HsyncCut::None;
-                else
+                    hsyncEnds2();
+                } else
                     hsyncCut_ = hsc_ == 0 && width == 0 ? HsyncCut::SecondHalf : HsyncCut::AfterQuarter;
             }
         }
+        break;
+    case 4:
+    case 9:
+        if (type_ == CrtcType::MC6845)
+            frameEndWritten2(selected_ == 4);
         break;
     case 6:
         // Types 0, 1 and 2 look at R6 all along the line: made equal to the
@@ -122,8 +132,11 @@ void Crtc::write(uint8_t value, bool early)
         } else if (!asic() && old != reg_[7] && vcc_ == reg_[7] && !vsync_) {
             // Making R7 equal to the current row starts a VSYNC straight
             // away. Not on the ASICs, which only look at R7 as a row
-            // begins (16.4.4).
+            // begins (16.4.4). Type 2 keeps it to itself when the write
+            // comes during an HSYNC (16.4.3; Shaker "VSYNC conditions" on
+            // a real chip: 14 characters out of 64 with R3 = 14).
             startVsync();
+            ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
         }
         break;
     }
@@ -164,6 +177,13 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     c9MatchAtEnd_ = false;
     r7Match_ = vcc_ == reg_[7];
     vsyncFresh_ = false;
+    if (type_ == CrtcType::MC6845) {
+        lastLine_ = vcc_ == reg_[4] && vlc_ == reg_[9];
+        lastLineOpen_ = vcc_ != 0 || vlc_ != 0;
+        previousLast_ = hsyncJudged_ = false;
+        r9AtStart_ = reg_[9];
+    }
+    ghostVsync_ = false;
 }
 
 uint8_t Crtc::readStatus() const
@@ -265,6 +285,8 @@ void Crtc::tick()
             lineStart0();
         else if (asic())
             endOfLineAsic();
+        else if (type_ == CrtcType::MC6845)
+            endOfLine2();
         else
             endOfLine(oneCharacter);
     } else {
@@ -318,8 +340,15 @@ void Crtc::tick()
 
     if (hcc_ == 0) {
         // C0 back at 0 for having run past 255, not for having met R0, does
-        // not turn the display back on (17.1, seen on CRTC 0).
-        if (newLine || !type0)
+        // not turn the display back on (17.1, seen on CRTC 0). Nor does
+        // type 2 turn it back on with an HSYNC on that character: the
+        // border stays for the whole line (15.5.2, 15.6).
+        bool hsyncHere = false;
+        if (type_ == CrtcType::MC6845) {
+            const bool goesOn = hsync_ && ((hsc_ + 1) & 0x0F) != (reg_[3] & 0x0F);
+            hsyncHere = goesOn || reg_[2] == 0;
+        }
+        if ((newLine || !type0) && !hsyncHere)
             hDisp_ = true;
         // On its first row the UM6845R takes every line's address straight
         // from R12/R13, which can therefore be changed from one line to the
@@ -353,8 +382,11 @@ void Crtc::tick()
 
     if (hsync_) {
         hsc_ = (hsc_ + 1) & 0x0F;
-        if (hsc_ == (reg_[3] & 0x0F))
+        if (hsc_ == (reg_[3] & 0x0F)) {
             hsync_ = false;
+            if (type_ == CrtcType::MC6845)
+                hsyncEnds2();
+        }
     }
     if (hcc_ == reg_[2] && !hsync_) {
         // A width of 0 means no HSYNC at all on types 0 and 1, and 16
@@ -364,8 +396,13 @@ void Crtc::tick()
         if (!none) {
             hsync_ = true;
             hsc_ = 0;
+            hsyncJudged_ = false;
         }
     }
+    // Type 2 takes its first look at the line once it knows whether an
+    // HSYNC lies on the first character.
+    if (newLine && type_ == CrtcType::MC6845)
+        lineStart2();
 }
 
 void Crtc::endOfLine(bool oneCharacter)
@@ -421,8 +458,14 @@ void Crtc::startRow()
         else
             vDisp_ = false;
     }
-    if (vcc_ == reg_[7] && !vsync_)
+    if (vcc_ == reg_[7] && !vsync_) {
         startVsync();
+        // Type 2: an HSYNC that reaches the line's last character hides
+        // the VSYNC that the next line's first one brings (15.6). This is
+        // asked before the line's own HSYNC is: one that starts on the
+        // first character hides nothing.
+        ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
+    }
 }
 
 void Crtc::startFrame()
@@ -441,6 +484,106 @@ void Crtc::startVsync()
 {
     vsync_ = true;
     vsc_ = 0;
+    ghostVsync_ = false;
+}
+
+// ---- CRTC 2 ----------------------------------------------------------------
+
+// The end of a line on the MC6845 (Compendium 10.3.3, 11.2.5, 12.4.1). A
+// line found to be the frame's last is followed by a new frame, or by the
+// lines of R5 first, whatever R4 and R9 have become since. Any other line
+// counts in the plainest way, and so do the lines of R5: C9 up to R9, then
+// C4 one further, R4 not being asked.
+void Crtc::endOfLine2()
+{
+    // The VSYNC lasts 16 lines whatever R3 says.
+    if (vsync_) {
+        vsc_ = (vsc_ + 1) & 0x0F;
+        if (vsc_ == 0)
+            vsync_ = false;
+    }
+    // An HSYNC that runs into the next line is asked its question here, on
+    // the line's last character.
+    if (hsync_)
+        hsyncEnds2();
+
+    if (inAdjust_) {
+        vtac_ = (vtac_ + 1) & 0x1F;
+        if (vtac_ == reg_[5])
+            startFrame();
+        else
+            countLine2();
+    } else if (lastLine_) {
+        if (reg_[5] != 0) {
+            inAdjust_ = true;
+            vtac_ = 0;
+            countLine2();
+        } else {
+            startFrame();
+        }
+    } else {
+        countLine2();
+    }
+}
+
+void Crtc::countLine2()
+{
+    if (vlc_ == reg_[9]) {
+        vlc_ = 0;
+        vcc_ = (vcc_ + 1) & 0x7F;
+        startRow();
+    } else {
+        vlc_ = (vlc_ + 1) & 0x1F;
+    }
+}
+
+void Crtc::lineStart2()
+{
+    r9AtStart_ = reg_[9];
+    judgeLineStart2();
+}
+
+// The look the chip takes on a line's first character: R4 as it is now, R9
+// as it was when the line began. The frame's end found there makes the line
+// the last one, unless the HSYNC before found it too, or an HSYNC lies on
+// this character (15.6). On a frame's first line, writes to R4 and R9 are
+// not looked at until the HSYNC says otherwise.
+void Crtc::judgeLineStart2()
+{
+    const bool atEnd = !inAdjust_ && vcc_ == reg_[4] && vlc_ == r9AtStart_;
+    lastLine_ = atEnd && !previousLast_ && !hsync_;
+    lastLineOpen_ = vcc_ != 0 || vlc_ != 0;
+}
+
+// R4 or R9 written. On the first character R4 still has its say in the look
+// just taken, either way. Anywhere else a write can only make the line the
+// frame's last, never unmake it, and it is not heard during an HSYNC.
+void Crtc::frameEndWritten2(bool r4)
+{
+    if (inAdjust_)
+        return;
+    if (hcc_ == 0 && r4) {
+        judgeLineStart2();
+        return;
+    }
+    if (!lastLine_ && lastLineOpen_ && !hsync_ && vcc_ == reg_[4] && vlc_ == reg_[9])
+        lastLine_ = true;
+}
+
+// The last character of an HSYNC: C4 and C9 at the frame's end there keep
+// the next line from being found the last as it begins; anything else lets
+// writes to R4 and R9 be looked at again.
+void Crtc::hsyncEnds2()
+{
+    if (hsyncJudged_)
+        return;
+    hsyncJudged_ = true;
+    if (vcc_ == reg_[4] && vlc_ == reg_[9]) {
+        previousLast_ = true;
+    } else {
+        previousLast_ = false;
+        lastLineOpen_ = true;
+    }
 }
 
 // ---- CRTC 3 and 4 ----------------------------------------------------------
