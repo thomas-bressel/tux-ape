@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <QTextCursor>
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -302,7 +303,7 @@ void MainWindow::createMenus()
     }
     registersAction_ = addItem(debug, tr("&Registers"), {}, [this] { showRegisters(); });
     addItem(debug, tr("&Breakpoints"), {}, [this] { showBreakpoints(); });
-    addItem(debug, tr("&Data Areas"));
+    addItem(debug, tr("&Data Areas"), {}, [this] { showDataAreas(); });
     addItem(debug, tr("&Timers"));
     addItem(debug, tr("&Find Graphics"));
 
@@ -437,12 +438,22 @@ void MainWindow::showRegisters()
     registers_->raise();
 }
 
+// The areas are the debugger's, whether it is up or not.
+void MainWindow::showDataAreas()
+{
+    if (!debugger_) {
+        showDebugger();
+        debugger_->hide();
+    }
+    debugger_->showDataAreas();
+}
+
 void MainWindow::showBreakpoints()
 {
     if (!breakpoints_) {
         breakpoints_ = new BreakpointsDialog(emulator_, this);
         connect(breakpoints_, &BreakpointsDialog::changed, this, [this] {
-            if (debugger_ && debugger_->isVisible())
+            if (debugger_)
                 debugger_->refresh();
         });
     }
@@ -468,6 +479,17 @@ void MainWindow::showDebugger()
         debugger_ = new DebuggerDialog(emulator_, this);
         connect(debugger_, &DebuggerDialog::runRequested, this, [this] { setPaused(false); });
         connect(debugger_, &DebuggerDialog::runningOn, this, &MainWindow::updateDebugActions);
+        connect(debugger_, &DebuggerDialog::breakpointsChanged, this, [this] {
+            if (breakpoints_ && breakpoints_->isVisible())
+                breakpoints_->refresh();
+        });
+        // A disassembly asked for as a source goes to a new tab of the
+        // assembler.
+        connect(debugger_, &DebuggerDialog::sourceProduced, this, [this](const QString& source) {
+            showAssembler();
+            QTextCursor cursor(assembler_->editor(assembler_->newFile())->document());
+            cursor.insertText(source);
+        });
     }
     debugger_->refresh();
     debugger_->show();

@@ -145,6 +145,7 @@ private:
     void showAssembler();
     void showRegisters();
     void showBreakpoints();
+    void showDataAreas();
     void updateDebugActions();
     // Shows the Setup window on one of its pages (SetupDialog::Page).
     void showSetup(int page);
