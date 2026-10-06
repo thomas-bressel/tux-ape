@@ -137,6 +137,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
         event->ignore();
         return;
     }
+    finishTapeRecording(false);
     emulator_->stop();
     event->accept();
 }
@@ -245,7 +246,8 @@ void MainWindow::createMenus()
         addItem(tape, tr("Re&wind Tape"), {}, deck([](tuxape::TapeDeck& d, uint64_t now) { d.rewind(now); }));
     removeTapeAction_ = addItem(tape, tr("R&emove Tape"), {}, [this] { removeTape(); });
     playTapeAction_ = addItem(tape, tr("&Press Play"), {}, deck([](tuxape::TapeDeck& d, uint64_t now) { d.play(now); }));
-    addItem(tape, tr("Press &Record"));
+    recordTapeAction_ = addItem(tape, tr("Press &Record"), {}, [this] { pressRecord(); });
+    recordTapeAction_->setCheckable(true);
     connect(tape, &QMenu::aboutToShow, this, &MainWindow::updateTapeActions);
     updateTapeActions();
     file->addSeparator();
@@ -1008,6 +1010,7 @@ bool MainWindow::insertTapeData(std::span<const uint8_t> data, const QString& na
         report(tr("%1 is not a tape image.").arg(QDir::toNativeSeparators(name)));
         return false;
     }
+    finishTapeRecording(false);
     emulator_->withMachine([&](tuxape::Cpc& cpc) {
         cpc.tape().insert(std::move(*tape));
         cpc.tape().play(cpc.microseconds());
@@ -1029,6 +1032,7 @@ void MainWindow::chooseTape()
 
 void MainWindow::removeTape()
 {
+    finishTapeRecording(false);
     emulator_->withMachine([](tuxape::Cpc& cpc) { cpc.tape().eject(); });
     tapePath_.clear();
     if (tapeDialog_)
@@ -1043,6 +1047,8 @@ void MainWindow::showTapeControl()
         tapeDialog_->setTape(tapePath_);
         connect(tapeDialog_, &TapeDialog::openRequested, this, &MainWindow::chooseTape);
         connect(tapeDialog_, &TapeDialog::ejectRequested, this, &MainWindow::removeTape);
+        connect(tapeDialog_, &TapeDialog::recordRequested, this, &MainWindow::pressRecord);
+        tapeDialog_->setRecording(tapeRecording_);
     }
     tapeDialog_->show();
     tapeDialog_->raise();
@@ -1051,8 +1057,78 @@ void MainWindow::showTapeControl()
 void MainWindow::updateTapeActions()
 {
     const bool loaded = emulator_->withMachine([](tuxape::Cpc& cpc) { return cpc.tape().loaded(); });
-    for (QAction* action : {rewindTapeAction_, removeTapeAction_, playTapeAction_})
-        action->setEnabled(loaded);
+    const bool recording = !tapeRecording_.isEmpty();
+    removeTapeAction_->setEnabled(loaded);
+    // Record holds Play down: Stop comes first.
+    for (QAction* action : {rewindTapeAction_, playTapeAction_})
+        action->setEnabled(loaded && !recording);
+    recordTapeAction_->setChecked(recording);
+}
+
+// "Press Record": asks for the file to record to, or ends the recording
+// under way.
+void MainWindow::pressRecord()
+{
+    if (!tapeRecording_.isEmpty()) {
+        stopTapeRecording();
+        return;
+    }
+    QString path = QFileDialog::getSaveFileName(this, tr("Tape Recording"), tapeFolder_,
+                                                tr("Tape images (*.cdt);;All files (*)"));
+    if (path.isEmpty()) {
+        updateTapeActions();
+        return;
+    }
+    if (QFileInfo(path).suffix().isEmpty())
+        path += QStringLiteral(".cdt");
+    tapeFolder_ = QFileInfo(path).absolutePath();
+    recordTape(path);
+}
+
+bool MainWindow::recordTape(const QString& path)
+{
+    finishTapeRecording(false);
+    emulator_->withMachine([](tuxape::Cpc& cpc) { cpc.tape().record(cpc.microseconds()); });
+    tapeRecording_ = path;
+    if (tapeDialog_)
+        tapeDialog_->setRecording(tapeRecording_);
+    updateTapeActions();
+    return true;
+}
+
+bool MainWindow::stopTapeRecording()
+{
+    return finishTapeRecording(true);
+}
+
+// Writes what was recorded to its file, and puts that tape in the deck if
+// asked to. Nothing is done when no recording is under way.
+bool MainWindow::finishTapeRecording(bool intoDeck)
+{
+    if (tapeRecording_.isEmpty())
+        return false;
+    const QString path = std::exchange(tapeRecording_, QString());
+    const std::vector<uint32_t> recorded = emulator_->withMachine([](tuxape::Cpc& cpc) {
+        cpc.tape().stop(cpc.microseconds());
+        return cpc.tape().takeRecording();
+    });
+    if (tapeDialog_)
+        tapeDialog_->setRecording(QString());
+    updateTapeActions();
+    const std::vector<uint8_t> file = tuxape::Tape::cdtFromRecording(recorded);
+    if (file.empty()) {
+        report(tr("Nothing was written to the tape: %1 was not made.").arg(QDir::toNativeSeparators(path)));
+        return false;
+    }
+    QFile out(path);
+    if (!out.open(QIODevice::WriteOnly) ||
+        out.write(reinterpret_cast<const char*>(file.data()), static_cast<qint64>(file.size())) !=
+            static_cast<qint64>(file.size())) {
+        report(tr("Cannot write %1: %2").arg(QDir::toNativeSeparators(path), out.errorString()));
+        return false;
+    }
+    out.close();
+    return !intoDeck || insertTapeFile(path);
 }
 
 // The Library window: the program chosen there goes into the machine, a
@@ -1332,6 +1408,7 @@ void MainWindow::driveSetup()
     connect(&dialog, &DriveSetupDialog::openRequested, this, &MainWindow::chooseDisc);
     connect(&dialog, &DriveSetupDialog::removeRequested, this, &MainWindow::removeDisc);
     connect(&dialog, &DriveSetupDialog::flipRequested, this, &MainWindow::flipDisc);
+    connect(&dialog, &DriveSetupDialog::editRequested, this, &MainWindow::editDisc);
     connect(&dialog, &DriveSetupDialog::swapRequested, this, &MainWindow::swapDiscs);
     dialog.exec();
     screen_->setFocus();

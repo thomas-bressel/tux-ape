@@ -10,6 +10,8 @@
 #include <QApplication>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QPushButton>
+#include <QTabBar>
 #include <QTest>
 
 #include "check.h"
@@ -140,6 +142,23 @@ int main(int argc, char* argv[])
     DriveSetupDialog setup(discs, &window);
     setup.show();
     QTest::qWait(50);
+    // Edit asks for the disc editor, for a drive with a disc in it.
+    {
+        auto* edit = setup.findChild<QPushButton*>("bEdit");
+        CHECK(edit && edit->isEnabled());
+        int asked = -1;
+        QObject::connect(&setup, &DriveSetupDialog::editRequested, [&](int drive) { asked = drive; });
+        if (edit)
+            edit->click();
+        CHECK_EQ(asked, 0);
+        auto* tabs = setup.findChild<QTabBar*>();
+        CHECK(tabs != nullptr);
+        if (tabs && edit) {
+            tabs->setCurrentIndex(1);
+            CHECK(!edit->isEnabled());
+            tabs->setCurrentIndex(0);
+        }
+    }
     grab(setup, "drive_setup.png");
     FormatDialog format(&window);
     format.show();

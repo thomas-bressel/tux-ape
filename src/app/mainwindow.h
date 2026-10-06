@@ -56,6 +56,13 @@ public:
     // Puts a tape (a CDT file) in the deck, rewound and with Play pressed:
     // it runs when the CPC starts the motor.
     bool insertTapeFile(const QString& path);
+    // Record: what the machine writes to tape from now on goes into a CDT
+    // file, written when the recording is stopped; the deck then holds it,
+    // ready to be loaded. Stopping gives false if the file could not be
+    // written, or if nothing was written to the tape, which leaves no file.
+    bool recordTape(const QString& path);
+    bool stopTapeRecording();
+    QString tapeRecording() const { return tapeRecording_; }  // the file, while recording
     // Records a session to a file, from the machine's present state or
     // from a cold reset, until stopSessionRecording(); and plays one back.
     // Problems are reported to the user.
@@ -130,6 +137,8 @@ private:
     QAction* rewindTapeAction_ = nullptr;
     QAction* removeTapeAction_ = nullptr;
     QAction* playTapeAction_ = nullptr;
+    QAction* recordTapeAction_ = nullptr;
+    QString tapeRecording_;
     TapeDialog* tapeDialog_ = nullptr;
     QString tapePath_;    // the file the tape in the deck came from
     QString tapeFolder_;  // where the last tape image was opened
@@ -209,6 +218,8 @@ private:
     // The cassette deck.
     void chooseTape();
     void removeTape();
+    void pressRecord();
+    bool finishTapeRecording(bool intoDeck);
     void showTapeControl();
     void updateTapeActions();
     // A snapshot or a tape given as what its file holds; `name` is what the

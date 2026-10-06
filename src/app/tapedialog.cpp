@@ -42,7 +42,7 @@ TapeDialog::TapeDialog(Emulator* emulator, QWidget* parent)
     rewind_ = key("bRewind", QStyle::SP_MediaSeekBackward, tr("Rewind"));
     play_ = key("bPlay", QStyle::SP_MediaPlay, tr("Play"));
     record_ = key("bRecord", QStyle::SP_DialogNoButton, tr("Record"));
-    record_->setEnabled(false);  // writing to tape is to come
+    record_->setCheckable(true);
     stop_ = key("bStop", QStyle::SP_MediaStop, tr("Stop"));
     eject_ = key("bEject", QStyle::SP_ArrowUp, tr("Eject"));
     play_->setCheckable(true);
@@ -62,9 +62,23 @@ TapeDialog::TapeDialog(Emulator* emulator, QWidget* parent)
         keys->addWidget(button);
     keys->addStretch(1);
     keys->addWidget(led_);
+    // What is being recorded, and how much tape it has taken.
+    recordingPanel_ = new QWidget;
+    recordingPanel_->setObjectName("pRecording");
+    recordingName_ = new QLineEdit;
+    recordingName_->setObjectName("edRecord");
+    recordingName_->setReadOnly(true);
+    recordingTime_ = new QLabel;
+    recordingTime_->setObjectName("lRecordTime");
+    auto* recording = new QHBoxLayout(recordingPanel_);
+    recording->setContentsMargins(0, 0, 0, 0);
+    recording->addWidget(new QLabel(tr("Recording:")));
+    recording->addWidget(recordingName_, 1);
+    recording->addWidget(recordingTime_);
     auto* layout = new QVBoxLayout(this);
     layout->addLayout(grid);
     layout->addLayout(keys);
+    layout->addWidget(recordingPanel_);
     setMinimumWidth(300);
 
     auto deck = [this](auto&& act) {
@@ -77,8 +91,18 @@ TapeDialog::TapeDialog(Emulator* emulator, QWidget* parent)
             [deck] { deck([](tuxape::TapeDeck& tape, uint64_t now) { tape.rewind(now); }); });
     connect(play_, &QToolButton::clicked, this,
             [deck] { deck([](tuxape::TapeDeck& tape, uint64_t now) { tape.play(now); }); });
-    connect(stop_, &QToolButton::clicked, this,
-            [deck] { deck([](tuxape::TapeDeck& tape, uint64_t now) { tape.stop(now); }); });
+    connect(record_, &QToolButton::clicked, this, [this] {
+        emit recordRequested();
+        // The key stays up if no recording came of it.
+        refresh();
+    });
+    connect(stop_, &QToolButton::clicked, this, [this, deck] {
+        // Stop ends a recording, which the main window writes to its file.
+        if (recording_)
+            emit recordRequested();
+        else
+            deck([](tuxape::TapeDeck& tape, uint64_t now) { tape.stop(now); });
+    });
     connect(block_, &QComboBox::activated, this, [deck](int index) {
         deck([index](tuxape::TapeDeck& tape, uint64_t now) { tape.seekBlock(static_cast<size_t>(index), now); });
     });
@@ -87,6 +111,17 @@ TapeDialog::TapeDialog(Emulator* emulator, QWidget* parent)
     connect(timer_, &QTimer::timeout, this, &TapeDialog::refresh);
     timer_->start(100);
     setTape(QString());
+    setRecording(QString());
+}
+
+void TapeDialog::setRecording(const QString& path)
+{
+    recording_ = !path.isEmpty();
+    recordingName_->setText(QFileInfo(path).fileName());
+    recordingName_->setCursorPosition(0);
+    recordingName_->setToolTip(QDir::toNativeSeparators(path));
+    recordingPanel_->setVisible(recording_);
+    refresh();
 }
 
 void TapeDialog::setTape(const QString& path)
@@ -107,23 +142,33 @@ void TapeDialog::setTape(const QString& path)
 void TapeDialog::refresh()
 {
     struct State {
-        bool loaded, playing, motor;
+        bool loaded, playing, motor, recording;
         int block;
+        uint64_t recorded;
     };
     const State state = emulator_->withMachine([](tuxape::Cpc& cpc) {
         tuxape::TapeDeck& deck = cpc.tape();
         // Looking at the head moves the tape on to where it now is.
         deck.level(cpc.microseconds());
-        return State{deck.loaded(), deck.playing(), deck.motor(), static_cast<int>(deck.block())};
+        return State{deck.loaded(),    deck.playing(),                 deck.motor(),
+                     deck.recording(), static_cast<int>(deck.block()), deck.recordedTime(cpc.microseconds())};
     });
     block_->setEnabled(state.loaded);
-    for (QToolButton* button : {rewind_, play_, stop_, eject_})
-        button->setEnabled(state.loaded);
-    play_->setChecked(state.playing);
+    eject_->setEnabled(state.loaded);
+    // Record holds Play down: Stop comes first.
+    for (QToolButton* button : {rewind_, play_})
+        button->setEnabled(state.loaded && !state.recording);
+    stop_->setEnabled(state.loaded || state.recording);
+    play_->setChecked(state.playing || state.recording);
+    record_->setChecked(state.recording);
+    if (state.recording) {
+        const int seconds = static_cast<int>(state.recorded / 1000000);
+        recordingTime_->setText(QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0')));
+    }
     // The list is left alone while it is open for a choice.
     if (state.loaded && !block_->view()->isVisible() && block_->currentIndex() != state.block)
         block_->setCurrentIndex(state.block);
-    const bool lit = state.motor && state.playing;
+    const bool lit = state.motor && (state.playing || state.recording);
     led_->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #404040; border-radius: 7px")
                             .arg(lit ? "#30e030" : "#205020"));
     led_->setProperty("lit", lit);

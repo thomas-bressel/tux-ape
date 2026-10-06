@@ -401,6 +401,147 @@ bool loadsFromTape(unsigned halfZero, bool asRecording = false)
     return true;
 }
 
+// Record: what the firmware saves goes on a new tape, which makes a CDT
+// file of Turbo Data blocks that the firmware loads again.
+bool savesToTape(bool fast)
+{
+    const auto machine = [](Cpc& cpc) { return setupStockMachine(cpc, CpcModel::Cpc6128, defaultRomDir(), nullptr); };
+    Bytes file;
+    {
+        Cpc cpc;
+        if (!machine(cpc))
+            return false;
+        AutoType keys(cpc.keyboard());
+        auto frames = [&](int count) {
+            for (int i = 0; i < count; ++i) {
+                keys.frame();
+                cpc.runFrame();
+            }
+        };
+        auto waitFor = [&](const char* text, int seconds) {
+            for (int i = 0; i < seconds * 50; ++i) {
+                frames(1);
+                if (readScreenText(cpc).find(text) != std::string::npos)
+                    return true;
+            }
+            std::printf("no \"%s\" on the screen:\n%s\n", text, readScreenText(cpc).c_str());
+            return false;
+        };
+        frames(150);
+        keys.type(fast ? "|TAPE\nSPEED WRITE 1\n" : "|TAPE\n");
+        keys.type("10 PRINT \"KEPT \";3*14\nSAVE \"TEST\"\n");
+        CHECK(waitFor("Press REC and PLAY then any key:", 30));
+        CHECK(!cpc.tape().recording());
+        cpc.tape().record(cpc.microseconds());
+        CHECK(cpc.tape().recording() && !cpc.tape().playing());
+        // The tape stands still until the motor runs.
+        frames(25);
+        CHECK_EQ(cpc.tape().recordedTime(cpc.microseconds()), 0);
+        keys.type(" ");
+        CHECK(waitFor("Saving TEST block 1", 30));
+        CHECK(cpc.tape().motor());
+        for (int i = 0; i < 60 * 50 && cpc.tape().motor(); ++i)
+            frames(1);
+        CHECK(!cpc.tape().motor());
+        frames(25);
+        const uint64_t length = cpc.tape().recordedTime(cpc.microseconds());
+        CHECK(length > 3000000 && length < 30000000);
+        cpc.tape().stop(cpc.microseconds());
+        CHECK(!cpc.tape().recording());
+        const std::vector<uint32_t> recorded = cpc.tape().takeRecording();
+        CHECK(cpc.tape().takeRecording().empty());
+        uint64_t sum = 0;
+        for (uint32_t pulse : recorded)
+            sum += pulse;
+        CHECK_EQ(sum, length);
+        file = Tape::cdtFromRecording(recorded);
+        CHECK(!file.empty());
+    }
+    const auto tape = Tape::parse(file);
+    CHECK(tape.has_value());
+    if (!tape)
+        return true;
+    // The file's header and the file, each a block of the firmware's.
+    int turbo = 0;
+    for (const Tape::Block& block : tape->blocks()) {
+        CHECK(block.id == 0x11 || block.id == 0x20);
+        turbo += block.id == 0x11;
+    }
+    CHECK_EQ(turbo, 2);
+    // Small: the bits, not their pulses.
+    CHECK(file.size() < 1200);
+
+    Cpc cpc;
+    machine(cpc);
+    AutoType keys(cpc.keyboard());
+    auto frames = [&](int count) {
+        for (int i = 0; i < count; ++i) {
+            keys.frame();
+            cpc.runFrame();
+        }
+    };
+    cpc.tape().insert(*tape);
+    cpc.tape().play(cpc.microseconds());
+    frames(150);
+    keys.type("|TAPE\nRUN\"\n");
+    bool kept = false;
+    for (int i = 0; i < 60 * 50 && !kept; ++i) {
+        frames(1);
+        if (i == 100)
+            keys.type(" ");
+        kept = readScreenText(cpc).find("KEPT  42") != std::string::npos;
+    }
+    if (!kept)
+        std::printf("the saved program did not load:\n%s\n", readScreenText(cpc).c_str());
+    CHECK(kept);
+    return true;
+}
+
+// What is not a block of that kind is kept pulse by pulse.
+void testRecordingFile()
+{
+    CHECK(Tape::cdtFromRecording({}).empty());
+    CHECK(Tape::cdtFromRecording(std::vector<uint32_t>{1000000}).empty());
+    CHECK(Tape::cdtFromRecording(std::vector<uint32_t>{1000000, 2000000}).empty());
+    // Two seconds of tape, five pulses, 20 ms, three more, and a second.
+    const std::vector<uint32_t> recorded = {2000000, 100, 200, 300, 400, 500, 20000, 1000, 2000, 3000, 1000000};
+    const Bytes file = Tape::cdtFromRecording(recorded);
+    const auto tape = Tape::parseCdt(file);
+    CHECK(tape.has_value());
+    if (!tape)
+        return;
+    std::vector<uint8_t> ids;
+    for (const Tape::Block& block : tape->blocks())
+        ids.push_back(block.id);
+    CHECK(ids == (std::vector<uint8_t>{0x20, 0x13, 0x20, 0x13, 0x20}));
+    const std::vector<uint32_t>& pulses = tape->pulses();
+    const size_t first = tape->blocks()[1].firstPulse, second = tape->blocks()[3].firstPulse;
+    CHECK_EQ(tape->blocks()[2].firstPulse - first, 5);
+    CHECK_EQ(tape->blocks()[4].firstPulse - second, 3);
+    for (size_t i = 0; i < 5 && first + i < pulses.size(); ++i)
+        CHECK_EQ(pulses[first + i] & Tape::kLength, (i + 1) * 350);
+    for (size_t i = 0; i < 3 && second + i < pulses.size(); ++i)
+        CHECK_EQ(pulses[second + i] & Tape::kLength, (i + 1) * 3500);
+
+    // A deck: the tape moves with the motor only.
+    TapeDeck deck;
+    deck.write(true, 10);
+    deck.record(1000);
+    deck.write(false, 1500);  // standing still
+    deck.setMotor(true, 2000);
+    deck.write(true, 2300);
+    deck.write(true, 2350);  // no change
+    deck.write(false, 2700);
+    deck.setMotor(false, 3000);
+    deck.write(true, 3500);
+    deck.setMotor(true, 4000);
+    deck.write(false, 4100);
+    CHECK_EQ(deck.recordedTime(4200), 1200);
+    deck.stop(4250);
+    CHECK_EQ(deck.recordedTime(9000), 1250);
+    CHECK(deck.takeRecording() == (std::vector<uint32_t>{300, 400, 400, 150}));
+}
+
 }  // namespace
 
 // "Tape Loading Sounds": the tape's signal reaches the sound output while
@@ -458,7 +599,9 @@ int main()
     testRecordings();
     // The firmware's two speeds: 1000 baud and 2000 baud; and a recording
     // of the first, as a WAV file.
-    const bool roms = loadsFromTape(1167) && loadsFromTape(583) && loadsFromTape(1167, true);
+    testRecordingFile();
+    const bool roms = loadsFromTape(1167) && loadsFromTape(583) && loadsFromTape(1167, true) && savesToTape(false) &&
+                      savesToTape(true);
     if (!roms)
         std::printf("ROM images not found; loading through the firmware was not tested\n");
     const int result = checkSummary("tape");

@@ -159,6 +159,7 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
             amxArmed_ = true;
         updatePsgBus();
         tape_.setMotor(ppi_.outputC() & 0x10, microseconds());
+        tape_.write(ppi_.outputC() & 0x20, microseconds());
     }
     // Disc interface: &FA7E is the motor latch, &FB7F the FDC's data port.
     if (!(port & 0x0480)) {

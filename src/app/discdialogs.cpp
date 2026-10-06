@@ -103,8 +103,8 @@ DriveSetupDialog::DriveSetupDialog(DiscManager* discs, QWidget* parent)
     singleSided_ = new QCheckBox(tr("Allow &Single-sided read"), page);
     temporaryWrites_ = new QCheckBox(tr("Allow Temporary &Writes"), page);
     promptToSave_ = new QCheckBox(tr("&Prompt to Save Changes"), page);
-    auto* edit = new QPushButton(tr("&Edit"), page);
-    edit->setEnabled(false);  // the disc editor is not written yet
+    edit_ = new QPushButton(tr("&Edit"), page);
+    edit_->setObjectName("bEdit");
     flip_ = new QPushButton(tr("&Flip"), page);
 
     auto* options = new QVBoxLayout;
@@ -112,7 +112,7 @@ DriveSetupDialog::DriveSetupDialog(DiscManager* discs, QWidget* parent)
     options->addWidget(temporaryWrites_);
     options->addWidget(promptToSave_);
     auto* pageButtons = new QVBoxLayout;
-    pageButtons->addWidget(edit);
+    pageButtons->addWidget(edit_);
     pageButtons->addWidget(flip_);
     pageButtons->addStretch(1);
     auto* bottom = new QHBoxLayout;
@@ -165,6 +165,7 @@ DriveSetupDialog::DriveSetupDialog(DiscManager* discs, QWidget* parent)
         refresh();  // the owner may have declined
     });
     connect(flip_, &QPushButton::clicked, this, [this] { emit flipRequested(drive()); });
+    connect(edit_, &QPushButton::clicked, this, [this] { emit editRequested(drive()); });
     connect(swap, &QPushButton::clicked, this, &DriveSetupDialog::swapRequested);
     connect(ok, &QPushButton::clicked, this, &DriveSetupDialog::accept);
     connect(cancel, &QPushButton::clicked, this, &DriveSetupDialog::reject);
@@ -184,6 +185,7 @@ void DriveSetupDialog::refresh()
     diskFile_->setChecked(info.present);
     diskFile_->setEnabled(info.present);
     singleSided_->setChecked(singleSidedChoice_[drive()]);
+    edit_->setEnabled(info.present);
 
     if (!info.present) {
         description_->setText(tr("No disk selected for drive"));

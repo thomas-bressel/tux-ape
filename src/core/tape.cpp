@@ -1,7 +1,9 @@
 #include "core/tape.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <utility>
 
 namespace tuxape {
 
@@ -337,6 +339,157 @@ std::optional<Tape> Tape::parse(std::span<const uint8_t> file)
     return parseVoc(file);
 }
 
+namespace {
+
+// Longer than any pulse a program writes: the silence between two blocks.
+constexpr uint32_t kGap = 5000;  // microseconds
+
+void putWord(std::vector<uint8_t>& out, double value)
+{
+    const auto word = static_cast<unsigned>(std::clamp(std::lround(value), 0L, 65535L));
+    out.push_back(static_cast<uint8_t>(word));
+    out.push_back(static_cast<uint8_t>(word >> 8));
+}
+
+// Microseconds in the file's T-states.
+double tstates(double microseconds)
+{
+    return microseconds * 3.5;
+}
+
+// A block as the firmware and most loaders write them: a leader tone, two
+// sync pulses, then bits of two equal pulses each, short or long. False
+// if the pulses are not that.
+bool turboBlock(std::span<const uint32_t> pulses, unsigned pause, std::vector<uint8_t>& out)
+{
+    if (pulses.size() < 64 + 2 + 2)
+        return false;
+    std::vector<uint32_t> first(pulses.begin(), pulses.begin() + 33);
+    std::nth_element(first.begin(), first.begin() + 16, first.end());
+    const double reference = first[16];
+    size_t pilot = 0;
+    double pilotSum = 0;
+    while (pilot < pulses.size() && std::abs(pulses[pilot] - reference) <= reference * 0.2)
+        pilotSum += pulses[pilot++];
+    if (pilot < 64 || pilot > 65535 || pilot + 2 >= pulses.size())
+        return false;
+    const double pilotLength = pilotSum / static_cast<double>(pilot);
+    const double sync1 = pulses[pilot], sync2 = pulses[pilot + 1];
+    if (sync1 >= pilotLength * 0.8 || sync2 >= pilotLength * 0.8)
+        return false;
+
+    // The bits: what counts is the length of the two pulses together, which
+    // write precompensation moves the middle of.
+    const std::span<const uint32_t> data = pulses.subspan(pilot + 2);
+    std::vector<double> bits;
+    for (size_t i = 0; i + 1 < data.size(); i += 2)
+        bits.push_back(static_cast<double>(data[i]) + data[i + 1]);
+    // The last change of level of a block is the end of its last bit's
+    // first half: the second is as long.
+    if (data.size() % 2)
+        bits.push_back(2.0 * data.back());
+    const auto [low, high] = std::minmax_element(bits.begin(), bits.end());
+    double zero = *low, one = *high;
+    if (one < zero * 1.5) {
+        // All the same: ones if they are as long as the leader's.
+        const double mean = (zero + one) / 2;
+        const bool ones = mean > pilotLength * 1.5;
+        zero = ones ? mean / 2 : mean;
+        one = ones ? mean : mean * 2;
+    } else {
+        for (int pass = 0; pass < 3; ++pass) {
+            const double middle = (zero + one) / 2;
+            double sums[2] = {0, 0};
+            int counts[2] = {0, 0};
+            for (double bit : bits) {
+                sums[bit >= middle] += bit;
+                ++counts[bit >= middle];
+            }
+            if (!counts[0] || !counts[1])
+                return false;
+            zero = sums[0] / counts[0];
+            one = sums[1] / counts[1];
+        }
+    }
+    if (one < zero * 1.6)
+        return false;
+    const double middle = (zero + one) / 2;
+    std::vector<uint8_t> bytes((bits.size() + 7) / 8);
+    for (size_t i = 0; i < bits.size(); ++i) {
+        const bool set = bits[i] >= middle;
+        if (std::abs(bits[i] - (set ? one : zero)) > (set ? one : zero) * 0.3)
+            return false;
+        if (set)
+            bytes[i / 8] |= static_cast<uint8_t>(0x80 >> (i % 8));
+    }
+
+    out.push_back(0x11);
+    putWord(out, tstates(pilotLength));
+    putWord(out, tstates(sync1));
+    putWord(out, tstates(sync2));
+    putWord(out, tstates(zero / 2));
+    putWord(out, tstates(one / 2));
+    putWord(out, static_cast<double>(pilot));
+    out.push_back(bits.size() % 8 ? static_cast<uint8_t>(bits.size() % 8) : 8);
+    putWord(out, pause);
+    out.push_back(static_cast<uint8_t>(bytes.size()));
+    out.push_back(static_cast<uint8_t>(bytes.size() >> 8));
+    out.push_back(static_cast<uint8_t>(bytes.size() >> 16));
+    out.insert(out.end(), bytes.begin(), bytes.end());
+    return true;
+}
+
+void pauseBlock(std::vector<uint8_t>& out, unsigned milliseconds)
+{
+    // A pause of no length would stop the tape.
+    if (!milliseconds)
+        return;
+    out.push_back(0x20);
+    putWord(out, milliseconds);
+}
+
+}  // namespace
+
+std::vector<uint8_t> Tape::cdtFromRecording(std::span<const uint32_t> microseconds)
+{
+    std::vector<uint8_t> out = {'Z', 'X', 'T', 'a', 'p', 'e', '!', 0x1A, 1, 13};
+    const auto milliseconds = [](uint64_t gap) { return static_cast<unsigned>(std::min<uint64_t>(gap / 1000, 65535)); };
+    // The first and the last are the tape before and after what was
+    // written, however short.
+    size_t at = 0;
+    uint64_t silence = 0;
+    const size_t end = microseconds.empty() ? 0 : microseconds.size() - 1;
+    if (!microseconds.empty())
+        silence = microseconds[at++];
+    while (at < end && microseconds[at] >= kGap)
+        silence += microseconds[at++];
+    pauseBlock(out, milliseconds(silence));
+    bool written = false;
+    while (at < end) {
+        size_t next = at;
+        while (next < end && microseconds[next] < kGap)
+            ++next;
+        const std::span<const uint32_t> pulses = microseconds.subspan(at, next - at);
+        silence = 0;
+        for (at = next; at < microseconds.size() && (at == end || microseconds[at] >= kGap); ++at)
+            silence += microseconds[at];
+        written = true;
+        if (turboBlock(pulses, milliseconds(silence), out))
+            continue;
+        for (size_t i = 0; i < pulses.size(); i += 255) {
+            const size_t count = std::min<size_t>(255, pulses.size() - i);
+            out.push_back(0x13);
+            out.push_back(static_cast<uint8_t>(count));
+            for (size_t j = 0; j < count; ++j)
+                putWord(out, tstates(pulses[i + j]));
+        }
+        pauseBlock(out, milliseconds(silence));
+    }
+    if (!written)
+        out.clear();
+    return out;
+}
+
 void TapeDeck::insert(Tape tape)
 {
     tape_ = std::move(tape);
@@ -391,6 +544,9 @@ void TapeDeck::advance(uint64_t now)
 void TapeDeck::play(uint64_t now)
 {
     advance(now);
+    // With Record down the key is down already.
+    if (recording_)
+        return;
     playing_ = loaded_ && !atEnd();
 }
 
@@ -398,6 +554,53 @@ void TapeDeck::stop(uint64_t now)
 {
     advance(now);
     playing_ = false;
+    if (recording_) {
+        roll(now);
+        recorded_.push_back(static_cast<uint32_t>(std::min<uint64_t>(recordedTime_ - lastEdge_, UINT32_MAX)));
+        recording_ = false;
+    }
+}
+
+void TapeDeck::record(uint64_t now)
+{
+    stop(now);
+    recorded_.clear();
+    recording_ = true;
+    recordedTime_ = lastEdge_ = 0;
+    recordMark_ = now;
+}
+
+// Moves the tape being recorded on to where it now is.
+void TapeDeck::roll(uint64_t now)
+{
+    if (motor_ && now > recordMark_)
+        recordedTime_ += now - recordMark_;
+    recordMark_ = now;
+}
+
+void TapeDeck::write(bool level, uint64_t now)
+{
+    if (level == written_)
+        return;
+    written_ = level;
+    // A tape standing still keeps nothing of it.
+    if (!recording_ || !motor_)
+        return;
+    roll(now);
+    recorded_.push_back(static_cast<uint32_t>(std::min<uint64_t>(recordedTime_ - lastEdge_, UINT32_MAX)));
+    lastEdge_ = recordedTime_;
+}
+
+uint64_t TapeDeck::recordedTime(uint64_t now)
+{
+    if (recording_)
+        roll(now);
+    return recordedTime_;
+}
+
+std::vector<uint32_t> TapeDeck::takeRecording()
+{
+    return std::exchange(recorded_, {});
 }
 
 void TapeDeck::seekBlock(size_t block, uint64_t now)
@@ -415,6 +618,8 @@ void TapeDeck::setMotor(bool on, uint64_t now)
     if (on == motor_)
         return;
     advance(now);
+    if (recording_)
+        roll(now);
     motor_ = on;
 }
 

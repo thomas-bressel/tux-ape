@@ -42,6 +42,7 @@ signals:
     void openRequested(int drive);
     void removeRequested(int drive);
     void flipRequested(int drive);
+    void editRequested(int drive);
     void swapRequested();
 
 private:
@@ -54,6 +55,7 @@ private:
     QCheckBox* temporaryWrites_;
     QCheckBox* promptToSave_;
     QPushButton* flip_;
+    QPushButton* edit_;
     bool singleSidedChoice_[4] = {};  // one for each drive there may be
 
     int drive() const;

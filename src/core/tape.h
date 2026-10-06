@@ -39,6 +39,12 @@ public:
     // Whichever of the three the file is.
     static std::optional<Tape> parse(std::span<const uint8_t> file);
 
+    // A CDT file of what a deck recorded (TapeDeck::takeRecording). What
+    // reads as a leader tone, a sync and data bits, as the firmware's
+    // blocks do, makes a Turbo Data block; anything else is kept pulse by
+    // pulse. Empty if nothing was written to the tape.
+    static std::vector<uint8_t> cdtFromRecording(std::span<const uint32_t> microseconds);
+
     const std::vector<Block>& blocks() const { return blocks_; }
     const std::vector<uint32_t>& pulses() const { return pulses_; }
 
@@ -52,6 +58,9 @@ private:
 // The cassette deck: a tape, the Play key, and the motor, which the CPC
 // switches through a relay (PPI port C, bit 4). The tape moves while Play
 // is down and the motor runs; what passes the head is bit 7 of PPI port B.
+//
+// With Record down instead, what the CPC writes (PPI port C, bit 5) goes on
+// a new tape, which moves while the motor runs.
 //
 // Times are the machine's clock, in microseconds. Nothing is done between
 // two calls: the tape is moved on when it is next looked at.
@@ -76,6 +85,18 @@ public:
     bool motor() const { return motor_; }
     bool level(uint64_t now);
 
+    // Record: Play comes up, and Stop ends the recording.
+    void record(uint64_t now);
+    bool recording() const { return recording_; }
+    // The line the CPC writes to tape with.
+    void write(bool level, uint64_t now);
+    // How much tape has gone by since Record was pressed, in microseconds.
+    uint64_t recordedTime(uint64_t now);
+    // What was recorded, the deck keeping none of it: the time before the
+    // first change of level, the time from each change to the next, and
+    // the time after the last, in microseconds.
+    std::vector<uint32_t> takeRecording();
+
 private:
     Tape tape_;
     bool loaded_ = false;
@@ -87,7 +108,15 @@ private:
     uint64_t remaining_ = 0;  // what is left of the one under way, in half T-states
     uint64_t time_ = 0;       // when the tape was last moved on
 
+    bool recording_ = false;
+    bool written_ = false;       // the level of the write line
+    std::vector<uint32_t> recorded_;
+    uint64_t recordedTime_ = 0;  // tape gone by, up to recordMark_
+    uint64_t recordMark_ = 0;
+    uint64_t lastEdge_ = 0;      // where on the tape the level last changed
+
     void advance(uint64_t now);
+    void roll(uint64_t now);
 };
 
 }  // namespace tuxape
