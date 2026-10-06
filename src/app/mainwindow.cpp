@@ -20,6 +20,7 @@
 #include <QVBoxLayout>
 
 #include "assemblerdialog.h"
+#include "breakpointsdialog.h"
 #include "debuggerdialog.h"
 #include "registersdialog.h"
 #include "discdialogs.h"
@@ -300,7 +301,7 @@ void MainWindow::createMenus()
         addAction(action);
     }
     registersAction_ = addItem(debug, tr("&Registers"), {}, [this] { showRegisters(); });
-    addItem(debug, tr("&Breakpoints"));
+    addItem(debug, tr("&Breakpoints"), {}, [this] { showBreakpoints(); });
     addItem(debug, tr("&Data Areas"));
     addItem(debug, tr("&Timers"));
     addItem(debug, tr("&Find Graphics"));
@@ -436,9 +437,25 @@ void MainWindow::showRegisters()
     registers_->raise();
 }
 
+void MainWindow::showBreakpoints()
+{
+    if (!breakpoints_) {
+        breakpoints_ = new BreakpointsDialog(emulator_, this);
+        connect(breakpoints_, &BreakpointsDialog::changed, this, [this] {
+            if (debugger_ && debugger_->isVisible())
+                debugger_->refresh();
+        });
+    }
+    breakpoints_->refresh();
+    breakpoints_->show();
+    breakpoints_->raise();
+}
+
 void MainWindow::machineStopped()
 {
     updateDebugActions();
+    if (breakpoints_ && breakpoints_->isVisible())
+        breakpoints_->refresh();
     if (registers_ && registers_->isVisible())
         registers_->refresh();
     if (emulator_->isPaused())
@@ -475,6 +492,8 @@ void MainWindow::showAssembler()
             screen_->setFocus();
         });
         connect(assembler_, &AssemblerDialog::breakpointsChanged, this, [this] {
+            if (breakpoints_ && breakpoints_->isVisible())
+                breakpoints_->refresh();
             if (debugger_ && debugger_->isVisible())
                 debugger_->refresh();
         });

@@ -12,6 +12,8 @@ add_library(tuxape_app STATIC
     audiooutput.h
     avirecorder.cpp
     avirecorder.h
+    breakpointsdialog.cpp
+    breakpointsdialog.h
     debuggerdialog.cpp
     debuggerdialog.h
     disceditordialog.cpp

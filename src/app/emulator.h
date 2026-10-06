@@ -1,6 +1,9 @@
 #pragma once
 
 #include <atomic>
+#include <map>
+#include <string>
+#include <vector>
 #include <condition_variable>
 #include <mutex>
 #include <set>
@@ -159,6 +162,47 @@ public:
     std::set<uint16_t> breakpoints() const { return breakpoints_; }
     void setBreakpointsEnabled(bool enabled);
     bool breakpointsEnabled() const { return breakpointsEnabled_; }
+    // What any breakpoint may be given: a condition (see core/condition.h)
+    // without which it does not count, and a number of times it must
+    // count before the machine pauses, 0 for every time. `count` is how
+    // many times it has counted since it last paused the machine.
+    struct BreakProps {
+        std::string condition;
+        int passCount = 0;
+        int count = 0;
+    };
+    // A code breakpoint's; default ones for an address without any.
+    BreakProps breakProps(uint16_t address);
+    void setBreakProps(uint16_t address, const std::string& condition, int passCount);
+    // The machine pauses after an instruction that reads, or one that
+    // writes, memory in a range.
+    struct MemoryBreak {
+        uint16_t address = 0;
+        int size = 1;
+        bool write = false;
+        BreakProps props;
+    };
+    std::vector<MemoryBreak> memoryBreaks();
+    void setMemoryBreaks(const std::vector<MemoryBreak>& breaks);
+    // And after one that reads or writes a port: one that is `port` under
+    // `mask`.
+    struct IoBreak {
+        std::string description;  // the device's name, or nothing
+        std::string filter;       // what the device asks of the value, as a condition
+        uint16_t port = 0;
+        uint16_t mask = 0xFFFF;
+        bool input = true;
+        bool output = true;
+        BreakProps props;
+    };
+    std::vector<IoBreak> ioBreaks();
+    void setIoBreaks(const std::vector<IoBreak>& breaks);
+    // Whether a condition can be made sense of.
+    bool conditionValid(const std::string& condition);
+    // The symbols conditions may name: those of the last assembly, in
+    // upper case.
+    void setSymbols(std::map<std::string, int32_t> symbols);
+
     // ED FF in a program pauses the machine after it.
     void setBreakInstructions(bool on);
     bool breakInstructions() const { return breakInstructions_; }
@@ -224,6 +268,12 @@ private:
     // Debugging. All but stopRequested_ are only touched with the
     // machine's lock held.
     std::set<uint16_t> breakpoints_;
+    std::map<uint16_t, BreakProps> breakProps_;
+    std::vector<MemoryBreak> memoryBreaks_;
+    std::vector<IoBreak> ioBreaks_;
+    std::map<std::string, int32_t> symbols_;
+    bool counts(BreakProps& props, uint32_t address, uint32_t value, uint32_t previous);
+    void watchMemory();
     bool breakpointsEnabled_ = true;
     bool breakInstructions_ = false;
     int temporaryBreak_ = -1;  // the address a step over or a run-to waits for

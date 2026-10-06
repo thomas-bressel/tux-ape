@@ -48,7 +48,7 @@ void Cpc::run(uint32_t microseconds)
     if (runUntil_ < clk_)
         runUntil_ = clk_;
     runUntil_ += static_cast<uint64_t>(microseconds) * 4;
-    if (watchedCount_ == 0 && !breakInstructions_) {
+    if (watchedCount_ == 0 && !breakInstructions_ && memoryWatched_ == 0 && !ioHook_) {
         while (clk_ < runUntil_)
             cpu_.step();
     } else {
@@ -94,6 +94,27 @@ void Cpc::watchAddress(uint16_t addr, bool watch)
         watched_.assign(0x10000, 0);
     watchedCount_ += static_cast<int>(watch) - static_cast<int>(watched_[addr] != 0);
     watched_[addr] = watch;
+}
+
+void Cpc::watchMemory(uint16_t addr, bool reads, bool writes)
+{
+    if (memoryWatch_.empty())
+        memoryWatch_.assign(0x10000, 0);
+    const uint8_t before = memoryWatch_[addr];
+    memoryWatch_[addr] = static_cast<uint8_t>(before | (reads ? 1 : 0) | (writes ? 2 : 0));
+    memoryWatched_ += static_cast<int>(memoryWatch_[addr] != 0) - static_cast<int>(before != 0);
+}
+
+void Cpc::clearMemoryWatches()
+{
+    memoryWatch_.clear();
+    memoryWatched_ = 0;
+}
+
+void Cpc::memoryAccess(uint16_t addr, uint8_t value, uint8_t previous, bool write)
+{
+    if (memoryHook_ && (memoryWatch_[addr] & (write ? 2 : 1)))
+        memoryHook_(addr, value, previous, write);
 }
 
 // The CPC decodes I/O addresses one line at a time: each device answers when

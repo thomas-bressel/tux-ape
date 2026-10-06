@@ -2,6 +2,7 @@
 
 #include <QFileInfo>
 
+#include "core/condition.h"
 #include "core/disasm.h"
 #include "core/files.h"
 #include "core/snapshot.h"
@@ -32,9 +33,26 @@ Emulator::Emulator(QObject* parent)
             passOnce_ = -1;
             return;
         }
-        if (temporaryBreak_ == pc || (breakpointsEnabled_ && breakpoints_.count(pc))) {
+        bool stop = temporaryBreak_ == pc;
+        if (breakpointsEnabled_ && breakpoints_.count(pc)) {
+            const auto props = breakProps_.find(pc);
+            stop = props == breakProps_.end() || counts(props->second, pc, 0, 0) || stop;
+        }
+        if (stop) {
             cpc_.stopRun();
             stopRequested_ = true;
+        }
+    });
+    cpc_.setMemoryHook([this](uint16_t address, uint8_t value, uint8_t previous, bool write) {
+        if (!breakpointsEnabled_)
+            return;
+        for (MemoryBreak& point : memoryBreaks_) {
+            if (point.write != write || address < point.address || address - point.address >= point.size)
+                continue;
+            if (counts(point.props, address, value, previous)) {
+                cpc_.stopRun();
+                stopRequested_ = true;
+            }
         }
     });
 }
@@ -368,8 +386,135 @@ void Emulator::setBreakpoints(const std::set<uint16_t>& addresses)
 {
     withMachine([&](Cpc&) {
         breakpoints_ = addresses;
+        // A breakpoint taken away takes its condition and its count with it.
+        std::erase_if(breakProps_, [&](const auto& props) { return !breakpoints_.count(props.first); });
         watchAddresses();
     });
+}
+
+// Whether a breakpoint that has been reached stops the machine: its
+// condition must hold, and that as many times as its pass count says.
+bool Emulator::counts(BreakProps& props, uint32_t address, uint32_t value, uint32_t previous)
+{
+    if (!props.condition.empty()) {
+        tuxape::ConditionContext context;
+        context.address = address;
+        context.value = value;
+        context.previous = previous;
+        context.symbol = [this](const std::string& name) -> std::optional<int32_t> {
+            const auto found = symbols_.find(name);
+            return found == symbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
+        };
+        const std::optional<int32_t> holds = tuxape::evaluateCondition(props.condition, cpc_, context);
+        if (!holds || *holds == 0)
+            return false;
+    }
+    ++props.count;
+    if (props.passCount > 0 && props.count < props.passCount)
+        return false;
+    if (props.passCount > 0)
+        props.count = 0;
+    return true;
+}
+
+Emulator::BreakProps Emulator::breakProps(uint16_t address)
+{
+    return withMachine([&](Cpc&) {
+        const auto found = breakProps_.find(address);
+        return found == breakProps_.end() ? BreakProps() : found->second;
+    });
+}
+
+void Emulator::setBreakProps(uint16_t address, const std::string& condition, int passCount)
+{
+    withMachine([&](Cpc&) {
+        if (condition.empty() && passCount <= 0) {
+            breakProps_.erase(address);
+        } else {
+            BreakProps& props = breakProps_[address];
+            props.condition = condition;
+            props.passCount = passCount;
+            props.count = 0;
+        }
+    });
+}
+
+std::vector<Emulator::MemoryBreak> Emulator::memoryBreaks()
+{
+    return withMachine([&](Cpc&) { return memoryBreaks_; });
+}
+
+void Emulator::setMemoryBreaks(const std::vector<MemoryBreak>& breaks)
+{
+    withMachine([&](Cpc& cpc) {
+        memoryBreaks_ = breaks;
+        cpc.clearMemoryWatches();
+        for (const MemoryBreak& point : memoryBreaks_)
+            for (int n = 0; n < point.size; ++n)
+                cpc.watchMemory(static_cast<uint16_t>(point.address + n), !point.write, point.write);
+    });
+}
+
+std::vector<Emulator::IoBreak> Emulator::ioBreaks()
+{
+    return withMachine([&](Cpc&) { return ioBreaks_; });
+}
+
+void Emulator::setIoBreaks(const std::vector<IoBreak>& breaks)
+{
+    withMachine([&](Cpc& cpc) {
+        ioBreaks_ = breaks;
+        // Nothing is asked of the machine while there are none.
+        if (ioBreaks_.empty()) {
+            cpc.setIoHook(nullptr);
+            return;
+        }
+        cpc.setIoHook([this](uint16_t port, uint8_t value, bool write) {
+            if (!breakpointsEnabled_)
+                return;
+            for (IoBreak& point : ioBreaks_) {
+                if (!(write ? point.output : point.input) || ((port ^ point.port) & point.mask))
+                    continue;
+                if (!point.filter.empty()) {
+                    tuxape::ConditionContext context;
+                    context.address = port;
+                    context.value = value;
+                    if (tuxape::evaluateCondition(point.filter, cpc_, context).value_or(0) == 0)
+                        continue;
+                }
+                if (counts(point.props, port, value, 0)) {
+                    cpc_.stopRun();
+                    stopRequested_ = true;
+                }
+            }
+        });
+    });
+}
+
+bool Emulator::conditionValid(const std::string& condition)
+{
+    return withMachine([&](Cpc& cpc) {
+        tuxape::ConditionContext context;
+        context.symbol = [this](const std::string& name) -> std::optional<int32_t> {
+            const auto found = symbols_.find(name);
+            return found == symbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
+        };
+        // poke() must not go off while the condition is only being read:
+        // the machine's memory is put back as it was.
+        std::vector<uint8_t> before(0x10000);
+        for (int a = 0; a < 0x10000; ++a)
+            before[static_cast<size_t>(a)] = cpc.memory().readRam(static_cast<uint16_t>(a));
+        const bool valid = tuxape::evaluateCondition(condition, cpc, context).has_value();
+        for (int a = 0; a < 0x10000; ++a)
+            if (cpc.memory().readRam(static_cast<uint16_t>(a)) != before[static_cast<size_t>(a)])
+                cpc.memory().write(static_cast<uint16_t>(a), before[static_cast<size_t>(a)]);
+        return valid;
+    });
+}
+
+void Emulator::setSymbols(std::map<std::string, int32_t> symbols)
+{
+    withMachine([&](Cpc&) { symbols_ = std::move(symbols); });
 }
 
 void Emulator::setBreakpointsEnabled(bool enabled)

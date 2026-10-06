@@ -134,6 +134,14 @@ int main(int argc, char* argv[])
         cpc.out(0x7F00, 0x8C);
         cpc.cpu().iff1 = cpc.cpu().iff2 = false;
         cpc.cpu().sp = 0xBFF0;
+        // The machine waits in a loop of its own, away from where the
+        // programs go: it must not wander into one before it is run.
+        cpc.memory().write(0xA000, 0x18);
+        cpc.memory().write(0xA001, 0xFE);
+        cpc.cpu().pc = 0xA000;
+        cpc.cpu().halted = false;
+        for (int address = 0x8000; address < 0x9100; ++address)
+            cpc.memory().write(static_cast<uint16_t>(address), 0);
     });
     const auto peek = [&](uint16_t address) {
         return emulator.withMachine([&](tuxape::Cpc& cpc) { return cpc.memory().readRam(address); });
@@ -233,7 +241,7 @@ int main(int argc, char* argv[])
     // Run starts it where its `run` says, the old program counter pushed.
     CHECK(runs());
     CHECK(QTest::qWaitFor([&] { return peek(0x9000) == 0x42; }, 5000));
-    CHECK(pc() == 0x8005);
+    CHECK_EQ(pc(), 0x8005);
     CHECK_EQ(sp(), 0xBFEE);
     CHECK(!emulator.isPaused());
 

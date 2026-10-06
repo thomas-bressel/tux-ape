@@ -4,6 +4,7 @@ add_library(tuxape_core STATIC
     audio.cpp
     autotype.cpp
     cartridge.cpp
+    condition.cpp
     cpc.cpp
     crtc.cpp
     csl.cpp

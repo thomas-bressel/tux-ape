@@ -16,6 +16,7 @@ class QLabel;
 class QMenu;
 class QToolButton;
 class AssemblerDialog;
+class BreakpointsDialog;
 class DebuggerDialog;
 class RegistersDialog;
 class ScreenWidget;
@@ -37,6 +38,7 @@ public:
     DebuggerDialog* debugger() const { return debugger_; }
     AssemblerDialog* assembler() const { return assembler_; }
     RegistersDialog* registers() const { return registers_; }
+    BreakpointsDialog* breakpoints() const { return breakpoints_; }
 
     // Puts a disc image in a drive, reporting problems to the user.
     // Returns false if it could not be done.
@@ -90,6 +92,7 @@ private:
     DebuggerDialog* debugger_ = nullptr;
     AssemblerDialog* assembler_ = nullptr;
     RegistersDialog* registers_ = nullptr;
+    BreakpointsDialog* breakpoints_ = nullptr;
     QAction* fullScreenAction_ = nullptr;
     QAction* pasteAction_ = nullptr;
     QAction* driveSetupAction_ = nullptr;
@@ -141,6 +144,7 @@ private:
     void showDebugger();
     void showAssembler();
     void showRegisters();
+    void showBreakpoints();
     void updateDebugActions();
     // Shows the Setup window on one of its pages (SetupDialog::Page).
     void showSetup(int page);

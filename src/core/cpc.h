@@ -72,6 +72,18 @@ public:
     void setExecHook(ExecHook hook) { execHook_ = std::move(hook); }
     void watchAddress(uint16_t addr, bool watch = true);
 
+    // For breakpoints on memory and on input and output. `hook` is called
+    // when the program reads or writes a byte at a watched address (not
+    // when it fetches an instruction there): a write's hook comes before
+    // the byte is stored, with the one it replaces. The other is called at
+    // every input and output, with the value that went through.
+    using MemoryHook = std::function<void(uint16_t addr, uint8_t value, uint8_t previous, bool write)>;
+    void setMemoryHook(MemoryHook hook) { memoryHook_ = std::move(hook); }
+    void watchMemory(uint16_t addr, bool reads, bool writes);
+    void clearMemoryWatches();
+    using IoHook = std::function<void(uint16_t port, uint8_t value, bool write)>;
+    void setIoHook(IoHook hook) { ioHook_ = std::move(hook); }
+
     // "SSM" codes: a program can signal the emulator by executing two
     // do-nothing opcodes in a row, ED ll ED hh (the convention comes from the
     // Logon System Shaker tests). `hook` receives hh * 256 + ll.
@@ -122,6 +134,8 @@ public:
         waitForGateArray();
         advance(1);
         const uint8_t v = memory_.read(addr);
+        if (memoryWatched_) [[unlikely]]
+            memoryAccess(addr, v, v, false);
         advance(1);
         return v;
     }
@@ -131,6 +145,8 @@ public:
         advance(1);
         waitForGateArray();
         advance(1);
+        if (memoryWatched_) [[unlikely]]
+            memoryAccess(addr, value, memory_.readRam(addr), true);
         memory_.write(addr, value);
         advance(1);
     }
@@ -146,6 +162,8 @@ public:
         // byte of the instruction, as if it were written.
         if (plus_ && (port & 0xC000) == 0x4000)
             gateArrayWrite(memory_.read(static_cast<uint16_t>(cpu_.pc - 1)), static_cast<uint8_t>(port >> 8));
+        if (ioHook_) [[unlikely]]
+            ioHook_(port, v, false);
         advance(1);
         return v;
     }
@@ -173,6 +191,8 @@ public:
         advance(1);
         if (lateCrtc)
             crtcWrite(port, value, early);
+        if (ioHook_) [[unlikely]]
+            ioHook_(port, value, true);
         advance(1);
     }
 
@@ -250,6 +270,11 @@ private:
     bool breakInstructionHit_ = false;
     std::vector<uint8_t> watched_;  // one flag per address; empty when nothing is watched
     int watchedCount_ = 0;
+    MemoryHook memoryHook_;
+    IoHook ioHook_;
+    std::vector<uint8_t> memoryWatch_;  // per address: bit 0 reads, bit 1 writes
+    int memoryWatched_ = 0;             // addresses with a bit set
+    void memoryAccess(uint16_t addr, uint8_t value, uint8_t previous, bool write);
 
     void advance(unsigned tstates)
     {

@@ -1,6 +1,7 @@
 #include "assemblerdialog.h"
 
 #include <array>
+#include <map>
 #include <memory>
 
 #include <QAction>
@@ -847,8 +848,14 @@ bool AssemblerDialog::assemble()
     if (!listed_.empty())
         errors_->setCurrentRow(0);
     const bool ok = listed_.empty();
-    if (ok)
+    if (ok) {
+        // Breakpoint conditions may name the program's symbols.
+        std::map<std::string, int32_t> symbols;
+        for (const tuxape::AsmSymbol& symbol : result_.symbols)
+            symbols[QString::fromLatin1(symbol.name.c_str()).toUpper().toStdString()] = symbol.value;
+        emulator_->setSymbols(std::move(symbols));
         applyBreakpoints();
+    }
     if (symbols_)
         symbols_->setSymbols(result_.symbols);
     if (!ok || !hideOutput_)
