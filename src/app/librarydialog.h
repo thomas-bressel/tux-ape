@@ -36,6 +36,7 @@ struct LibraryEntry {
     bool ai = false;  // the name carries the note "(AI)"
     QString release;  // "Original", "Crack", "Hack", "File" or "<machine> Port" if the name says so, or empty
     QString origin;   // where the file comes from, "CPC-Power", "NVG"..., if the name says so, or empty
+    QString dump;     // when the image was made and by whom, "1996-07-25 by Nicholas Campbell", or empty
     QString category;     // the category folder it is filed under ("Games"...), or empty
     QString subcategory;  // the folder under that ("Racing"...), or empty
     QString root;         // the library folder it was found in
@@ -64,7 +65,9 @@ QString libraryCategoryTitle(const QString& category);
 // Port]", "[Amiga Port]", "[MSX Port]"... And so has the collection the file
 // was taken from, which tells two dumps of one program apart: "(CPC-Power)",
 // "(NVG)", "(Web-Archive)", "(CPCRulez)", "(TOSEC)" or "(CPCWiki)", with or
-// without the hyphen.
+// without the hyphen. A note that begins with "Dump" says when the image
+// was made, and by whom: "(Dump 1996-07-25 by Nicholas Campbell)", or the
+// day alone. It has a column too, which the day first puts in order.
 LibraryEntry libraryEntry(const QString& path);
 // The disc images, tapes, cartridges, snapshots and recorded sessions
 // (.dsk, .cdt, .cpr, .sna, .snr)
@@ -158,6 +161,7 @@ public:
     // "Hack", "File", "Amiga Port" and the like, or nothing.
     QStringList listedReleases() const;
     QStringList listedOrigins() const;
+    QStringList listedDumps() const;
     bool select(const QString& title);
 
     // Several programs may be selected, with the mouse or the keyboard

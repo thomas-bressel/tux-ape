@@ -55,8 +55,9 @@ constexpr int kSubcategoryColumn = 1;
 constexpr int kTypeColumn = 3;
 constexpr int kReleaseColumn = 4;
 constexpr int kOriginColumn = 5;
-constexpr int kAiColumn = 6;
-constexpr int kThumbnailColumn = 7;
+constexpr int kDumpColumn = 6;
+constexpr int kAiColumn = 7;
+constexpr int kThumbnailColumn = 8;
 
 // A row of the list. A click on a column's heading sorts by that column,
 // from A to Z, and a second click from Z to A: text without regard to
@@ -499,6 +500,12 @@ LibraryEntry libraryEntry(const QString& path)
                     entry.origin = origin;
                 continue;
             }
+            // "Dump 1996-07-25 by Nicholas Campbell": when, and who.
+            if (text.startsWith("dump ", Qt::CaseInsensitive)) {
+                if (entry.dump.isEmpty())
+                    entry.dump = text.mid(5).simplified();
+                continue;
+            }
             if (side.match(text).hasMatch())
                 entry.side += (entry.side.isEmpty() ? "" : ", ") + text;
             if (text.compare("AI", Qt::CaseInsensitive) == 0)
@@ -601,7 +608,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     tabs_->setExpanding(false);
     tabs_->setDrawBase(false);
     list_->setHeaderLabels({tr("Title"), tr("Sub-category"), tr("Year"), tr("Type"), tr("Release Type"), tr("Origin"),
-                            tr("AI"), tr("Thumbnail"), tr("Notes")});
+                            tr("Dump"), tr("AI"), tr("Thumbnail"), tr("Notes")});
     // Several programs at once, to give them a picture.
     list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     list_->setRootIsDecorated(false);
@@ -615,6 +622,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setIconSize(QSize(18, 18));
     list_->setColumnWidth(kReleaseColumn, 100);
     list_->setColumnWidth(kOriginColumn, 90);
+    list_->setColumnWidth(kDumpColumn, 150);
     list_->setColumnWidth(kAiColumn, 36);
     list_->setColumnWidth(kThumbnailColumn, 84);
     // A program's picture, beside the pointer while it is over the program.
@@ -785,7 +793,7 @@ void LibraryDialog::fill()
         static const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
                                        makeIcon(IconId::Cartridge), makeIcon(IconId::Run)};
         auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release,
-                                             entry.origin, QString(), QString(), entry.details});
+                                             entry.origin, entry.dump, QString(), QString(), entry.details});
         item->setIcon(kTypeColumn, kIcons[entry.kind]);
         item->setToolTip(kTypeColumn, kind);
         item->setData(0, Qt::UserRole, i);
@@ -1249,6 +1257,15 @@ QStringList LibraryDialog::listedReleases() const
         if (!list_->topLevelItem(row)->isHidden())
             releases << list_->topLevelItem(row)->text(kReleaseColumn);
     return releases;
+}
+
+QStringList LibraryDialog::listedDumps() const
+{
+    QStringList dumps;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row)
+        if (!list_->topLevelItem(row)->isHidden())
+            dumps << list_->topLevelItem(row)->text(kDumpColumn);
+    return dumps;
 }
 
 QStringList LibraryDialog::listedOrigins() const

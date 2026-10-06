@@ -186,6 +186,13 @@ void testNames()
     CHECK(libraryEntry("Zub (web-archive).dsk").origin == "Web Archive" && libraryEntry("Zub (web-archive).dsk").details.isEmpty());
     CHECK(libraryEntry("Zub (CPC) (CPC+) (Power) (NVG Tools).dsk").origin.isEmpty());
     CHECK(libraryEntry("NVG.dsk").origin.isEmpty() && libraryEntry("Zub (1986).dsk").origin.isEmpty());
+    // When the image was made and by whom: a column as well.
+    entry = libraryEntry("Cyber Power (UK) (1992) (NVG) (Dump 2002-01-16 by Nicholas Campbell & McSPE).dsk");
+    CHECK(entry.dump == "2002-01-16 by Nicholas Campbell & McSPE" && entry.origin == "NVG" && entry.details == "UK");
+    CHECK(entry.title == "Cyber Power" && entry.year == "1992");
+    entry = libraryEntry("Xybots (UK) (1989) [Original] [TAPE] (CPC-Power) (dump 2016-05-02).cdt");
+    CHECK(entry.dump == "2016-05-02" && entry.year == "1989" && entry.details == "UK, TAPE");
+    CHECK(libraryEntry("Zub (Dumper) (Dump).dsk").dump.isEmpty() && libraryEntry("Zub (Dumper) (Dump).dsk").details == "Dumper, Dump");
     // "(AI)", in any case, is a mark of its own and not a note.
     CHECK(!entry.ai);
     entry = libraryEntry("/games/Outrun 2026 (AI) (2026) [FR].dsk");
@@ -279,9 +286,9 @@ int main(int argc, char* argv[])
         // The AI column: ticked for the files with "(AI)" in their name.
         CHECK(dialog.listedAiTitles() == QStringList{"boulder dash"});
         auto* programs = dialog.findChild<QTreeWidget*>("lvLibrary");
-        CHECK(programs && programs->columnCount() == 9 && programs->headerItem()->text(6) == "AI");
-        CHECK(programs && programs->headerItem()->text(8) == "Notes");
-        CHECK(programs && programs->topLevelItem(0)->text(8).isEmpty());  // not among the notes as well
+        CHECK(programs && programs->columnCount() == 10 && programs->headerItem()->text(7) == "AI");
+        CHECK(programs && programs->headerItem()->text(9) == "Notes");
+        CHECK(programs && programs->topLevelItem(0)->text(9).isEmpty());  // not among the notes as well
         // No category folder here: no tab, and nothing in the column.
         CHECK(dialog.categories() == QStringList{"Unsorted"} && dialog.category().isEmpty());
         auto* tabs = dialog.findChild<QTabBar*>("tabCategories");
@@ -295,10 +302,13 @@ int main(int argc, char* argv[])
         // The Release Type column: Original, Crack or Hack, from the name.
         CHECK(programs && programs->headerItem()->text(4) == "Release Type");
         CHECK(dialog.listedReleases() == (QStringList{"", "Original", "", ""}));
-        CHECK(programs && programs->topLevelItem(1)->text(8) == "UK, CPM");
+        CHECK(programs && programs->topLevelItem(1)->text(9) == "UK, CPM");
         // The Origin column: the collection the file was taken from.
         CHECK(programs && programs->headerItem()->text(5) == "Origin");
         CHECK(dialog.listedOrigins() == (QStringList{"", "", "", ""}));
+        // The Dump column: when the image was made, and by whom.
+        CHECK(programs && programs->headerItem()->text(6) == "Dump");
+        CHECK(dialog.listedDumps() == (QStringList{"", "", "", ""}));
         dialog.setSearch("original");
         CHECK(dialog.listedTitles() == QStringList{"Gryzor"});
         dialog.setSearch(QString());
@@ -347,10 +357,10 @@ int main(int argc, char* argv[])
             CHECK(sorted(4, Qt::AscendingOrder, {"boulder dash", "Sorcery+", "The Last Ninja", "Gryzor"}));
             click(4);
             CHECK(sorted(4, Qt::DescendingOrder, {"Gryzor", "boulder dash", "Sorcery+", "The Last Ninja"}));
-            click(6);
-            CHECK(sorted(6, Qt::AscendingOrder, {"Gryzor", "Sorcery+", "The Last Ninja", "boulder dash"}));
-            click(6);
-            CHECK(sorted(6, Qt::DescendingOrder, {"boulder dash", "Gryzor", "Sorcery+", "The Last Ninja"}));
+            click(7);
+            CHECK(sorted(7, Qt::AscendingOrder, {"Gryzor", "Sorcery+", "The Last Ninja", "boulder dash"}));
+            click(7);
+            CHECK(sorted(7, Qt::DescendingOrder, {"boulder dash", "Gryzor", "Sorcery+", "The Last Ninja"}));
             // A search keeps the order.
             dialog.setSort(0, Qt::DescendingOrder);
             dialog.setSearch("o");
@@ -842,7 +852,7 @@ int main(int argc, char* argv[])
         CHECK(programs && button && insertA && preview);
         if (!(programs && button && insertA && preview))
             return checkSummary("gui_library");
-        CHECK(programs->headerItem()->text(7) == "Thumbnail");
+        CHECK(programs->headerItem()->text(8) == "Thumbnail");
         CHECK(dialog.setCategory("Games"));
         CHECK(dialog.listedTitles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
         CHECK(dialog.listedTypes() == (QStringList{"Tape", "Disc", "Disc", "Disc"}));
@@ -877,15 +887,15 @@ int main(int argc, char* argv[])
         CHECK(dialog.listedThumbnailTitles() == (QStringList{"Gryzor", "Gryzor", "Gryzor"}));
         CHECK_EQ(dialog.selectedTitles().size(), 3);
         CHECK(libraryThumbnail(entryOf(disc)) == shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Disc) [Original].png");
-        CHECK(programs->topLevelItem(0)->toolTip(7) == "Gryzor (1987) (Run and Gun) (Tape).png");
+        CHECK(programs->topLevelItem(0)->toolTip(8) == "Gryzor (1987) (Run and Gun) (Tape).png");
         // The column shows a camera for those that have one, and nothing,
         // not a box, for the others.
-        CHECK(!programs->topLevelItem(0)->icon(7).isNull() && programs->topLevelItem(3)->icon(7).isNull());
-        CHECK(programs->topLevelItem(3)->text(0) == "Sorcery+" && programs->topLevelItem(3)->toolTip(7).isEmpty());
+        CHECK(!programs->topLevelItem(0)->icon(8).isNull() && programs->topLevelItem(3)->icon(8).isNull());
+        CHECK(programs->topLevelItem(3)->text(0) == "Sorcery+" && programs->topLevelItem(3)->toolTip(8).isEmpty());
         for (int row = 0; row < 4; ++row)
-            CHECK(!programs->topLevelItem(row)->data(7, Qt::CheckStateRole).isValid());
+            CHECK(!programs->topLevelItem(row)->data(8, Qt::CheckStateRole).isValid());
         // The column sorts as the others do: those without first.
-        dialog.setSort(7, Qt::AscendingOrder);
+        dialog.setSort(8, Qt::AscendingOrder);
         CHECK(dialog.listedTitles() == (QStringList{"Sorcery+", "Gryzor", "Gryzor", "Gryzor"}));
         dialog.setSort(0, Qt::AscendingOrder);
 
