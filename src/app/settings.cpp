@@ -149,6 +149,11 @@ void Settings::read(const tuxape::IniFile& ini)
     if (ini.has("Screenshots", "Path"))
         screenshotFolder = QString::fromStdString(ini.get("Screenshots", "Path"));
 
+    if (ini.has("Assembler", "Library Path"))
+        assemblerLibraryPath = QString::fromStdString(ini.get("Assembler", "Library Path"));
+    assemblerPushPc = ini.getBool("Assembler", "Push PC On Run", assemblerPushPc);
+    assemblerHideOutput = ini.getBool("Assembler", "Hide Output", assemblerHideOutput);
+
     if (!ini.keys("Library").empty()) {
         libraryFolders.clear();
         for (int n = 1; ini.has("Library", "Folder" + std::to_string(n)); ++n)
@@ -209,6 +214,9 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool("Screenshots", "Half Size", screenshotHalfSize);
         ini.setBool("Screenshots", "Half Height", screenshotHalfHeight);
         ini.set("Screenshots", "Path", screenshotFolder.toStdString());
+        ini.set("Assembler", "Library Path", assemblerLibraryPath.toStdString());
+        ini.setBool("Assembler", "Push PC On Run", assemblerPushPc);
+        ini.setBool("Assembler", "Hide Output", assemblerHideOutput);
         for (const std::string& key : ini.keys("Library"))
             ini.remove("Library", key);
         ini.setInt("Library", "Folders", static_cast<int>(libraryFolders.size()));

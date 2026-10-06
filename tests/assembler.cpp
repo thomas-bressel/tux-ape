@@ -221,6 +221,11 @@ void testSyntax()
                 std::printf("  [%s]\n", line.c_str());
         CHECK_EQ(result.bytes, 6);
         CHECK_EQ(result.lines, 7);
+        // Lines with code, for breakpoints: 3, 4, 5 and 7.
+        CHECK_EQ(result.addresses.size(), 4);
+        CHECK(result.addresses.size() == 4 && result.addresses[1].line == 4 && result.addresses[1].address == 0x4001);
+        CHECK(result.addresses.size() == 4 && result.addresses[3].line == 7 && result.addresses[3].address == 0x4003);
+        CHECK(isAssemblerWord("ld") && isAssemblerWord("DEFB") && !isAssemblerWord("hl") && !isAssemblerWord("pqr"));
     }
     {
         // No precedence between operators: from left to right.

@@ -6,6 +6,8 @@ set(CMAKE_AUTORCC ON)
 
 # Everything but main() is a library, so that tests can drive the windows.
 add_library(tuxape_app STATIC
+    assemblerdialog.cpp
+    assemblerdialog.h
     audiooutput.cpp
     audiooutput.h
     avirecorder.cpp

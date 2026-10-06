@@ -59,6 +59,14 @@ struct AsmSave {
     int execAddress = -1;
 };
 
+// Where a line of source put its first byte of code: what a breakpoint set
+// on the line stands for.
+struct AsmLine {
+    std::string file;
+    int line = 0;
+    uint16_t address = 0;
+};
+
 struct AsmResult {
     std::vector<AsmError> errors;
     std::vector<AsmSymbol> symbols;   // in alphabetical order
@@ -66,6 +74,7 @@ struct AsmResult {
     std::vector<AsmBlock> memory;
     std::vector<AsmFile> files;
     std::vector<AsmSave> saves;
+    std::vector<AsmLine> addresses;   // lines that gave code for memory, in order
     std::optional<uint16_t> run;         // the `run` directive's address
     std::optional<uint16_t> breakpoint;  // and its breakpoint
     int bytes = 0;                       // generated in all
@@ -83,6 +92,10 @@ struct AsmHost {
     // The machine's memory, for memory() and checksum(start,count).
     std::function<uint8_t(uint16_t)> memory;
 };
+
+// Whether a word is an instruction or a directive, in any case: what an
+// editor shows as such.
+bool isAssemblerWord(const std::string& word);
 
 AsmResult assemble(const std::string& source, const std::string& fileName = {}, const AsmHost& host = {});
 

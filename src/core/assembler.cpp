@@ -1162,6 +1162,12 @@ void Assembler::emit(uint8_t value)
     if (limit_ >= 0 && codeAddress_ > limit_)
         error("Code Beyond the Limit");
     if (final_) {
+        if (code_ && !toFile_ && listBytes_.empty()) {
+            const std::string& file = files_[static_cast<size_t>(file_)];
+            if (result_.addresses.empty() || result_.addresses.back().line != line_
+                || result_.addresses.back().file != file)
+                result_.addresses.push_back({file, line_, static_cast<uint16_t>(codeAddress_)});
+        }
         if (listBytes_.size() < kListedBytes)
             listBytes_.push_back(value);
         if (code_ && toFile_) {
@@ -1969,6 +1975,12 @@ bool Assembler::z80(const std::string& m, std::vector<Operand>& o)
 }
 
 }  // namespace
+
+bool isAssemblerWord(const std::string& word)
+{
+    const std::string name = upper(word);
+    return mnemonics().count(name) != 0 || directives().count(name) != 0;
+}
 
 AsmResult assemble(const std::string& source, const std::string& fileName, const AsmHost& host)
 {

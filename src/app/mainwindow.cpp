@@ -19,6 +19,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "assemblerdialog.h"
 #include "debuggerdialog.h"
 #include "discdialogs.h"
 #include "disceditordialog.h"
@@ -122,6 +123,10 @@ void MainWindow::closeEvent(QCloseEvent* event)
             return;
         }
         report(discs_->saveSpare(drive));
+    }
+    if (assembler_ && !assembler_->saveBeforeLeaving()) {
+        event->ignore();
+        return;
     }
     emulator_->stop();
     event->accept();
@@ -301,7 +306,7 @@ void MainWindow::createMenus()
 
     // ---- Assembler ----
     QMenu* assembler = menuBar()->addMenu(tr("&Assembler"));
-    addItem(assembler, tr("Show &Assembler"), Qt::Key_F3);
+    assemblerAction_ = addItem(assembler, tr("Show &Assembler"), Qt::Key_F3, [this] { showAssembler(); });
 
     // ---- Help ----
     QMenu* help = menuBar()->addMenu(tr("&Help"));
@@ -343,7 +348,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::StepOver, tr("Step Over (F8)"), stepOverAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Registers, tr("Registers"), nullptr);
-    addButton(IconId::Assembler, tr("Assembler (F3)"), nullptr);
+    addButton(IconId::Assembler, tr("Assembler (F3)"), assemblerAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Library, tr("Library (CTRL+L)"), libraryAction_);
     addButton(IconId::Disc, tr("Change Disc (F2)"), driveSetupAction_);
@@ -438,6 +443,34 @@ void MainWindow::showDebugger()
     }
     debugger_->refresh();
     debugger_->show();
+}
+
+void MainWindow::showAssembler()
+{
+    if (!assembler_) {
+        assembler_ = new AssemblerDialog(emulator_, this);
+        assembler_->setOptions(settings_.assemblerLibraryPath, settings_.assemblerPushPc, settings_.assemblerHideOutput);
+        connect(assembler_, &AssemblerDialog::optionsChanged, this, [this] {
+            settings_.assemblerLibraryPath = assembler_->libraryPath();
+            settings_.assemblerPushPc = assembler_->pushPcOnRun();
+            settings_.assemblerHideOutput = assembler_->hideOutput();
+            if (!settings_.save())
+                report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+        });
+        // The program just assembled runs in the machine's own window.
+        connect(assembler_, &AssemblerDialog::runRequested, this, [this] {
+            setPaused(false);
+            activateWindow();
+            screen_->setFocus();
+        });
+        connect(assembler_, &AssemblerDialog::breakpointsChanged, this, [this] {
+            if (debugger_ && debugger_->isVisible())
+                debugger_->refresh();
+        });
+    }
+    assembler_->show();
+    assembler_->raise();
+    assembler_->activateWindow();
 }
 
 void MainWindow::applySettings(const Settings& settings)

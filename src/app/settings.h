@@ -63,6 +63,14 @@ struct Settings {
     // The folders the Library window finds its programs in.
     QStringList libraryFolders;
 
+    // The assembler's options: where files named by read and incbin are
+    // looked for (folders between semicolons), whether Run pushes the
+    // program counter first, and whether the output window stays away
+    // when all went well.
+    QString assemblerLibraryPath;
+    bool assemblerPushPc = true;
+    bool assemblerHideOutput = false;
+
     // Values out of range are brought back into it; a missing file or key
     // leaves the default.
     void load();

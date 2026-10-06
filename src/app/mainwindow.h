@@ -15,6 +15,7 @@ class QFrame;
 class QLabel;
 class QMenu;
 class QToolButton;
+class AssemblerDialog;
 class DebuggerDialog;
 class ScreenWidget;
 class TapeDialog;
@@ -33,6 +34,7 @@ public:
     DiscManager* discs() const { return discs_; }
     // The debugger's window, once the machine has been paused; else null.
     DebuggerDialog* debugger() const { return debugger_; }
+    AssemblerDialog* assembler() const { return assembler_; }
 
     // Puts a disc image in a drive, reporting problems to the user.
     // Returns false if it could not be done.
@@ -84,6 +86,7 @@ private:
     QAction* stepAction_ = nullptr;
     QAction* stepOverAction_ = nullptr;
     DebuggerDialog* debugger_ = nullptr;
+    AssemblerDialog* assembler_ = nullptr;
     QAction* fullScreenAction_ = nullptr;
     QAction* pasteAction_ = nullptr;
     QAction* driveSetupAction_ = nullptr;
@@ -93,6 +96,7 @@ private:
     QAction* updateSnapshotAction_ = nullptr;
     QAction* setupAction_ = nullptr;
     QAction* libraryAction_ = nullptr;
+    QAction* assemblerAction_ = nullptr;
     QAction* cartridgeAction_ = nullptr;
     QAction* recordWavAction_ = nullptr;
     QAction* recordYmAction_ = nullptr;
@@ -131,6 +135,7 @@ private:
     // The machine paused by itself, on a breakpoint or at the end of a step.
     void machineStopped();
     void showDebugger();
+    void showAssembler();
     void updateDebugActions();
     // Shows the Setup window on one of its pages (SetupDialog::Page).
     void showSetup(int page);
