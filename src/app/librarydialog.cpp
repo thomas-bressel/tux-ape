@@ -636,6 +636,9 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setColumnWidth(kDumpColumn, 150);
     list_->setColumnWidth(kAiColumn, 36);
     list_->setColumnWidth(kThumbnailColumn, 84);
+    // The pictures' column stands beside the titles. Only where it shows:
+    // the columns keep their numbers, which the kept sort order goes by.
+    list_->header()->moveSection(list_->header()->visualIndex(kThumbnailColumn), 1);
     // A program's picture, beside the pointer while it is over the program.
     preview_ = new QLabel(this, Qt::ToolTip | Qt::FramelessWindowHint);
     preview_->setObjectName("lPreview");

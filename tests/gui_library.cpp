@@ -854,6 +854,9 @@ int main(int argc, char* argv[])
         if (!(programs && button && insertA && preview))
             return checkSummary("gui_library");
         CHECK(programs->headerItem()->text(8) == "Thumbnail");
+        // It shows right after the titles, whatever its number.
+        CHECK(programs->header()->visualIndex(0) == 0 && programs->header()->visualIndex(8) == 1);
+        CHECK(programs->header()->visualIndex(1) == 2 && programs->header()->visualIndex(9) == 9);
         CHECK(dialog.setCategory("Games"));
         CHECK(dialog.listedTitles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
         CHECK(dialog.listedTypes() == (QStringList{"Tape", "Disc", "Disc", "Disc"}));
