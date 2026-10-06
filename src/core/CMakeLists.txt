@@ -1,5 +1,6 @@
 add_library(tuxape_core STATIC
     asic.cpp
+    assembler.cpp
     audio.cpp
     autotype.cpp
     cartridge.cpp

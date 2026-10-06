@@ -89,6 +89,10 @@ add_executable(recording recording.cpp)
 target_link_libraries(recording PRIVATE tuxape_core)
 add_test(NAME recording COMMAND recording)
 
+add_executable(assembler assembler.cpp)
+target_link_libraries(assembler PRIVATE tuxape_core)
+add_test(NAME assembler COMMAND assembler)
+
 add_executable(disasm disasm.cpp)
 target_link_libraries(disasm PRIVATE tuxape_core)
 add_test(NAME disasm COMMAND disasm)
