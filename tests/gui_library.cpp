@@ -23,6 +23,8 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScreen>
+#include <QSlider>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTabBar>
@@ -754,20 +756,23 @@ int main(int argc, char* argv[])
             dialog->setSort(2, Qt::DescendingOrder);
             // The thumbnail view is a setting, kept from one day to the next.
             CHECK(!dialog->thumbnailView() && !window.settings().libraryThumbnailView);
+            CHECK(dialog->thumbnailSize() == 360 && window.settings().libraryThumbnailSize == 360);
             dialog->setThumbnailView(true);
+            dialog->setThumbnailSize(480);
         });
-        CHECK(window.settings().libraryThumbnailView);
+        CHECK(window.settings().libraryThumbnailView && window.settings().libraryThumbnailSize == 480);
         {
             Settings kept;
             kept.load();
-            CHECK(kept.libraryThumbnailView);
+            CHECK(kept.libraryThumbnailView && kept.libraryThumbnailSize == 480);
         }
         withLibrary([](LibraryDialog* dialog) {
             CHECK(dialog->sortColumn() == 2 && dialog->sortOrder() == Qt::DescendingOrder);
             CHECK(dialog->setCategory("SNR") && dialog->listedTitles() == (QStringList{"1943", "Gryzor"}));
             dialog->setSort(0, Qt::AscendingOrder);
-            CHECK(dialog->thumbnailView());
+            CHECK(dialog->thumbnailView() && dialog->thumbnailSize() == 480);
             dialog->setThumbnailView(false);
+            dialog->setThumbnailSize(360);
         });
         CHECK(!window.settings().libraryThumbnailView);
     }
@@ -921,7 +926,10 @@ int main(int argc, char* argv[])
             dialog.grab().save(prefix + "thumbnails.png");
         }
         hover(at(3));
-        CHECK(preview->isVisible() && preview->pixmap().size() == QSize(480, 240));
+        // No larger than 720 pixels, nor than four fifths of the screen.
+        const QSize largest = QSize(720, 720).boundedTo(dialog.screen()->availableGeometry().size() * 4 / 5);
+        CHECK(preview->isVisible() && preview->pixmap().size() == QSize(800, 400).scaled(largest, Qt::KeepAspectRatio));
+        CHECK(preview->pixmap().width() > 500);
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(programs->viewport(), &leave);
         CHECK(!preview->isVisible());
@@ -984,8 +992,9 @@ int main(int argc, char* argv[])
             auto* view = dialog.findChild<QCheckBox*>("ckThumbnailView");
             auto* grid = dialog.findChild<QListWidget*>("lvThumbnails");
             auto* count = dialog.findChild<QLabel*>("lCount");
-            CHECK(view && grid && count);
-            if (!view || !grid || !count)
+            auto* size = dialog.findChild<QSlider*>("slThumbnailSize");
+            CHECK(view && grid && count && size);
+            if (!view || !grid || !count || !size)
                 return checkSummary("gui_library");
             const auto tiles = [&] {
                 QStringList titles;
@@ -998,12 +1007,25 @@ int main(int argc, char* argv[])
             };
             CHECK(!dialog.thumbnailView() && !view->isChecked());
             CHECK(programs->isVisible() && !grid->isVisible());
-            dialog.resize(1100, 760);  // room for two rows of tiles
+            dialog.resize(1100, 760);  // room for the tiles
+            CHECK(!size->isVisible());
             CHECK(dialog.setCategory("Games") && dialog.select("Sorcery+"));
             view->click();
             CHECK(dialog.thumbnailView() && view->isChecked());
             CHECK(grid->isVisible() && !programs->isVisible());
             CHECK(tabs_shown(dialog));
+            // A slider sets how large the pictures are: boxes of 360
+            // pixels to start with, a margin around each.
+            CHECK(size->isVisible() && size->value() == 360 && dialog.thumbnailSize() == 360);
+            CHECK(size->minimum() == 120 && size->maximum() == 600);
+            QTest::qWait(50);
+            CHECK(grid->visualItemRect(grid->item(0)).size() == QSize(372, 372));
+            size->setValue(240);
+            CHECK_EQ(dialog.thumbnailSize(), 240);
+            dialog.setThumbnailSize(5000);
+            CHECK(dialog.thumbnailSize() == 600 && size->value() == 600);
+            dialog.setThumbnailSize(240);
+            CHECK(size->value() == 240);
             CHECK(tiles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
             CHECK(tiles() == dialog.listedTitles());  // each of them has a picture
             // What was selected in the list is selected here.
@@ -1021,7 +1043,7 @@ int main(int argc, char* argv[])
             // The pictures come as they are read: here all red.
             QTest::qWait(50);
             CHECK(QTest::qWaitFor([&] { return colourOf(0) == QColor(Qt::red) && colourOf(3) == QColor(Qt::red); }, 3000));
-            // Each in a box of 240 pixels, a margin around it.
+            // Each in a box of the 240 pixels asked for.
             CHECK(grid->visualItemRect(grid->item(0)).size() == QSize(252, 252));
             CHECK(grid->viewport()->rect().contains(grid->visualItemRect(grid->item(3))));
             if (!prefix.isEmpty())
@@ -1080,7 +1102,7 @@ int main(int argc, char* argv[])
             // machine, as in the list.
             CHECK(dialog.select("Sorcery+") && dialog.selectedTitles() == QStringList{"Sorcery+"});
             dialog.setThumbnailView(false);
-            CHECK(!view->isChecked());
+            CHECK(!view->isChecked() && !size->isVisible());
         }
 
         // A program filed elsewhere, or another form of it, keeps the

@@ -28,6 +28,7 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollBar>
+#include <QSlider>
 #include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QStyledItemDelegate>
@@ -231,11 +232,13 @@ QImage readPicture(const QString& file, const QSize& largest)
 }
 
 // The thumbnail view: each program that has a picture is that picture, in
-// a box of this size; its title stands in for it while it is not read yet,
-// or if it cannot be read.
-constexpr int kTile = 240;
-// The picture beside the pointer, in the list, is no larger than this.
-constexpr QSize kPreview(480, 480);
+// a box of the size the user sets; its title stands in for it while it is
+// not read yet, or if it cannot be read.
+constexpr int kSmallestTile = 120;
+constexpr int kLargestTile = 600;
+// The picture beside the pointer, in the list, is no larger than this, nor
+// than four fifths of the screen.
+constexpr QSize kPreview(720, 720);
 constexpr int kTileMargin = 6;
 constexpr int kTileRole = Qt::UserRole + 1;  // the picture's file
 
@@ -243,15 +246,16 @@ class TileDelegate : public QStyledItemDelegate {
 public:
     using Source = std::function<const QPixmap*(const QString&)>;
 
-    TileDelegate(Source source, QObject* parent)
+    TileDelegate(Source source, const int* size, QObject* parent)
         : QStyledItemDelegate(parent)
         , source_(std::move(source))
+        , size_(size)
     {
     }
 
     QSize sizeHint(const QStyleOptionViewItem&, const QModelIndex&) const override
     {
-        return QSize(kTile + 2 * kTileMargin, kTile + 2 * kTileMargin);
+        return QSize(*size_ + 2 * kTileMargin, *size_ + 2 * kTileMargin);
     }
 
     void paint(QPainter* painter, const QStyleOptionViewItem& option, const QModelIndex& index) const override
@@ -278,6 +282,7 @@ public:
 
 private:
     Source source_;
+    const int* size_;  // of a picture's box
 };
 
 }  // namespace
@@ -540,7 +545,17 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     grid_->setSpacing(2);
     grid_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     grid_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    grid_->setItemDelegate(new TileDelegate([this](const QString& file) { return tile(file); }, grid_));
+    grid_->setItemDelegate(new TileDelegate([this](const QString& file) { return tile(file); }, &tileSize_, grid_));
+    // How large the pictures are there: for the user to set.
+    sizeSlider_ = new QSlider(Qt::Horizontal);
+    sizeSlider_->setObjectName("slThumbnailSize");
+    sizeSlider_->setRange(kSmallestTile, kLargestTile);
+    sizeSlider_->setSingleStep(20);
+    sizeSlider_->setPageStep(60);
+    sizeSlider_->setValue(tileSize_);
+    sizeSlider_->setFixedWidth(140);
+    sizeSlider_->setToolTip(tr("The size of the pictures"));
+    sizeSlider_->hide();
     views_ = new QStackedWidget;
     views_->addWidget(list_);
     views_->addWidget(grid_);
@@ -580,6 +595,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     auto* top = new QHBoxLayout;
     top->addWidget(search_, 1);
     top->addWidget(viewBox_);
+    top->addWidget(sizeSlider_);
     layout->addLayout(top);
     layout->addWidget(tabs_);
     layout->addWidget(views_, 1);
@@ -592,6 +608,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     connect(list_, &QTreeWidget::itemSelectionChanged, this, [this] { updateButtons(); });
     connect(thumbnail_, &QPushButton::clicked, this, [this] { chooseThumbnail(); });
     connect(viewBox_, &QCheckBox::toggled, this, [this](bool on) { setThumbnailView(on); });
+    connect(sizeSlider_, &QSlider::valueChanged, this, [this](int size) { setThumbnailSize(size); });
     connect(grid_, &QListWidget::itemSelectionChanged, this, [this] { updateButtons(); });
     connect(grid_, &QListWidget::itemActivated, this, [this] { choose(0); });
     // What has gone out of sight need not be read.
@@ -798,7 +815,8 @@ void LibraryDialog::showPreview(const QPoint& at)
         return;
     }
     if (picture != previewed_) {
-        const QImage image = readPicture(picture, kPreview);
+        const QSize room = screen() ? screen()->availableGeometry().size() * 4 / 5 : kPreview;
+        const QImage image = readPicture(picture, kPreview.boundedTo(room));
         if (image.isNull()) {
             preview_->hide();
             return;
@@ -918,9 +936,28 @@ void LibraryDialog::setThumbnailView(bool on)
     // What was selected in one view is selected in the other.
     const QList<int> rows = selection();
     views_->setCurrentWidget(on ? static_cast<QWidget*>(grid_) : list_);
+    sizeSlider_->setVisible(on);
     preview_->hide();
     fillGrid();
     setSelection(rows);
+    updateButtons();
+}
+
+int LibraryDialog::thumbnailSize() const
+{
+    return tileSize_;
+}
+
+void LibraryDialog::setThumbnailSize(int size)
+{
+    size = std::clamp(size, kSmallestTile, kLargestTile);
+    sizeSlider_->setValue(size);
+    if (size == tileSize_)
+        return;
+    tileSize_ = size;
+    // The pictures are read again at their new size, and laid out anew.
+    tiles_.clear();
+    fillGrid();
     updateButtons();
 }
 
@@ -992,7 +1029,7 @@ void LibraryDialog::loadTile()
         const QString file = wanted_.takeFirst();
         // One that cannot be read is kept too, as nothing: it is not asked
         // for again.
-        const QImage image = readPicture(file, QSize(kTile, kTile));
+        const QImage image = readPicture(file, QSize(tileSize_, tileSize_));
         tiles_.insert(file, new QPixmap(QPixmap::fromImage(image)), 1 + image.width() * image.height() * 4 / 1024);
         grid_->viewport()->update();
     }

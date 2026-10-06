@@ -1143,16 +1143,19 @@ void MainWindow::showLibrary()
     dialog.setCategory(libraryCategory_);
     dialog.setSearch(librarySearch_);
     dialog.setSort(librarySortColumn_, librarySortOrder_);
+    dialog.setThumbnailSize(settings_.libraryThumbnailSize);
     dialog.setThumbnailView(settings_.libraryThumbnailView);
     const int closed = dialog.exec();
     librarySearch_ = dialog.search();
     libraryCategory_ = dialog.category();
     librarySortColumn_ = dialog.sortColumn();
     librarySortOrder_ = dialog.sortOrder();
-    if (dialog.folders() != folders || dialog.thumbnailView() != settings_.libraryThumbnailView) {
+    if (dialog.folders() != folders || dialog.thumbnailView() != settings_.libraryThumbnailView ||
+        dialog.thumbnailSize() != settings_.libraryThumbnailSize) {
         if (dialog.folders() != folders)
             settings_.libraryFolders = dialog.folders();
         settings_.libraryThumbnailView = dialog.thumbnailView();
+        settings_.libraryThumbnailSize = dialog.thumbnailSize();
         if (!settings_.save())
             report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
     }

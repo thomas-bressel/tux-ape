@@ -15,6 +15,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+class QSlider;
 class QStackedWidget;
 class QTabBar;
 class QTimer;
@@ -158,6 +159,10 @@ public:
     // The tabs, the search, the order and the buttons work as in the list.
     bool thumbnailView() const;
     void setThumbnailView(bool on);
+    // The side of a picture's box there, in pixels, which a slider beside
+    // the box to tick sets: from 120 to 600.
+    int thumbnailSize() const;
+    void setThumbnailSize(int size);
     // A picture at the size the thumbnail view shows it; nothing while it
     // has yet to be read, which is done when the window has a moment.
     const QPixmap* tile(const QString& file);
@@ -184,6 +189,8 @@ private:
     QPushButton* insertB_;
     QPushButton* thumbnail_;
     QCheckBox* viewBox_;
+    QSlider* sizeSlider_;
+    int tileSize_ = 360;
     QStackedWidget* views_;
     QListWidget* grid_;
     QCache<QString, QPixmap> tiles_;  // the pictures of the thumbnail view, the last used

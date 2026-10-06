@@ -78,6 +78,7 @@ struct Settings {
     QStringList libraryFolders;
     // And whether it shows them as their pictures, not as a list.
     bool libraryThumbnailView = false;
+    int libraryThumbnailSize = 360;  // the side of a picture's box there
 
     // The assembler's options: where files named by read and incbin are
     // looked for (folders between semicolons), whether Run pushes the
