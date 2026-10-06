@@ -151,6 +151,7 @@ void Settings::read(const tuxape::IniFile& ini)
     }
 
     joystick = ini.getBool(kConfiguration, "Joystick Enabled", joystick);
+    amxMouse = ini.getBool(kConfiguration, "AMX Mouse Enabled", amxMouse);
     if (ini.has(kConfiguration, "Keyboard File"))
         keyboardFile = QString::fromStdString(ini.get(kConfiguration, "Keyboard File"));
 
@@ -226,6 +227,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
     }
     if (parts & InputPart) {
         ini.setBool(kConfiguration, "Joystick Enabled", joystick);
+        ini.setBool(kConfiguration, "AMX Mouse Enabled", amxMouse);
         ini.set(kConfiguration, "Keyboard File", keyboardFile.toStdString());
     }
     // Not part of any profile: only the settings file itself has these.

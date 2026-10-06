@@ -128,6 +128,14 @@ public:
     // CPC's first joystick.
     void setJoystickEnabled(bool enabled);
     bool joystickEnabled() const { return joystickEnabled_; }
+    // WinAPE's "AMX Mouse": the host's mouse is one on the CPC's joystick
+    // port. How far it has moved since last told (right and down are
+    // positive), and its buttons (bit 0 left, bit 1 right, bit 2 middle),
+    // reach the machine with its next frame.
+    void setAmxMouse(bool enabled);
+    bool amxMouse() const { return amxMouse_; }
+    void amxMouseMoved(int dx, int dy);
+    void amxMouseButtons(unsigned buttons);
     // What the host's stick and buttons are doing (HostJoystick bits),
     // handed to the CPC's joystick. Called for each frame; also the way in
     // for tests.
@@ -310,6 +318,9 @@ private:
     // Debugging. All but stopRequested_ are only touched with the
     // machine's lock held.
     std::atomic<int> driveLight_{-1};
+    std::atomic<bool> amxMouse_{false};
+    std::atomic<int> amxDx_{0}, amxDy_{0};
+    std::atomic<unsigned> amxButtons_{0};
     QFile printerFile_;          // touched by the emulation thread alone, once open
     std::mutex printerMutex_;
     QByteArray printerBuffer_;   // printed for the assembler, not yet taken

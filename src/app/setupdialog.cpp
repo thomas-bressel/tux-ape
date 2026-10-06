@@ -726,8 +726,10 @@ QWidget* SetupDialog::createInputPage()
     joystick_ = new QCheckBox(tr("Enable Joystick"));
     joystick_->setObjectName("ckJoystick");
     joystick_->setToolTip(tr("A joystick or game pad plugged into this computer is the CPC's joystick"));
-    auto* mouse = notYet(new QCheckBox(tr("Enable AMX Mouse")));
-    mouse->setObjectName("ckAMXMouse");
+    amxMouse_ = new QCheckBox(tr("Enable AMX Mouse"));
+    amxMouse_->setObjectName("ckAMXMouse");
+    amxMouse_->setToolTip(tr("This computer's mouse, over the picture, is an AMX mouse on the CPC's joystick port"));
+    auto* mouse = amxMouse_;
     auto* checks = new QHBoxLayout;
     checks->addWidget(joystick_);
     checks->addSpacing(20);
@@ -1138,6 +1140,7 @@ void SetupDialog::setSettings(const Settings& settings)
     updateSoundOptions();
 
     joystick_->setChecked(settings.joystick);
+    amxMouse_->setChecked(settings.amxMouse);
     keyboardFile_ = settings.keyboardFile;
 
     crtcType_->setCurrentIndex(settings.crtcType);
@@ -1382,6 +1385,7 @@ Settings SetupDialog::settings() const
     settings.soundBufferSync = soundBufferSync_->value();
 
     settings.joystick = joystick_->isChecked();
+    settings.amxMouse = amxMouse_->isChecked();
     settings.keyboardFile = keyboardFile_;
     return settings;
 }

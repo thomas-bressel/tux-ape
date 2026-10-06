@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include <QMouseEvent>
 #include <QKeyEvent>
 #include <QPainter>
 
@@ -59,6 +60,47 @@ QSize ScreenWidget::minimumSizeHint() const
 QImage ScreenWidget::screenshot() const
 {
     return image_.scaled(kDisplayWidth, kDisplayHeight);
+}
+
+void ScreenWidget::setAmxMouse(bool on)
+{
+    amxMouse_ = on;
+    amxSeen_ = false;
+    setMouseTracking(on);
+}
+
+// The pointer's way since it was last looked at, as steps of the mouse: a
+// step for each point of the picture, which is two of the CPC's smallest.
+void ScreenWidget::mouseMoveEvent(QMouseEvent* event)
+{
+    if (!amxMouse_)
+        return QWidget::mouseMoveEvent(event);
+    const QPoint now = event->position().toPoint();
+    if (amxSeen_)
+        emulator_->amxMouseMoved(now.x() - amxLast_.x(), now.y() - amxLast_.y());
+    amxLast_ = now;
+    amxSeen_ = true;
+}
+
+void ScreenWidget::amxButtons(QMouseEvent* event)
+{
+    const Qt::MouseButtons down = event->buttons();
+    emulator_->amxMouseButtons((down & Qt::LeftButton ? 1u : 0u) | (down & Qt::RightButton ? 2u : 0u)
+                               | (down & Qt::MiddleButton ? 4u : 0u));
+}
+
+void ScreenWidget::mousePressEvent(QMouseEvent* event)
+{
+    if (!amxMouse_)
+        return QWidget::mousePressEvent(event);
+    amxButtons(event);
+}
+
+void ScreenWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (!amxMouse_)
+        return QWidget::mouseReleaseEvent(event);
+    amxButtons(event);
 }
 
 void ScreenWidget::setPalEmulation(bool pal)

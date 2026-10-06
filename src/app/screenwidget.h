@@ -31,6 +31,9 @@ public:
     // takes, the second is at half brightness.
     void setPalEmulation(bool pal);
     bool palEmulation() const { return pal_; }
+    // WinAPE's "AMX Mouse": the pointer's moves over the picture, and the
+    // buttons pressed there, are the CPC's mouse's.
+    void setAmxMouse(bool on);
     // WinAPE's "On-Screen Drive LED" and "Show Drive Cylinders": a light
     // in the picture's top right corner while a drive is at work, with the
     // drive's letter and, if asked, the cylinder its head is on.
@@ -45,6 +48,9 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     bool event(QEvent* event) override;
 
 private:
@@ -54,6 +60,10 @@ private:
     bool halfSize_ = false;
     bool renderBoth_ = true;
     bool pal_ = false;
+    bool amxMouse_ = false;
+    QPoint amxLast_;      // where the pointer was when last looked at
+    bool amxSeen_ = false;
+    void amxButtons(QMouseEvent* event);
     bool driveLightShown_ = false;
     bool driveCylinderShown_ = false;
     int driveLight_ = -1;

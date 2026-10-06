@@ -717,7 +717,12 @@ void testInputPage(const QString& folder, const QString& picture)
         return;
     CHECK_EQ(tabs->currentIndex(), SetupDialog::Input);
     CHECK(joystick->isChecked());
-    CHECK(!mouse->isEnabled());
+    // The AMX mouse is there to tick, and kept with the settings.
+    CHECK(mouse->isEnabled() && !mouse->isChecked());
+    mouse->setChecked(true);
+    CHECK(dialog.settings().amxMouse);
+    mouse->setChecked(false);
+    CHECK(!dialog.settings().amxMouse);
     // Load and Save belong to this page.
     CHECK(load->isVisible() && save->isVisible());
     dialog.showPage(SetupDialog::General);

@@ -19,6 +19,7 @@
 
 #include "assemblerdialog.h"
 #include "check.h"
+#include "core/cpc.h"
 #include "core/inifile.h"
 #include "core/screen_text.h"
 #include "emulator.h"
@@ -403,6 +404,42 @@ int main(int argc, char* argv[])
         CHECK(emulator.setPrinter(Settings::PrinterDisabled, QString()));
         QFile file(printed);
         CHECK(file.open(QIODevice::ReadOnly) && file.readAll() == "Hello\r\n");
+    }
+
+    // The AMX mouse: Ctrl+F12 switches it on and off; the pointer over the
+    // picture and the buttons pressed there are then the CPC's mouse's,
+    // and the right button no longer opens the menu.
+    {
+        QAction* amx = actionNamed(window, "AMX Mouse");
+        CHECK(amx && amx->isEnabled() && amx->isCheckable() && !amx->isChecked());
+        CHECK(amx && amx->shortcut() == QKeySequence(Qt::CTRL | Qt::Key_F12));
+        ScreenWidget* screen = window.screen();
+        CHECK(!emulator.amxMouse() && screen->contextMenuPolicy() == Qt::CustomContextMenu);
+        if (amx)
+            amx->trigger();
+        CHECK(emulator.amxMouse() && window.settings().amxMouse);
+        CHECK(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.amxMouse(); }));
+        CHECK(screen->contextMenuPolicy() == Qt::NoContextMenu);
+        {
+            Settings saved;
+            saved.load();
+            CHECK(saved.amxMouse);
+        }
+        const auto buttons = [&] { return emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.amxButtons(); }); };
+        QTest::mouseMove(screen, QPoint(100, 100));
+        QTest::mouseMove(screen, QPoint(130, 90));
+        QTest::mousePress(screen, Qt::LeftButton, Qt::NoModifier, QPoint(130, 90));
+        CHECK(QTest::qWaitFor([&] { return buttons() == 0x10; }, 3000));
+        QTest::mouseRelease(screen, Qt::LeftButton, Qt::NoModifier, QPoint(130, 90));
+        QTest::mousePress(screen, Qt::RightButton, Qt::NoModifier, QPoint(130, 90));
+        CHECK(QTest::qWaitFor([&] { return buttons() == 0x20; }, 3000));
+        QTest::mouseRelease(screen, Qt::RightButton, Qt::NoModifier, QPoint(130, 90));
+        CHECK(QTest::qWaitFor([&] { return buttons() == 0; }, 3000));
+        if (amx)
+            amx->trigger();
+        CHECK(!emulator.amxMouse() && !window.settings().amxMouse && amx && !amx->isChecked());
+        CHECK(screen->contextMenuPolicy() == Qt::CustomContextMenu);
+        CHECK(!emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.amxMouse(); }));
     }
 
     // Help: F1 opens TuxAPE's own, with every menu entry and its key, and

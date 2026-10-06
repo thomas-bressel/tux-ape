@@ -64,6 +64,7 @@ struct Settings {
     // The Input page. The keyboard layout itself is kept in a file of its
     // own, in WinAPE's .kbd format.
     bool joystick = true;       // the host's joystick or game pad is the CPC's
+    bool amxMouse = false;      // the host's mouse is an AMX mouse on the joystick's port
     QString keyboardFile;       // the layout last loaded or saved, for the record
 
     // Screenshots: the choices of the Save Screenshot window and where the

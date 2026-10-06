@@ -282,7 +282,15 @@ void MainWindow::createMenus()
     fullScreenAction_ = addItem(settings, tr("&Full Screen"), Qt::Key_F10, [this] { toggleFullScreen(); });
     addItem(settings, tr("&Reset"), CTRL | Qt::Key_F9, [this] { emulator_->reset(false); });
     addItem(settings, tr("&Cold Reset"), SHIFT | CTRL | Qt::Key_F9, [this] { emulator_->reset(true); });
-    addItem(settings, tr("&AMX Mouse"), CTRL | Qt::Key_F12);
+    amxMouseAction_ = addItem(settings, tr("&AMX Mouse"), CTRL | Qt::Key_F12, [this] {
+        // On or off, at once and for the next time too.
+        Settings changed = settings_;
+        changed.amxMouse = amxMouseAction_->isChecked();
+        applySettings(changed);
+        if (!settings_.save())
+            report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+    });
+    amxMouseAction_->setCheckable(true);
     addItem(settings, tr("M&ultiface Stop"), Qt::Key_F11);
 
     // ---- Debug ----
@@ -680,6 +688,10 @@ void MainWindow::applySettings(const Settings& settings)
     if (!emulator_->setPrinter(settings.printerMode, settings.printerFile))
         report(tr("Cannot write what is printed to %1.").arg(QDir::toNativeSeparators(settings.printerFile)));
     emulator_->setJoystickEnabled(settings.joystick);
+    if (emulator_->amxMouse() != settings.amxMouse)
+        emulator_->setAmxMouse(settings.amxMouse);
+    screen_->setAmxMouse(settings.amxMouse);
+    amxMouseAction_->setChecked(settings.amxMouse);
     applyWindowOptions();
 }
 
@@ -691,7 +703,8 @@ void MainWindow::applyWindowOptions()
     menuBar()->setVisible(!options.hideMenus);
     controlPanel_->setVisible(!options.hidePanel);
     screen_->setCursor(options.hideMouse ? Qt::BlankCursor : Qt::ArrowCursor);
-    screen_->setContextMenuPolicy(options.noRightClick ? Qt::NoContextMenu : Qt::CustomContextMenu);
+    // The right button is the mouse's own while there is an AMX mouse.
+    screen_->setContextMenuPolicy(options.noRightClick || settings_.amxMouse ? Qt::NoContextMenu : Qt::CustomContextMenu);
     screen_->setRenderBothLines(options.renderBothLines);
     if (screen_->halfSize() != options.halfSize) {
         screen_->setHalfSize(options.halfSize);

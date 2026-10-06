@@ -111,6 +111,7 @@ private:
     QAction* libraryAction_ = nullptr;
     QAction* assemblerAction_ = nullptr;
     QAction* helpAction_ = nullptr;
+    QAction* amxMouseAction_ = nullptr;
     QDialog* help_ = nullptr;
     QAction* registersAction_ = nullptr;
     QAction* cartridgeAction_ = nullptr;

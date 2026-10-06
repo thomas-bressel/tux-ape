@@ -118,6 +118,28 @@ public:
     void setCartridge(const Cartridge* cartridge, bool discRom = true);
     bool plus() const { return plus_; }
     Asic& asic() { return asic_; }
+    // The AMX mouse, on the joystick's port. The host says how far it has
+    // moved, in the mouse's own steps (right and down are positive), and
+    // which buttons are down; the machine finds the steps one at a time on
+    // the joystick's direction lines, one for each look at the joystick, as
+    // with the real thing. The left button is fire 2, the right fire 1.
+    void setAmxMouse(bool on)
+    {
+        amx_ = on;
+        amxX_ = amxY_ = 0;
+        amxButtons_ = amxPulse_ = 0;
+    }
+    bool amxMouse() const { return amx_; }
+    void moveAmxMouse(int dx, int dy)
+    {
+        amxX_ += dx;
+        amxY_ += dy;
+    }
+    void setAmxButtons(bool left, bool middle, bool right)
+    {
+        amxButtons_ = static_cast<uint8_t>((left ? 0x10 : 0) | (right ? 0x20 : 0) | (middle ? 0x40 : 0));
+    }
+    uint8_t amxButtons() const { return amxButtons_; }
     // The printer's port (&EFxx). With a hook, a printer is there: each
     // character a program prints is handed to it, and the port's "busy"
     // line says the printer is ready for more.
@@ -308,6 +330,12 @@ private:
     ExecHook execHook_;
     bool stopRun_ = false;
     bool breakInstructions_ = false;
+    bool amx_ = false;
+    bool amxArmed_ = true;    // the joystick's line has been left since the last step was given
+    int amxX_ = 0, amxY_ = 0;  // steps the machine has still to find
+    uint8_t amxButtons_ = 0;  // as bits of the joystick's line, set for down
+    uint8_t amxPulse_ = 0;    // the direction bits of the step being given
+    uint8_t keyboardLine(int line);
     PrinterHook printerHook_;
     uint8_t printerLatch_ = 0;
     bool digiblaster_ = false;

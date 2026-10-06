@@ -85,6 +85,69 @@ void testConverters()
     CHECK_EQ(heard(false, true, 0xEF00), 0);
 }
 
+// The AMX mouse: its steps are found one at a time on the joystick's
+// line, one for each time the line is looked at afresh.
+void testMouse()
+{
+    Cpc cpc;
+    // A line of the keyboard, read as the firmware does: through the sound
+    // chip's port, which the PPI's port A leads to.
+    const auto line = [&](int n) {
+        cpc.out(0xF700, 0x82);  // port A out
+        cpc.out(0xF400, 14);    // the sound chip's register 14...
+        cpc.out(0xF600, 0xC0);  // ...chosen
+        cpc.out(0xF600, 0x00);
+        cpc.out(0xF700, 0x92);  // port A in
+        cpc.out(0xF600, static_cast<uint8_t>(0x40 | n));
+        const uint8_t value = cpc.in(0xF400);
+        cpc.out(0xF600, static_cast<uint8_t>(n));
+        return value;
+    };
+    // Looked at again without having looked elsewhere: the same step.
+    const auto again = [&] {
+        cpc.out(0xF600, 0x49);
+        return cpc.in(0xF400);
+    };
+    CHECK_EQ(line(9), 0xFF);
+    cpc.moveAmxMouse(5, 5);  // not a mouse yet: nothing
+    cpc.setAmxMouse(true);
+    CHECK(cpc.amxMouse());
+    CHECK_EQ(line(9), 0xFF);
+    // Three steps right and two up.
+    cpc.moveAmxMouse(3, -2);
+    line(8);
+    CHECK_EQ(line(9), 0xFF & ~0x09);
+    CHECK_EQ(again(), 0xFF & ~0x09);
+    cpc.out(0xF600, 0x09);
+    line(0);
+    CHECK_EQ(line(9), 0xFF & ~0x09);
+    line(0);
+    CHECK_EQ(line(9), 0xFF & ~0x08);
+    line(0);
+    CHECK_EQ(line(9), 0xFF);
+    // Left and down; the buttons are the fire buttons, and stay down.
+    cpc.moveAmxMouse(-1, 1);
+    cpc.setAmxButtons(true, false, false);
+    line(0);
+    CHECK_EQ(line(9), 0xFF & ~0x16);
+    line(0);
+    CHECK_EQ(line(9), 0xFF & ~0x10);
+    cpc.setAmxButtons(false, true, true);
+    CHECK_EQ(cpc.amxButtons(), 0x60);
+    line(0);
+    CHECK_EQ(line(9), 0xFF & ~0x60);
+    // The joystick and the keyboard's other lines are as they were.
+    cpc.keyboard().set(CpcKey::JoyFire2, true);
+    cpc.keyboard().set(CpcKey::A, true);
+    cpc.setAmxButtons(false, false, false);
+    line(0);
+    CHECK_EQ(line(9), 0xFF & ~0x10);
+    CHECK_EQ(line(8), 0xFF & ~0x20);
+    cpc.setAmxMouse(false);
+    cpc.moveAmxMouse(4, 4);
+    CHECK_EQ(line(9), 0xFF & ~0x10);
+}
+
 // BASIC's PRINT #8 through the firmware: the characters, then the end of
 // the line.
 bool printsFromBasic()
@@ -116,6 +179,7 @@ int main()
 {
     testPrinter();
     testConverters();
+    testMouse();
     const bool roms = printsFromBasic();
     if (!roms)
         std::printf("ROM images not found; printing from BASIC was not tested\n");

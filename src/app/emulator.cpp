@@ -805,6 +805,25 @@ tuxape::KeyMap Emulator::keyMap()
     return withMachine([this](Cpc&) { return keyMap_; });
 }
 
+void Emulator::setAmxMouse(bool enabled)
+{
+    amxMouse_ = enabled;
+    amxDx_ = amxDy_ = 0;
+    amxButtons_ = 0;
+    withMachine([enabled](Cpc& cpc) { cpc.setAmxMouse(enabled); });
+}
+
+void Emulator::amxMouseMoved(int dx, int dy)
+{
+    amxDx_ += dx;
+    amxDy_ += dy;
+}
+
+void Emulator::amxMouseButtons(unsigned buttons)
+{
+    amxButtons_ = buttons;
+}
+
 void Emulator::setJoystickEnabled(bool enabled)
 {
     joystickEnabled_ = enabled;
@@ -917,6 +936,12 @@ void Emulator::threadMain()
         } else {
             if (joystickEnabled_)
                 applyJoystick(joystick_.poll());
+            if (amxMouse_) {
+                // What the host's mouse has done since the last frame.
+                cpc_.moveAmxMouse(amxDx_.exchange(0), amxDy_.exchange(0));
+                const unsigned buttons = amxButtons_;
+                cpc_.setAmxButtons(buttons & 1, buttons & 4, buttons & 2);
+            }
             autoType_.frame();
             sessionRecorder_.frame(cpc_.keyboard());
         }

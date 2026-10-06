@@ -153,6 +153,10 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
     }
     if (!(port & 0x0800)) {
         ppi_.write(high & 3, value);
+        // The mouse gives its next step once the joystick's line has been
+        // left and come back to.
+        if ((ppi_.outputC() & 0x0F) != 9)
+            amxArmed_ = true;
         updatePsgBus();
         tape_.setMotor(ppi_.outputC() & 0x10, microseconds());
     }
@@ -231,7 +235,7 @@ uint8_t Cpc::ioRead(uint16_t port)
         case 0:
             // The PSG drives the bus only while BC1 is high and BDIR low.
             if ((ppi_.outputC() >> 6) == 1)
-                pins = psg_.read(keyboard_.line(ppi_.outputC() & 0x0F));
+                pins = psg_.read(keyboardLine(ppi_.outputC() & 0x0F));
             break;
         case 1:
             pins = portB();
@@ -246,6 +250,34 @@ uint8_t Cpc::ioRead(uint16_t port)
     if (!(port & 0x0480) && (port & 0x0100) && (port & 0x0800))
         value &= (port & 1) ? fdc_.readData(microseconds()) : fdc_.readStatus(microseconds());
     return value;
+}
+
+// A line of the keyboard as the machine reads it: the joystick's has the
+// mouse on it too, when there is one.
+uint8_t Cpc::keyboardLine(int line)
+{
+    uint8_t value = keyboard_.line(line);
+    if (!amx_ || line != 9)
+        return value;
+    if (amxArmed_) {
+        amxArmed_ = false;
+        amxPulse_ = 0;
+        if (amxY_ < 0) {
+            amxPulse_ |= 0x01;  // up
+            ++amxY_;
+        } else if (amxY_ > 0) {
+            amxPulse_ |= 0x02;  // down
+            --amxY_;
+        }
+        if (amxX_ < 0) {
+            amxPulse_ |= 0x04;  // left
+            ++amxX_;
+        } else if (amxX_ > 0) {
+            amxPulse_ |= 0x08;  // right
+            --amxX_;
+        }
+    }
+    return static_cast<uint8_t>(value & ~(amxPulse_ | amxButtons_));
 }
 
 uint8_t Cpc::portB()
