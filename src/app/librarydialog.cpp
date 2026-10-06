@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QTabBar>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTreeWidget>
@@ -28,8 +29,30 @@ bool isProgram(const QString& name)
            || name.endsWith(".cpr", Qt::CaseInsensitive) || name.endsWith(".sna", Qt::CaseInsensitive);
 }
 
-constexpr int kReleaseColumn = 3;
-constexpr int kAiColumn = 4;
+constexpr int kSubcategoryColumn = 1;
+constexpr int kReleaseColumn = 4;
+constexpr int kAiColumn = 5;
+
+// The category and the sub-category the folders give a program found in
+// a library folder: "<library>/Games/Racing/Outrun.dsk". The library
+// folder may be a category's own.
+void classify(LibraryEntry& entry, const QString& folder)
+{
+    const QDir root(QDir::cleanPath(folder));
+    QStringList parts = root.relativeFilePath(entry.path).split('/', Qt::SkipEmptyParts);
+    if (!parts.isEmpty())
+        parts.removeLast();  // the file itself
+    parts.prepend(root.dirName());
+    for (int i = 0; i < 2 && i < parts.size(); ++i) {
+        for (const QString& known : libraryCategories()) {
+            if (parts[i].compare(known, Qt::CaseInsensitive) == 0) {
+                entry.category = known;
+                entry.subcategory = i + 1 < parts.size() ? parts[i + 1] : QString();
+                return;
+            }
+        }
+    }
+}
 
 // The kind of release a note of a file name tells, or nothing. A note
 // that is only that is not one of the other notes; TOSEC's "cr XYZ", which
@@ -75,6 +98,11 @@ QString memberName(const std::string& name)
 }
 
 }  // namespace
+
+QStringList libraryCategories()
+{
+    return {"Games", "Educational", "Utilities", "Demos", "Compilations", "Miscellaneous"};
+}
 
 LibraryEntry libraryEntry(const QString& path)
 {
@@ -131,7 +159,9 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
                 continue;
             seen.insert(path);
             if (!path.endsWith(".zip", Qt::CaseInsensitive)) {
-                entries << libraryEntry(path);
+                LibraryEntry entry = libraryEntry(path);
+                classify(entry, folder);
+                entries << entry;
                 continue;
             }
             const auto archive = tuxape::ZipArchive::open(path.toStdString());
@@ -152,6 +182,7 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
                 entry.path = path;
                 entry.member = name;
                 entry.kind = kindOf(name);
+                classify(entry, folder);
                 entries << entry;
             }
         }
@@ -194,14 +225,19 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     search_->setClearButtonEnabled(true);
     list_ = new QTreeWidget;
     list_->setObjectName("lvLibrary");
-    list_->setHeaderLabels({tr("Title"), tr("Year"), tr("Type"), tr("Release Type"), tr("AI"), tr("Notes")});
+    tabs_ = new QTabBar;
+    tabs_->setObjectName("tabCategories");
+    tabs_->setExpanding(false);
+    tabs_->setDrawBase(false);
+    list_->setHeaderLabels({tr("Title"), tr("Sub-category"), tr("Year"), tr("Type"), tr("Release Type"), tr("AI"), tr("Notes")});
     list_->setRootIsDecorated(false);
     list_->setUniformRowHeights(true);
     list_->setAlternatingRowColors(true);
     list_->header()->setStretchLastSection(true);
-    list_->setColumnWidth(0, 300);
-    list_->setColumnWidth(1, 50);
-    list_->setColumnWidth(2, 80);
+    list_->setColumnWidth(0, 280);
+    list_->setColumnWidth(kSubcategoryColumn, 130);
+    list_->setColumnWidth(2, 50);
+    list_->setColumnWidth(3, 80);
     list_->setColumnWidth(kReleaseColumn, 100);
     list_->setColumnWidth(kAiColumn, 36);
     count_ = new QLabel;
@@ -228,11 +264,13 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
 
     auto* layout = new QVBoxLayout(this);
     layout->addWidget(search_);
+    layout->addWidget(tabs_);
     layout->addWidget(list_, 1);
     layout->addLayout(buttons);
-    resize(780, 480);
+    resize(900, 520);
 
     connect(search_, &QLineEdit::textChanged, this, [this] { filter(); });
+    connect(tabs_, &QTabBar::currentChanged, this, [this] { filter(); });
     connect(list_, &QTreeWidget::currentItemChanged, this, [this] { updateButtons(); });
     connect(list_, &QTreeWidget::itemActivated, this, [this] { choose(0); });
     connect(insertA_, &QPushButton::clicked, this, [this] { choose(0); });
@@ -262,8 +300,38 @@ void LibraryDialog::setSearch(const QString& text)
 
 void LibraryDialog::fill()
 {
+    // The tab in front stays in front, if it is still there.
+    const bool hadTabs = tabs_->count() > 0;
+    const QString wanted = category();
     entries_ = scanLibrary(folders_);
     chosen_ = -1;
+    // A tab for each category that has a folder, and one for what is in
+    // none.
+    {
+        const QSignalBlocker blocker(tabs_);
+        while (tabs_->count())
+            tabs_->removeTab(0);
+        const auto filed = [this](const QString& name) {
+            return std::any_of(entries_.begin(), entries_.end(), [&](const LibraryEntry& entry) { return entry.category == name; });
+        };
+        for (const QString& name : libraryCategories()) {
+            bool there = filed(name);
+            for (const QString& folder : folders_)
+                there = there || QDir(folder).dirName().compare(name, Qt::CaseInsensitive) == 0 || QDir(folder).exists(name);
+            if (there)
+                tabs_->setTabData(tabs_->addTab(name), name);
+        }
+        if (filed(QString()) || tabs_->count() == 0)
+            tabs_->setTabData(tabs_->addTab(tr("Unsorted")), QString());
+        // The window opens on the first category that has something in it.
+        for (int tab = tabs_->count() - 1; !hadTabs && tab >= 0; --tab)
+            if (filed(tabs_->tabData(tab).toString()))
+                tabs_->setCurrentIndex(tab);
+        for (int tab = 0; hadTabs && tab < tabs_->count(); ++tab)
+            if (tabs_->tabData(tab).toString() == wanted)
+                tabs_->setCurrentIndex(tab);
+        tabs_->setVisible(tabs_->count() > 1);
+    }
     list_->clear();
     for (int i = 0; i < entries_.size(); ++i) {
         const LibraryEntry& entry = entries_[i];
@@ -272,7 +340,7 @@ void LibraryDialog::fill()
                              : entry.kind == LibraryEntry::Cartridge ? tr("Cartridge")
                                                                      : tr("Snapshot");
         // The kinds of release are names, not words to translate.
-        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.year, kind, entry.release, QString(), entry.details});
+        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.subcategory, entry.year, kind, entry.release, QString(), entry.details});
         item->setData(0, Qt::UserRole, i);
         // A box that shows, ticked or not, and is not for clicking.
         item->setFlags(item->flags() & ~Qt::ItemIsUserCheckable);
@@ -286,13 +354,20 @@ void LibraryDialog::fill()
 void LibraryDialog::filter()
 {
     const QStringList words = search_->text().split(' ', Qt::SkipEmptyParts);
-    int shown = 0;
+    const QString tab = category();
+    int shown = 0, filed = 0;
     QTreeWidgetItem* first = nullptr;
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         QTreeWidgetItem* item = list_->topLevelItem(row);
         const LibraryEntry& entry = entries_[item->data(0, Qt::UserRole).toInt()];
-        const QString text = entry.title + ' ' + entry.year + ' ' + entry.details + ' ' + entry.release + ' '
-                             + QFileInfo(entry.path).fileName()
+        // Only the programs of the category in front.
+        if (entry.category != tab) {
+            item->setHidden(true);
+            continue;
+        }
+        ++filed;
+        const QString text = entry.title + ' ' + entry.subcategory + ' ' + entry.year + ' ' + entry.details + ' ' + entry.release
+                             + ' ' + QFileInfo(entry.path).fileName()
                              + ' ' + entry.member;
         const bool match = std::all_of(words.begin(), words.end(),
                                        [&](const QString& word) { return text.contains(word, Qt::CaseInsensitive); });
@@ -306,7 +381,7 @@ void LibraryDialog::filter()
     if (folders_.isEmpty())
         count_->setText(tr("Click Folders... to say where your discs, tapes, cartridges and snapshots are."));
     else
-        count_->setText(tr("%1 of %2").arg(shown).arg(entries_.size()));
+        count_->setText(tr("%1 of %2").arg(shown).arg(filed));
     updateButtons();
 }
 
@@ -323,6 +398,39 @@ void LibraryDialog::updateButtons()
     insertA_->setText(kind == LibraryEntry::Snapshot ? tr("&Load") : kind == LibraryEntry::Disc ? tr("Insert in &A:") : tr("&Insert"));
     insertA_->setEnabled(index >= 0);
     insertB_->setEnabled(index >= 0 && kind == LibraryEntry::Disc);
+}
+
+QStringList LibraryDialog::categories() const
+{
+    QStringList names;
+    for (int tab = 0; tab < tabs_->count(); ++tab)
+        names << tabs_->tabText(tab);
+    return names;
+}
+
+QString LibraryDialog::category() const
+{
+    return tabs_->count() ? tabs_->tabData(tabs_->currentIndex()).toString() : QString();
+}
+
+bool LibraryDialog::setCategory(const QString& name)
+{
+    for (int tab = 0; tab < tabs_->count(); ++tab) {
+        if (tabs_->tabData(tab).toString().compare(name, Qt::CaseInsensitive) == 0) {
+            tabs_->setCurrentIndex(tab);
+            return true;
+        }
+    }
+    return false;
+}
+
+QStringList LibraryDialog::listedSubcategories() const
+{
+    QStringList names;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row)
+        if (!list_->topLevelItem(row)->isHidden())
+            names << list_->topLevelItem(row)->text(kSubcategoryColumn);
+    return names;
 }
 
 QStringList LibraryDialog::listedTitles() const

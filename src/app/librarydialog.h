@@ -11,6 +11,7 @@
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QTabBar;
 class QTreeWidget;
 
 // One program of the library: an image file, by itself or inside a ZIP
@@ -25,7 +26,15 @@ struct LibraryEntry {
     QString details;  // the other notes of the name, e.g. "UK, CPM, Original"
     bool ai = false;  // the name carries the note "(AI)"
     QString release;  // "Original", "Crack", "Hack", "File" or "<machine> Port" if the name says so, or empty
+    QString category;     // the category folder it is filed under ("Games"...), or empty
+    QString subcategory;  // the folder under that ("Racing"...), or empty
 };
+
+// The categories programs are filed under: the names of the folders a
+// library folder may hold ("Games", "Educational", "Utilities", "Demos",
+// "Compilations", "Miscellaneous"), each with sub-categories as folders of
+// its own. A library folder may also be one of them itself.
+QStringList libraryCategories();
 
 // What a file name says. Collections name their files in the manner of
 // TOSEC, "Gryzor (1987)(Ocean)(fr)[cr].dsk": a title, then notes in round
@@ -41,7 +50,8 @@ LibraryEntry libraryEntry(const QString& path);
 // The disc images, tapes, cartridges and snapshots (.dsk, .cdt, .cpr, .sna)
 // in the folders and their sub-folders, those inside ZIP archives included,
 // in the order of their titles. An archive that holds a single program gives it its name;
-// the programs of one that holds several go by their own.
+// the programs of one that holds several go by their own. The folders a
+// file is in give its category and sub-category.
 QList<LibraryEntry> scanLibrary(const QStringList& folders);
 // What the program's file holds. Nothing if it cannot be read.
 std::optional<std::vector<uint8_t>> libraryData(const LibraryEntry& entry);
@@ -49,8 +59,9 @@ std::optional<std::vector<uint8_t>> libraryData(const LibraryEntry& entry);
 QString libraryDisplayPath(const LibraryEntry& entry);
 
 // The Library window, TuxAPE's own (WinAPE has none): the programs found
-// in the folders the user has named, a box to search them, and a double
-// click to put one in the machine.
+// in the folders the user has named, a tab for each category with a
+// column for the sub-category, a box to search them, and a double click
+// to put one in the machine.
 class LibraryDialog : public QDialog {
     Q_OBJECT
 
@@ -65,7 +76,17 @@ public:
     // word of the search are listed.
     QString search() const;
     void setSearch(const QString& text);
+    // The tabs: the categories that have a folder, in their own order,
+    // then "Unsorted" if some programs are in none. With that one alone
+    // there is no tab to show. The window opens on the first that has
+    // programs.
+    QStringList categories() const;
+    // The tab in front, "Unsorted" being the empty name; false if there
+    // is no such tab.
+    QString category() const;
+    bool setCategory(const QString& name);
     QStringList listedTitles() const;
+    QStringList listedSubcategories() const;
     // Those of them whose AI box is ticked.
     QStringList listedAiTitles() const;
     // What the Release Type column says of each: "Original", "Crack",
@@ -88,6 +109,7 @@ private:
     int drive_ = 0;
 
     QLineEdit* search_;
+    QTabBar* tabs_;
     QTreeWidget* list_;
     QLabel* count_;
     QPushButton* insertA_;

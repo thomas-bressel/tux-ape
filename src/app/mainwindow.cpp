@@ -899,9 +899,11 @@ void MainWindow::updateTapeActions()
 void MainWindow::showLibrary()
 {
     LibraryDialog dialog(settings_.libraryFolders, this);
+    dialog.setCategory(libraryCategory_);
     dialog.setSearch(librarySearch_);
     const int closed = dialog.exec();
     librarySearch_ = dialog.search();
+    libraryCategory_ = dialog.category();
     if (dialog.folders() != settings_.libraryFolders) {
         settings_.libraryFolders = dialog.folders();
         if (!settings_.save())

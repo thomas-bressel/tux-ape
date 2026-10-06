@@ -15,6 +15,7 @@
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTabBar>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QToolButton>
@@ -199,7 +200,7 @@ int main(int argc, char* argv[])
 
     // Two folders of programs: discs, one of them in a sub-folder, a
     // snapshot, and a file that is neither.
-    const QString games = folder.filePath("games"), more = folder.filePath("more");
+    const QString games = folder.filePath("discs"), more = folder.filePath("more");
     QDir().mkpath(games + "/sub");
     QDir().mkpath(more);
     const QString gryzor = games + "/Gryzor (UK) (1987) (CPM) [Original].dsk";
@@ -234,12 +235,18 @@ int main(int argc, char* argv[])
         // The AI column: ticked for the files with "(AI)" in their name.
         CHECK(dialog.listedAiTitles() == QStringList{"boulder dash"});
         auto* programs = dialog.findChild<QTreeWidget*>("lvLibrary");
-        CHECK(programs && programs->columnCount() == 6 && programs->headerItem()->text(4) == "AI");
-        CHECK(programs && programs->topLevelItem(0)->text(5).isEmpty());  // not among the notes as well
+        CHECK(programs && programs->columnCount() == 7 && programs->headerItem()->text(5) == "AI");
+        CHECK(programs && programs->topLevelItem(0)->text(6).isEmpty());  // not among the notes as well
+        // No category folder here: no tab, and nothing in the column.
+        CHECK(dialog.categories() == QStringList{"Unsorted"} && dialog.category().isEmpty());
+        auto* tabs = dialog.findChild<QTabBar*>("tabCategories");
+        CHECK(tabs && tabs->isHidden());
+        CHECK(programs && programs->headerItem()->text(1) == "Sub-category");
+        CHECK(dialog.listedSubcategories() == (QStringList{"", "", "", ""}));
         // The Release Type column: Original, Crack or Hack, from the name.
-        CHECK(programs && programs->headerItem()->text(3) == "Release Type");
+        CHECK(programs && programs->headerItem()->text(4) == "Release Type");
         CHECK(dialog.listedReleases() == (QStringList{"", "Original", "", ""}));
-        CHECK(programs && programs->topLevelItem(1)->text(5) == "UK, CPM");
+        CHECK(programs && programs->topLevelItem(1)->text(6) == "UK, CPM");
         dialog.setSearch("original");
         CHECK(dialog.listedTitles() == QStringList{"Gryzor"});
         dialog.setSearch(QString());
@@ -406,6 +413,86 @@ int main(int argc, char* argv[])
     // No program in it, and not an archive at all: nothing listed.
     writeZip(zipped + "/documents.zip", {{"readme.txt", games + "/readme.txt"}});
     CHECK(QFile::copy(games + "/readme.txt", zipped + "/broken.zip"));
+
+    // Categories: the folders "Games", "Demos"... of a library folder are
+    // tabs, and the folders inside them the sub-categories.
+    {
+        const QString filed = folder.filePath("filed");
+        for (const char* path : {"Games/Racing", "Games/Platform/Wonder Boy", "Demos/Sound", "Educational", "Extras"})
+            QDir().mkpath(filed + '/' + path);
+        CHECK(QFile::copy(gryzor, filed + "/Games/Racing/Outrun (AI) [Hack].dsk"));
+        CHECK(QFile::copy(gryzor, filed + "/Games/Platform/Wonder Boy/Wonder Boy (1987).dsk"));
+        CHECK(QFile::copy(gryzor, filed + "/Games/Loose.dsk"));
+        CHECK(QFile::copy(gryzor, filed + "/Demos/Sound/Jukebox 4.dsk"));
+        CHECK(QFile::copy(gryzor, filed + "/Extras/Thing.dsk"));
+        CHECK(QFile::copy(gryzor, filed + "/Odd One.dsk"));
+        writeZip(filed + "/Games/Racing/Pack.zip", {{"Crazy Cars.dsk", gryzor}});
+        const QList<LibraryEntry> programs = scanLibrary({filed});
+        CHECK_EQ(programs.size(), 7);
+        for (const LibraryEntry& program : programs) {
+            if (program.title == "Outrun" || program.title == "Pack")
+                CHECK(program.category == "Games" && program.subcategory == "Racing");
+            else if (program.title == "Wonder Boy")
+                CHECK(program.category == "Games" && program.subcategory == "Platform");
+            else if (program.title == "Loose")
+                CHECK(program.category == "Games" && program.subcategory.isEmpty());
+            else if (program.title == "Jukebox 4")
+                CHECK(program.category == "Demos" && program.subcategory == "Sound");
+            else
+                CHECK(program.category.isEmpty() && program.subcategory.isEmpty());
+        }
+        LibraryDialog dialog({filed});
+        dialog.show();
+        auto* tabs = dialog.findChild<QTabBar*>("tabCategories");
+        CHECK(tabs && tabs->isVisible());
+        // In their own order; Educational has its folder, and nothing in it yet.
+        CHECK(dialog.categories() == (QStringList{"Games", "Educational", "Demos", "Unsorted"}));
+        CHECK(dialog.category() == "Games");
+        CHECK(dialog.listedTitles() == (QStringList{"Loose", "Outrun", "Pack", "Wonder Boy"}));
+        CHECK(dialog.listedSubcategories() == (QStringList{"", "Racing", "Racing", "Platform"}));
+        CHECK(dialog.listedAiTitles() == QStringList{"Outrun"} && dialog.listedReleases().value(1) == "Hack");
+        auto* count = dialog.findChild<QLabel*>("lCount");
+        CHECK(count && count->text() == "4 of 4");
+        // The search is within the tab, sub-category included.
+        dialog.setSearch("racing");
+        CHECK(dialog.listedTitles() == (QStringList{"Outrun", "Pack"}));
+        CHECK(count && count->text() == "2 of 4");
+        dialog.setSearch("jukebox");
+        CHECK(dialog.listedTitles().isEmpty());
+        CHECK(dialog.setCategory("Demos"));
+        CHECK(dialog.listedTitles() == QStringList{"Jukebox 4"} && dialog.listedSubcategories() == QStringList{"Sound"});
+        dialog.setSearch(QString());
+        CHECK(dialog.setCategory("Educational"));
+        CHECK(dialog.listedTitles().isEmpty());
+        CHECK(!dialog.choose(0));
+        CHECK(dialog.setCategory(QString()));
+        CHECK(dialog.category().isEmpty());
+        CHECK(dialog.listedTitles() == (QStringList{"Odd One", "Thing"}));
+        CHECK(!dialog.setCategory("Utilities"));
+        // A click on a tab.
+        if (tabs)
+            tabs->setCurrentIndex(0);
+        CHECK(dialog.category() == "Games" && dialog.listedTitles().size() == 4);
+        CHECK(dialog.select("Wonder Boy") && dialog.choose(0));
+        CHECK(dialog.chosen() && dialog.chosen()->subcategory == "Platform");
+        if (!prefix.isEmpty()) {
+            dialog.show();
+            dialog.grab().save(prefix + "categories.png");
+        }
+        // Nothing filed yet: the window opens on what there is.
+        const QString fresh = folder.filePath("fresh");
+        QDir().mkpath(fresh + "/Games/Racing");
+        CHECK(QFile::copy(gryzor, fresh + "/Somewhere.dsk"));
+        LibraryDialog unsorted({fresh});
+        CHECK(unsorted.categories() == (QStringList{"Games", "Unsorted"}) && unsorted.category().isEmpty());
+        CHECK(unsorted.listedTitles() == QStringList{"Somewhere"});
+        // A library folder that is a category's own.
+        LibraryDialog games({filed + "/Games"});
+        CHECK(games.categories() == QStringList{"Games"});
+        CHECK(games.listedSubcategories() == (QStringList{"", "Racing", "Racing", "Platform"}));
+        // The names of the folders, in any case.
+        CHECK(libraryCategories() == (QStringList{"Games", "Educational", "Utilities", "Demos", "Compilations", "Miscellaneous"}));
+    }
 
     // An archive marked "(AI)" marks the programs it holds.
     {

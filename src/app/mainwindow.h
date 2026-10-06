@@ -126,7 +126,8 @@ private:
     QString tapePath_;    // the file the tape in the deck came from
     QString tapeFolder_;  // where the last tape image was opened
     QString cartridgeFolder_;
-    QString librarySearch_;  // what the Library window was last searching for
+    QString librarySearch_;    // what the Library window was last searching for
+    QString libraryCategory_;  // and the tab it was on
     struct DriveActions {
         QAction* edit = nullptr;
         QAction* format = nullptr;
