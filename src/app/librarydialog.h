@@ -104,6 +104,10 @@ QString libraryThumbnail(const LibraryEntry& entry);
 // Gives the program a picture: a copy of the file, under the program's
 // name, in place of the one it had. What went wrong, or nothing.
 QString setLibraryThumbnail(const LibraryEntry& entry, const QString& picture);
+// Takes the program's own picture away: the file of its name, whatever
+// kind of picture it is. True if there was one. A picture it only borrows
+// from a program of the same title is another program's, and stays.
+bool removeLibraryThumbnail(const LibraryEntry& entry);
 // The same for a picture that is no file yet, such as one of the screen:
 // written as a PNG.
 QString setLibraryThumbnail(const LibraryEntry& entry, const QImage& picture);
@@ -172,6 +176,11 @@ public:
     QStringList selectedTitles() const;
     // False, with a word to the user, if a program could not be given it.
     bool setThumbnail(const QString& picture);
+    // Takes away the pictures of the programs selected, their own ones:
+    // how many there were. The right button's menu asks first.
+    int removeThumbnails();
+    // How many of the programs selected have a picture of their own.
+    int selectedOwnThumbnails() const;
     QStringList listedThumbnailTitles() const;
     // The picture beside the pointer; hidden when there is none to show.
     QLabel* preview() const { return preview_; }
@@ -228,6 +237,7 @@ private:
     void hideEvent(QHideEvent* event) override;
     QList<int> selection() const;
     void chooseThumbnail();
+    void showMenu(const QPoint& globalPlace);
     void updateThumbnails();
     void showPreview(const QPoint& at);
     void fillGrid();

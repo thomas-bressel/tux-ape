@@ -19,6 +19,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -973,6 +974,37 @@ int main(int argc, char* argv[])
             CHECK(!dialog.setThumbnail(disc));
             CHECK_EQ(modals.seen(), 1);
             CHECK(dialog.listedThumbnailTitles().isEmpty());
+        }
+
+        // The right button's menu: the Thumbnail button's doing, and the
+        // taking away of a picture, which deletes its file and is asked
+        // about first. Only a program's own picture goes.
+        {
+            CHECK(dialog.setCategory("Games") && dialog.select("Sorcery+"));
+            CHECK_EQ(dialog.selectedOwnThumbnails(), 1);
+            const QString own = shelf + "/thumbnails/Sorcery+ (1985) (Platform) (Disc).bmp";
+            CHECK(QFile::exists(own));
+            QStringList entries;
+            bool removeEnabled = false;
+            QTimer::singleShot(50, &dialog, [&] {
+                if (auto* menu = dialog.findChild<QMenu*>("LibraryMenu")) {
+                    for (const QAction* entry : menu->actions()) {
+                        entries << entry->text();
+                        removeEnabled = removeEnabled || (entry->text() == "&Remove Thumbnail" && entry->isEnabled());
+                    }
+                    menu->close();
+                }
+            });
+            emit programs->customContextMenuRequested(programs->visualItemRect(programs->currentItem()).center());
+            CHECK(entries == (QStringList{"&Thumbnail...", "&Remove Thumbnail"}) && removeEnabled);
+            CHECK(QFile::exists(own));  // the menu closed without a choice
+            CHECK_EQ(dialog.removeThumbnails(), 1);
+            CHECK(!QFile::exists(own));
+            CHECK_EQ(dialog.listedThumbnailTitles().size(), 3);
+            CHECK(dialog.selectedOwnThumbnails() == 0 && dialog.removeThumbnails() == 0);
+            // Back, for what follows.
+            CHECK(dialog.setThumbnail(photo));
+            CHECK(QFile::exists(own));
         }
 
         // A new picture takes the place of the old one, of whatever kind.

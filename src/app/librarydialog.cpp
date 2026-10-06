@@ -21,6 +21,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QCoreApplication>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
@@ -362,6 +363,16 @@ QString setLibraryThumbnail(const LibraryEntry& entry, const QString& picture)
     if (!QFile::copy(picture, target))
         return LibraryDialog::tr("Cannot write %1.").arg(QDir::toNativeSeparators(target));
     return {};
+}
+
+bool removeLibraryThumbnail(const LibraryEntry& entry)
+{
+    const QString folder = libraryThumbnailFolder(entry), name = libraryThumbnailName(entry);
+    bool removed = false;
+    for (const QString& picture : picturesIn(folder))
+        if (QFileInfo(picture).completeBaseName().compare(name, Qt::CaseInsensitive) == 0)
+            removed = QFile::remove(folder + '/' + picture) || removed;
+    return removed;
 }
 
 QString setLibraryThumbnail(const LibraryEntry& entry, const QImage& picture)
@@ -710,10 +721,16 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     connect(list_, &QTreeWidget::currentItemChanged, this, [this] { updateButtons(); });
     connect(list_, &QTreeWidget::itemSelectionChanged, this, [this] { updateButtons(); });
     connect(thumbnail_, &QPushButton::clicked, this, [this] { chooseThumbnail(); });
+    list_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(list_, &QWidget::customContextMenuRequested, this,
+            [this](const QPoint& at) { showMenu(list_->viewport()->mapToGlobal(at)); });
     connect(viewBox_, &QCheckBox::toggled, this, [this](bool on) { setThumbnailView(on); });
     connect(sizeSlider_, &QSlider::valueChanged, this, [this](int size) { setThumbnailSize(size); });
     connect(grid_, &QListWidget::itemSelectionChanged, this, [this] { updateButtons(); });
     connect(grid_, &QListWidget::itemActivated, this, [this] { choose(0); });
+    grid_->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(grid_, &QWidget::customContextMenuRequested, this,
+            [this](const QPoint& at) { showMenu(grid_->viewport()->mapToGlobal(at)); });
     // What has gone out of sight need not be read.
     connect(grid_->verticalScrollBar(), &QScrollBar::valueChanged, this, [this] { wanted_.clear(); });
     connect(loader_, &QTimer::timeout, this, [this] { loadTile(); });
@@ -887,6 +904,51 @@ bool LibraryDialog::setThumbnail(const QString& picture)
     if (!error.isEmpty())
         QMessageBox::warning(this, windowTitle(), error);
     return error.isEmpty();
+}
+
+int LibraryDialog::selectedOwnThumbnails() const
+{
+    int own = 0;
+    for (int index : selection()) {
+        const QString picture = thumbnails_.value(index);
+        own += !picture.isEmpty() &&
+               QFileInfo(picture).completeBaseName().compare(libraryThumbnailName(entries_[index]), Qt::CaseInsensitive) == 0;
+    }
+    return own;
+}
+
+int LibraryDialog::removeThumbnails()
+{
+    int removed = 0;
+    for (int index : selection())
+        removed += removeLibraryThumbnail(entries_[index]);
+    list_->setSortingEnabled(false);
+    updateThumbnails();
+    list_->setSortingEnabled(true);
+    tiles_.clear();
+    fillGrid();
+    updateButtons();
+    return removed;
+}
+
+// The right button's menu, on the list or on the pictures: what the
+// Thumbnail button does, and the taking away of a picture, asked twice.
+void LibraryDialog::showMenu(const QPoint& globalPlace)
+{
+    if (selection().isEmpty())
+        return;
+    QMenu menu(this);
+    menu.setObjectName("LibraryMenu");
+    menu.addAction(tr("&Thumbnail..."), this, [this] { chooseThumbnail(); });
+    const int own = selectedOwnThumbnails();
+    QAction* remove = menu.addAction(tr("&Remove Thumbnail"), this, [this, own] {
+        const QString question = own == 1 ? tr("Remove this program's thumbnail? Its file is deleted.")
+                                          : tr("Remove the thumbnails of %1 programs? Their files are deleted.").arg(own);
+        if (QMessageBox::question(this, windowTitle(), question) == QMessageBox::Yes)
+            removeThumbnails();
+    });
+    remove->setEnabled(own > 0);
+    menu.exec(globalPlace);
 }
 
 // The Thumbnail button: the picture is chosen among the user's files.
