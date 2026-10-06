@@ -146,7 +146,7 @@ endif()
 
 if(TUXAPE_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Test)
-    foreach(test gui_smoke gui_discs gui_sound gui_snapshot gui_setup gui_tools gui_library gui_tape gui_plus gui_debugger gui_session gui_disceditor gui_assembler gui_registers gui_breakpoints gui_memtools gui_graphics)
+    foreach(test gui_smoke gui_discs gui_sound gui_snapshot gui_setup gui_tools gui_library gui_tape gui_plus gui_debugger gui_session gui_disceditor gui_assembler gui_registers gui_breakpoints gui_memtools gui_graphics gui_crt)
         add_executable(${test} ${test}.cpp)
         target_link_libraries(${test} PRIVATE tuxape_app Qt6::Test)
         add_test(NAME ${test} COMMAND ${test})

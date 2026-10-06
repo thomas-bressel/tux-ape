@@ -6,6 +6,7 @@
 #include <QKeyEvent>
 #include <QPainter>
 
+#include "crtview.h"
 #include "emulator.h"
 #include "hostkeys.h"
 
@@ -115,7 +116,39 @@ void ScreenWidget::setPalEmulation(bool pal)
 void ScreenWidget::fetchFrame()
 {
     image_ = emulator_->frame();
+    if (crt_)
+        crt_->setFrame(image_);
+    else
+        update();
+}
+
+void ScreenWidget::setCrtShader(bool on, bool colourTube)
+{
+    if (on && !crt_ && CrtRenderer::available()) {
+        crt_ = new CrtView(this);
+        // The keyboard and the mouse stay this widget's.
+        crt_->setAttribute(Qt::WA_TransparentForMouseEvents);
+        crt_->setFocusPolicy(Qt::NoFocus);
+        crt_->setGeometry(pictureRect());
+        crt_->overlay = [this](QPainter& painter) { paintDriveLight(painter, driveLightRect().translated(-crt_->pos())); };
+        // A graphics card that will not have the shaders: plain drawing.
+        connect(crt_, &CrtView::unusable, this, [this] { setCrtShader(false); }, Qt::QueuedConnection);
+        crt_->setFrame(image_);
+        crt_->show();
+    } else if (!on && crt_) {
+        crt_->deleteLater();
+        crt_ = nullptr;
+    }
+    if (crt_)
+        crt_->setMask(colourTube);
     update();
+}
+
+void ScreenWidget::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    if (crt_)
+        crt_->setGeometry(pictureRect());
 }
 
 // Largest picture of the right proportions that fits, centred.
@@ -131,6 +164,8 @@ void ScreenWidget::setDriveLight(bool shown, bool withCylinder)
     driveLightShown_ = shown;
     driveCylinderShown_ = withCylinder;
     update();
+    if (crt_)
+        crt_->update();
 }
 
 void ScreenWidget::showDriveLight(int light)
@@ -140,6 +175,8 @@ void ScreenWidget::showDriveLight(int light)
     driveLight_ = light;
     if (driveLightShown_)
         update();
+    if (driveLightShown_ && crt_)
+        crt_->update();
 }
 
 QRect ScreenWidget::driveLightRect() const
@@ -158,6 +195,9 @@ void ScreenWidget::paintEvent(QPaintEvent*)
     const QRect target = pictureRect();
     if (target != rect())
         painter.fillRect(rect(), Qt::black);
+    // The graphics card draws the picture, and the light on it.
+    if (crt_)
+        return;
     // At half size a CPC line is one screen line: there is no second line
     // to leave out.
     if (pal_ && !halfSize_ && !image_.isNull()) {
@@ -190,8 +230,12 @@ void ScreenWidget::paintEvent(QPaintEvent*)
             std::memcpy(striped_.scanLine(y * 2), image_.constScanLine(y), static_cast<size_t>(rowBytes));
         painter.drawImage(target, striped_);
     }
-    // The drive's light: red, with the drive's letter and its cylinder.
-    const QRect light = driveLightRect();
+    paintDriveLight(painter, driveLightRect());
+}
+
+// The drive's light: red, with the drive's letter and its cylinder.
+void ScreenWidget::paintDriveLight(QPainter& painter, const QRect& light) const
+{
     if (light.isEmpty())
         return;
     painter.setPen(QColor(64, 0, 0));

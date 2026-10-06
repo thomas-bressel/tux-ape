@@ -31,6 +31,7 @@ struct Settings {
     int verticalHold = 0;       // lines the picture is moved by, -32 to 32
     bool linearPalette = true;
     bool palEmulation = false;        // pixels run into their neighbours, every other line dimmed
+    bool crtShader = false;           // the picture as a CTM644 shows it, drawn by the graphics card
     bool driveLed = false;            // a light on the picture while a drive is at work
     bool showDriveCylinders = false;  // with the cylinder its head is on
     // What the window shows around the picture, and how the picture is

@@ -389,6 +389,11 @@ QWidget* SetupDialog::createDisplayPage()
     auto* sharedBox = new QGroupBox(tr("Shared"));
     pal_ = new QCheckBox(tr("PAL Emulation"));
     pal_->setObjectName("ckPAL");
+    // TuxAPE's own.
+    crtShader_ = new QCheckBox(tr("CTM644 Monitor Shader"));
+    crtShader_->setObjectName("ckCrtShader");
+    crtShader_->setToolTip(tr("The picture as an Amstrad CTM644 shows it: scan lines, the tube's mask, the glow of bright "
+                              "areas and the curve of the glass. Needs a graphics card; best in full screen."));
     linearPalette_ = new QCheckBox(tr("Linear Palette"));
     linearPalette_->setObjectName("ckLinearPalette");
     connect(linearPalette_, &QCheckBox::toggled, this, &SetupDialog::updatePreview);
@@ -398,7 +403,7 @@ QWidget* SetupDialog::createDisplayPage()
     showTrack_->setObjectName("ckShowTrack");
     auto* sharedLayout = new QVBoxLayout(sharedBox);
     sharedLayout->setSpacing(2);
-    for (QCheckBox* box : {pal_, linearPalette_, driveLed_, showTrack_})
+    for (QCheckBox* box : {pal_, crtShader_, linearPalette_, driveLed_, showTrack_})
         sharedLayout->addWidget(box);
 
     // ---- Full Screen Colours: always true colour here ----
@@ -1115,6 +1120,7 @@ void SetupDialog::setSettings(const Settings& settings)
     brightnessLabel_->setText(QString::number(settings.brightness));
     linearPalette_->setChecked(settings.linearPalette);
     pal_->setChecked(settings.palEmulation);
+    crtShader_->setChecked(settings.crtShader);
     driveLed_->setChecked(settings.driveLed);
     showTrack_->setChecked(settings.showDriveCylinders);
     const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
@@ -1363,6 +1369,7 @@ Settings SetupDialog::settings() const
     settings.brightness = brightness_->value();
     settings.linearPalette = linearPalette_->isChecked();
     settings.palEmulation = pal_->isChecked();
+    settings.crtShader = crtShader_->isChecked();
     settings.driveLed = driveLed_->isChecked();
     settings.showDriveCylinders = showTrack_->isChecked();
     Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};

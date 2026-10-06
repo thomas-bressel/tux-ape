@@ -120,6 +120,7 @@ void Settings::read(const tuxape::IniFile& ini)
     verticalHold = std::clamp(ini.getInt(kConfiguration, "VHOLD Position", verticalHold), -32, 32);
     linearPalette = ini.getBool(kConfiguration, "Linear Palette", linearPalette);
     palEmulation = ini.getBool(kConfiguration, "PAL Emulation", palEmulation);
+    crtShader = ini.getBool(kConfiguration, "CRT Shader", crtShader);
     driveLed = ini.getBool(kConfiguration, "On Screen Drive LED", driveLed);
     showDriveCylinders = ini.getBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
     readWindowOptions(ini, "", windowed);
@@ -210,6 +211,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt(kConfiguration, "VHOLD Position", verticalHold);
         ini.setBool(kConfiguration, "Linear Palette", linearPalette);
         ini.setBool(kConfiguration, "PAL Emulation", palEmulation);
+        ini.setBool(kConfiguration, "CRT Shader", crtShader);
         ini.setBool(kConfiguration, "On Screen Drive LED", driveLed);
         ini.setBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
     }

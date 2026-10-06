@@ -3,6 +3,9 @@
 #include <QImage>
 #include <QWidget>
 
+class QPainter;
+
+class CrtView;
 class Emulator;
 
 // The emulated monitor. Shows the pictures the emulator produces and feeds
@@ -31,6 +34,12 @@ public:
     // takes, the second is at half brightness.
     void setPalEmulation(bool pal);
     bool palEmulation() const { return pal_; }
+    // TuxAPE's own: the picture as a CTM644 monitor shows it (see CrtView),
+    // drawn by the graphics card. Where there is none to do it the picture
+    // stays as it was. A colour tube has a mask, a green or grey one none.
+    void setCrtShader(bool on, bool colourTube = true);
+    bool crtShader() const { return crt_ != nullptr; }
+    CrtView* crtView() const { return crt_; }
     // WinAPE's "AMX Mouse": the pointer's moves over the picture, and the
     // buttons pressed there, are the CPC's mouse's.
     void setAmxMouse(bool on);
@@ -45,6 +54,7 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void keyReleaseEvent(QKeyEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
@@ -68,6 +78,8 @@ private:
     bool driveCylinderShown_ = false;
     int driveLight_ = -1;
     QRect pictureRect() const;
+    void paintDriveLight(QPainter& painter, const QRect& light) const;
+    CrtView* crt_ = nullptr;
     bool numLock_ = true;
 
     void fetchFrame();

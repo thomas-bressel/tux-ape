@@ -1,4 +1,4 @@
-find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets OpenGLWidgets)
 find_package(SDL2 REQUIRED)
 
 set(CMAKE_AUTOMOC ON)
@@ -38,6 +38,8 @@ add_library(tuxape_app STATIC
     mainwindow.h
     registersdialog.cpp
     registersdialog.h
+    crtview.cpp
+    crtview.h
     screenwidget.cpp
     screenwidget.h
     settings.cpp
@@ -55,7 +57,7 @@ target_compile_definitions(tuxape_app PRIVATE
     # is none beside the program.
     TUXAPE_DEV_LIBRARY_DIR="${PROJECT_SOURCE_DIR}/library"
 )
-target_link_libraries(tuxape_app PUBLIC tuxape_core Qt6::Widgets)
+target_link_libraries(tuxape_app PUBLIC tuxape_core Qt6::Widgets Qt6::OpenGLWidgets)
 target_link_libraries(tuxape_app PRIVATE SDL2::SDL2)
 
 add_executable(tuxape main.cpp)
