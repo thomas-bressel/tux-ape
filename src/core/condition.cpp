@@ -282,6 +282,10 @@ private:
             if (pen >= 0 && pen <= 16)
                 return cpc_.gateArray().ink(pen);
         }
+        if (context_.function) {
+            if (const std::optional<int32_t> value = context_.function(name, args))
+                return *value;
+        }
         bad_ = true;
         return 0;
     }

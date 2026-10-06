@@ -405,6 +405,9 @@ bool Emulator::counts(BreakProps& props, uint32_t address, uint32_t value, uint3
             const auto found = symbols_.find(name);
             return found == symbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
         };
+        context.function = [this](const std::string& name, const std::vector<int32_t>& args) {
+            return conditionFunction(name, args, true);
+        };
         const std::optional<int32_t> holds = tuxape::evaluateCondition(props.condition, cpc_, context);
         if (!holds || *holds == 0)
             return false;
@@ -491,6 +494,71 @@ void Emulator::setIoBreaks(const std::vector<IoBreak>& breaks)
     });
 }
 
+// The functions the emulator adds to conditions. Without `act` they are
+// only checked: nothing starts or stops.
+std::optional<int32_t> Emulator::conditionFunction(const std::string& name, const std::vector<int32_t>& args, bool act)
+{
+    if (args.size() > 1)
+        return std::nullopt;
+    const int id = args.empty() ? 0 : args[0];
+    const uint64_t now = cpc_.instructionTime();
+    if (name == "TIMER_START") {
+        if (act) {
+            Timer& timer = timers_[id];
+            timer.state.id = id;
+            timer.started = now;
+            timer.running = true;
+        }
+        return 0;
+    }
+    if (name == "TIMER_STOP") {
+        if (!act)
+            return 1;
+        const auto found = timers_.find(id);
+        if (found == timers_.end() || !found->second.running)
+            return 0;
+        Timer& timer = found->second;
+        TimerState& state = timer.state;
+        state.last = now - timer.started;
+        state.least = state.count ? std::min(state.least, state.last) : state.last;
+        state.most = std::max(state.most, state.last);
+        state.total += state.last;
+        ++state.count;
+        return static_cast<int32_t>(std::min<uint64_t>(state.last, 0xFFFF));
+    }
+    if (name == "RESET_CYCLES") {
+        if (act)
+            cycleBase_ = now - static_cast<uint64_t>(id);
+        return 0;
+    }
+    return std::nullopt;
+}
+
+std::vector<Emulator::TimerState> Emulator::timers()
+{
+    return withMachine([&](Cpc&) {
+        std::vector<TimerState> states;
+        for (const auto& [id, timer] : timers_)
+            states.push_back(timer.state);
+        return states;
+    });
+}
+
+void Emulator::clearTimers()
+{
+    withMachine([&](Cpc&) { timers_.clear(); });
+}
+
+uint64_t Emulator::cycleBase()
+{
+    return withMachine([&](Cpc&) { return cycleBase_; });
+}
+
+void Emulator::resetCycles(uint64_t value)
+{
+    withMachine([&](Cpc& cpc) { cycleBase_ = cpc.instructionTime() - value; });
+}
+
 bool Emulator::conditionValid(const std::string& condition)
 {
     return withMachine([&](Cpc& cpc) {
@@ -498,6 +566,9 @@ bool Emulator::conditionValid(const std::string& condition)
         context.symbol = [this](const std::string& name) -> std::optional<int32_t> {
             const auto found = symbols_.find(name);
             return found == symbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
+        };
+        context.function = [this](const std::string& name, const std::vector<int32_t>& args) {
+            return conditionFunction(name, args, false);
         };
         // poke() must not go off while the condition is only being read:
         // the machine's memory is put back as it was.

@@ -496,3 +496,89 @@ void BreakpointsDialog::showAdd()
     });
     box.exec();
 }
+
+// ---- Timers -------------------------------------------------------------------
+
+TimersDialog::TimersDialog(Emulator* emulator, QWidget* parent)
+    : QDialog(parent)
+    , emulator_(emulator)
+{
+    setWindowTitle(tr("Timers"));
+    auto* layout = new QVBoxLayout(this);
+    list_ = new QTreeWidget;
+    list_->setObjectName("lvTimers");
+    list_->setHeaderLabels({tr("ID"), tr("Count"), tr("Last"), tr("Min"), tr("Max"), tr("Average")});
+    list_->setRootIsDecorated(false);
+    for (int column = 1; column < 6; ++column)
+        list_->headerItem()->setTextAlignment(column, Qt::AlignRight | Qt::AlignVCenter);
+    for (int column = 0; column < 6; ++column)
+        list_->setColumnWidth(column, column == 0 ? 60 : 58);
+    layout->addWidget(list_);
+    auto* buttons = new QHBoxLayout;
+    auto* clearAll = new QPushButton(tr("Clear All"));
+    clearAll->setObjectName("bClearAll");
+    auto* close = new QPushButton(tr("&Close"));
+    close->setObjectName("bClose");
+    auto* help = new QPushButton(tr("&Help"));
+    help->setEnabled(false);
+    buttons->addWidget(clearAll);
+    buttons->addStretch();
+    buttons->addWidget(close);
+    buttons->addWidget(help);
+    layout->addLayout(buttons);
+    resize(400, 180);
+    connect(clearAll, &QPushButton::clicked, this, &TimersDialog::clearAll);
+    connect(close, &QPushButton::clicked, this, &QDialog::close);
+    // The figures move while the machine runs.
+    auto* timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, [this] {
+        if (isVisible() && !emulator_->isPaused())
+            refresh();
+    });
+    timer->start(500);
+    refresh();
+}
+
+void TimersDialog::refresh()
+{
+    const std::vector<Emulator::TimerState> timers = emulator_->timers();
+    while (list_->topLevelItemCount() > static_cast<int>(timers.size()))
+        delete list_->topLevelItem(list_->topLevelItemCount() - 1);
+    for (size_t i = 0; i < timers.size(); ++i) {
+        const Emulator::TimerState& state = timers[i];
+        QTreeWidgetItem* item = list_->topLevelItem(static_cast<int>(i));
+        if (!item) {
+            item = new QTreeWidgetItem(list_);
+            for (int column = 1; column < 6; ++column)
+                item->setTextAlignment(column, Qt::AlignRight | Qt::AlignVCenter);
+        }
+        const QStringList cells = {hex4(static_cast<unsigned>(state.id)),
+                                   QString::number(state.count),
+                                   QString::number(state.last),
+                                   QString::number(state.least),
+                                   QString::number(state.most),
+                                   state.count ? QString::number(static_cast<double>(state.total) / static_cast<double>(state.count), 'f', 2)
+                                               : QString("0.00")};
+        for (int column = 0; column < cells.size(); ++column)
+            if (item->text(column) != cells[column])
+                item->setText(column, cells[column]);
+    }
+}
+
+QStringList TimersDialog::rows() const
+{
+    QStringList out;
+    for (int r = 0; r < list_->topLevelItemCount(); ++r) {
+        QStringList cells;
+        for (int column = 0; column < list_->columnCount(); ++column)
+            cells << list_->topLevelItem(r)->text(column);
+        out << cells.join('|');
+    }
+    return out;
+}
+
+void TimersDialog::clearAll()
+{
+    emulator_->clearTimers();
+    refresh();
+}

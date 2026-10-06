@@ -637,7 +637,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
         refresh();
     });
     connect(resetTimer, &QPushButton::clicked, this, [this] {
-        timerBase_ = emulator_->withMachine([](tuxape::Cpc& cpc) { return cpc.microseconds(); });
+        emulator_->resetCycles();
         refresh();
     });
 
@@ -684,7 +684,7 @@ void DebuggerDialog::refresh()
         auto pair = [&](int high, int low) { return static_cast<uint16_t>(z80.reg[high] << 8 | z80.reg[low]); };
         return Cpu{pair(z80.A, z80.F), pair(z80.B, z80.C), pair(z80.D, z80.E), pair(z80.H, z80.L), z80.af2, z80.bc2,
                    z80.de2,            z80.hl2,            z80.ix,             z80.iy,             z80.sp,  z80.pc,
-                   z80.i,              z80.r,              z80.im,             z80.iff1,           cpc.microseconds()};
+                   z80.i,              z80.r,              z80.im,             z80.iff1,           cpc.instructionTime()};
     });
     const uint16_t values[] = {cpu.af, cpu.af2, cpu.hl, cpu.hl2, cpu.de, cpu.de2, cpu.bc,
                                cpu.bc2, cpu.ix, cpu.sp, cpu.iy, cpu.i, cpu.pc, cpu.r};
@@ -698,7 +698,7 @@ void DebuggerDialog::refresh()
     flags_->setText(flags);
     interruptMode_->setText(QString::number(cpu.im));
     interrupts_->setChecked(cpu.interrupts);
-    timer_->setText(QString::number(cpu.time - timerBase_));
+    timer_->setText(QString::number(cpu.time - emulator_->cycleBase()));
 
     stack_->clear();
     for (int i = 0; i < 32; ++i) {

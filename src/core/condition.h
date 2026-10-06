@@ -4,6 +4,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace tuxape {
 
@@ -16,6 +17,9 @@ struct ConditionContext {
     uint32_t previous = 0;  // what a write to memory replaced
     // An assembler symbol's value, whatever its case, if there is one.
     std::function<std::optional<int32_t>(const std::string& name)> symbol;
+    // A function the machine itself does not have (its name in upper
+    // case): the emulator's timers, say.
+    std::function<std::optional<int32_t>(const std::string& name, const std::vector<int32_t>& args)> function;
 };
 
 // A breakpoint's condition, worked out as WinAPE's are: the Z80's registers
@@ -28,7 +32,7 @@ struct ConditionContext {
 // upper_enabled, upper_rom, ram_bank, cartridge_bank, secondary_rom,
 // ppi_a, ppi_c, ppi_control, fdc_motor, tape_motor. Functions: peek(addr),
 // poke(addr,n...), byte(v), hibyte(v), word(v), hiword(v), crtc([r]),
-// psg([r]) (or ay), ga_palette([pen]).
+// psg([r]) (or ay), ga_palette([pen]), and those the context adds.
 //
 // Nothing when the text is not such an expression.
 std::optional<int32_t> evaluateCondition(const std::string& text, Cpc& cpc, const ConditionContext& context = {});

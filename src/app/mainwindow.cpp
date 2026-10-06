@@ -304,7 +304,7 @@ void MainWindow::createMenus()
     registersAction_ = addItem(debug, tr("&Registers"), {}, [this] { showRegisters(); });
     addItem(debug, tr("&Breakpoints"), {}, [this] { showBreakpoints(); });
     addItem(debug, tr("&Data Areas"), {}, [this] { showDataAreas(); });
-    addItem(debug, tr("&Timers"));
+    addItem(debug, tr("&Timers"), {}, [this] { showTimers(); });
     addItem(debug, tr("&Find Graphics"));
 
     // ---- Assembler ----
@@ -438,6 +438,15 @@ void MainWindow::showRegisters()
     registers_->raise();
 }
 
+void MainWindow::showTimers()
+{
+    if (!timers_)
+        timers_ = new TimersDialog(emulator_, this);
+    timers_->refresh();
+    timers_->show();
+    timers_->raise();
+}
+
 // The areas are the debugger's, whether it is up or not.
 void MainWindow::showDataAreas()
 {
@@ -467,6 +476,8 @@ void MainWindow::machineStopped()
     updateDebugActions();
     if (breakpoints_ && breakpoints_->isVisible())
         breakpoints_->refresh();
+    if (timers_ && timers_->isVisible())
+        timers_->refresh();
     if (registers_ && registers_->isVisible())
         registers_->refresh();
     if (emulator_->isPaused())

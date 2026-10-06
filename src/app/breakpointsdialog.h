@@ -5,6 +5,7 @@
 #include <QStringList>
 
 class Emulator;
+class QLabel;
 class QPushButton;
 class QTabWidget;
 class QTreeWidget;
@@ -58,4 +59,23 @@ private:
     QPushButton* add_;
     QPushButton* clear_;
     QPushButton* clearAll_;
+};
+
+// WinAPE's Timers window: for each timer that breakpoint conditions have
+// started and stopped (timer_start(id), timer_stop(id)), how many times,
+// and the microseconds it took: the last time, the least, the most and on
+// average.
+class TimersDialog : public QDialog {
+    Q_OBJECT
+
+public:
+    explicit TimersDialog(Emulator* emulator, QWidget* parent = nullptr);
+    void refresh();
+    // The rows, their columns between bars.
+    QStringList rows() const;
+    void clearAll();
+
+private:
+    Emulator* emulator_;
+    QTreeWidget* list_;
 };

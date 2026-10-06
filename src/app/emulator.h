@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include <condition_variable>
@@ -197,6 +198,23 @@ public:
     };
     std::vector<IoBreak> ioBreaks();
     void setIoBreaks(const std::vector<IoBreak>& breaks);
+    // Timers: a condition's timer_start(id) starts one, and timer_stop(id)
+    // gives the microseconds gone by since (65535 at most) and counts
+    // them here. reset_cycles(value) sets the debugger's count of
+    // microseconds, which cycleBase() is the origin of.
+    struct TimerState {
+        int id = 0;
+        uint64_t count = 0;  // times stopped
+        uint64_t last = 0;   // microseconds, the last time
+        uint64_t least = 0;
+        uint64_t most = 0;
+        uint64_t total = 0;
+    };
+    std::vector<TimerState> timers();
+    void clearTimers();
+    uint64_t cycleBase();
+    void resetCycles(uint64_t value = 0);
+
     // Whether a condition can be made sense of.
     bool conditionValid(const std::string& condition);
     // The symbols conditions may name: those of the last assembly, in
@@ -272,6 +290,14 @@ private:
     std::vector<MemoryBreak> memoryBreaks_;
     std::vector<IoBreak> ioBreaks_;
     std::map<std::string, int32_t> symbols_;
+    struct Timer {
+        TimerState state;
+        uint64_t started = 0;
+        bool running = false;
+    };
+    std::map<int, Timer> timers_;
+    uint64_t cycleBase_ = 0;
+    std::optional<int32_t> conditionFunction(const std::string& name, const std::vector<int32_t>& args, bool act);
     bool counts(BreakProps& props, uint32_t address, uint32_t value, uint32_t previous);
     void watchMemory();
     bool breakpointsEnabled_ = true;

@@ -266,6 +266,50 @@ int main(int argc, char* argv[])
         clearAll->click();
     CHECK(dialog->rows(Page::InputOutput).isEmpty() && emulator.ioBreaks().empty());
 
+    // Timers: a breakpoint's condition starts one, another's stops it and
+    // counts the microseconds between the two. Neither pauses the machine
+    // unless its condition says so.
+    QAction* showTimers = nullptr;
+    for (QAction* action : window.findChildren<QAction*>())
+        if (action->text() == "&Timers")
+            showTimers = action;
+    CHECK(showTimers && showTimers->isEnabled());
+    if (showTimers)
+        showTimers->trigger();
+    TimersDialog* timers = window.timers();
+    CHECK(timers && timers->isVisible() && timers->rows().isEmpty());
+    if (!timers)
+        return checkSummary("gui_breakpoints");
+    // From 8003, LD (9000),A, to 800B, JR 8002: 4 + 2 + 1 + 4 microseconds.
+    emulator.setBreakpoints({0x8003, 0x800B});
+    dialog->refresh();
+    CHECK(!dialog->setProperties(Page::Code, 0, "timer_start(1, 2)", 0));
+    CHECK(dialog->setProperties(Page::Code, 0, "timer_start(#B941)", 0));
+    CHECK(dialog->setProperties(Page::Code, 1, "timer_stop(#B941) and a = #60", 0));
+    CHECK(timers->rows().isEmpty());  // only looked at so far: nothing started
+    at = runs();
+    CHECK(at.pc == 0x800B && at.a == 0x60);
+    timers->refresh();
+    const unsigned turns = 0x60 - 0x41;
+    CHECK(timers->rows() == QStringList{QString("B941|%1|11|11|11|11.00").arg(turns)});
+    // The value itself: what timer_stop gives is the time.
+    CHECK(dialog->setProperties(Page::Code, 1, "timer_stop(#B941) = 11 and a = #62", 0));
+    at = runs();
+    CHECK(at.pc == 0x800B && at.a == 0x62);
+    // reset_cycles sets the debugger's count of microseconds.
+    CHECK(dialog->setProperties(Page::Code, 0, "reset_cycles(5)", 0));
+    CHECK(dialog->setProperties(Page::Code, 1, "a = #63", 0));
+    at = runs();
+    CHECK(at.pc == 0x800B && at.a == 0x63);
+    const uint64_t now = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.instructionTime(); });
+    CHECK_EQ(now - emulator.cycleBase(), 5 + 4 + 2 + 1 + 4);
+    auto* clearTimers = timers->findChild<QPushButton*>("bClearAll");
+    CHECK(clearTimers != nullptr);
+    if (clearTimers)
+        clearTimers->click();
+    CHECK(timers->rows().isEmpty() && emulator.timers().empty());
+    emulator.setBreakpoints({});
+
     emulator.stop();
     return checkSummary("gui_breakpoints");
 }

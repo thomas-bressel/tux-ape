@@ -220,7 +220,6 @@ signals:
 private:
     Emulator* emulator_;
     DebugMemory memory_ = {};
-    uint64_t timerBase_ = 0;
     bool writeView_ = false;
 
     DisassemblyView* disassembly_;

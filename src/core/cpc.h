@@ -94,6 +94,11 @@ public:
     uint64_t clock() const { return clk_; }
     // The same in microseconds, which is what the slower peripherals count in.
     uint64_t microseconds() const { return clk_ >> 2; }
+    // The microsecond the instruction about to run starts in, once the
+    // Gate Array has let its first cycle through: between two
+    // instructions, the difference is the time the program took, to the
+    // microsecond.
+    uint64_t instructionTime() const { return (clk_ + 7 - ((kReadyPhase + 3) & 3)) >> 2; }
 
     Z80<Cpc>& cpu() { return cpu_; }
     Memory& memory() { return memory_; }
