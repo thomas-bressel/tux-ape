@@ -7,6 +7,7 @@
 #include "core/version.h"
 #include "emulator.h"
 #include "mainwindow.h"
+#include "welcome.h"
 
 int main(int argc, char* argv[])
 {
@@ -58,6 +59,11 @@ int main(int argc, char* argv[])
     tuxape::KeyMap keys;
     if (Settings::loadKeyMap(keys))
         emulator.setKeyMap(keys);
+
+    // The welcome picture, over the window for a moment, unless the user
+    // would rather not, or a picture of the window is what was asked for.
+    if (settings.welcomePicture && !parser.isSet(grabOption))
+        showWelcome();
 
     MainWindow window(&emulator);
     window.applySettings(settings);

@@ -258,13 +258,17 @@ QWidget* SetupDialog::createGeneralPage()
     disableUpdate->setChecked(true);
     auto* update = notYet(new QPushButton(tr("Check for updates now")));
     update->setObjectName("bUpdate");
+    // TuxAPE's own: its picture as it starts, for those who want it.
+    welcome_ = new QCheckBox(tr("Show the welcome picture at start-up"));
+    welcome_->setObjectName("ckWelcome");
 
     auto* optionsLayout = new QVBoxLayout(optionsBox);
     optionsLayout->setSpacing(3);
     optionsLayout->addLayout(crtcRow);
     for (QWidget* widget : {static_cast<QWidget*>(enablePlus_), static_cast<QWidget*>(plusPpi),
                             static_cast<QWidget*>(fourDrives), static_cast<QWidget*>(fastDisc_),
-                            static_cast<QWidget*>(flyback), static_cast<QWidget*>(disableUpdate)})
+                            static_cast<QWidget*>(flyback), static_cast<QWidget*>(disableUpdate),
+                            static_cast<QWidget*>(welcome_)})
         optionsLayout->addWidget(widget);
     optionsLayout->addWidget(update, 0, Qt::AlignLeft);
 
@@ -1196,6 +1200,7 @@ void SetupDialog::setSettings(const Settings& settings)
     crtShader_->setChecked(settings.crtShader);
     setLook(settings.crtLook);
     displaySync_->setChecked(settings.displaySync);
+    welcome_->setChecked(settings.welcomePicture);
     driveLed_->setChecked(settings.driveLed);
     showTrack_->setChecked(settings.showDriveCylinders);
     const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
@@ -1447,6 +1452,7 @@ Settings SetupDialog::settings() const
     settings.crtShader = crtShader_->isChecked();
     settings.crtLook = chosenLook();
     settings.displaySync = displaySync_->isChecked();
+    settings.welcomePicture = welcome_->isChecked();
     settings.driveLed = driveLed_->isChecked();
     settings.showDriveCylinders = showTrack_->isChecked();
     Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};

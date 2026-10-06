@@ -35,6 +35,7 @@ struct Settings {
     bool crtShader = true;            // the picture as a CTM644 shows it, drawn by the graphics card
     CrtLook crtLook;                  // and how that is set
     bool displaySync = true;          // a frame to each picture of a screen that shows fifty a second
+    bool welcomePicture = true;       // shown for a moment as the program starts
     bool driveLed = false;            // a light on the picture while a drive is at work
     bool showDriveCylinders = false;  // with the cylinder its head is on
     // What the window shows around the picture, and how the picture is

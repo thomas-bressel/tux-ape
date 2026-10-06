@@ -98,6 +98,7 @@ private:
     QCheckBox* crtShader_ = nullptr;
     QSlider* crtSliders_[6] = {};
     QCheckBox* displaySync_ = nullptr;
+    QCheckBox* welcome_ = nullptr;
     CrtLook chosenLook() const;
     void setLook(const CrtLook& look);
     QCheckBox* turbo_ = nullptr;

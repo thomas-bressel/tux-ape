@@ -3,6 +3,10 @@
 // Runs without a display (QT_QPA_PLATFORM=offscreen).
 
 #include <QApplication>
+#include <QCheckBox>
+#include <QPointer>
+#include <QSplashScreen>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include "check.h"
@@ -10,6 +14,9 @@
 #include "emulator.h"
 #include "mainwindow.h"
 #include "screenwidget.h"
+#include "welcome.h"
+#include "setupdialog.h"
+#include "settings.h"
 
 namespace {
 
@@ -87,5 +94,39 @@ int main(int argc, char* argv[])
     if (g_failures)
         std::printf("screen was:\n%s\n", screenText(emulator).c_str());
     emulator.stop();
+    // The welcome picture: in the program itself, shown over the screen
+    // for a moment as TuxAPE starts, and gone at a click; a setting, with
+    // its box on the General page, says whether it is wanted.
+    {
+        const QPixmap picture = welcomePicture();
+        CHECK(!picture.isNull() && picture.width() > 200 && picture.height() > picture.width());
+        QPointer<QSplashScreen> splash = showWelcome(60000);
+        CHECK(splash && splash->isVisible() && splash->objectName() == "Welcome");
+        if (splash) {
+            CHECK(!splash->pixmap().isNull() && splash->pixmap().height() <= picture.height());
+            QTest::mouseClick(splash, Qt::LeftButton);
+            CHECK(QTest::qWaitFor([&] { return !splash || !splash->isVisible(); }, 2000));
+            delete splash.data();
+        }
+        // It goes by itself too.
+        QPointer<QSplashScreen> brief = showWelcome(50);
+        CHECK(QTest::qWaitFor([&] { return brief.isNull(); }, 2000));
+
+        Settings settings;
+        CHECK(settings.welcomePicture);
+        SetupDialog dialog(settings);
+        auto* box = dialog.findChild<QCheckBox*>("ckWelcome");
+        CHECK(box && box->isChecked() && box->isEnabled());
+        if (box)
+            box->setChecked(false);
+        CHECK(!dialog.settings().welcomePicture);
+        QTemporaryDir folder;
+        Settings::setFile(folder.filePath("TuxAPE.ini"));
+        settings.welcomePicture = false;
+        CHECK(settings.save());
+        Settings read;
+        read.load();
+        CHECK(!read.welcomePicture);
+    }
     return checkSummary("gui_smoke");
 }

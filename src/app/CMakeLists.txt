@@ -50,6 +50,9 @@ add_library(tuxape_app STATIC
     tapedialog.h
     tooldialogs.cpp
     tooldialogs.h
+    tuxape.qrc
+    welcome.cpp
+    welcome.h
 )
 target_include_directories(tuxape_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(tuxape_app PRIVATE
