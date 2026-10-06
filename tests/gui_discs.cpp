@@ -173,11 +173,32 @@ int main(int argc, char* argv[])
         CHECK(QTest::qWaitFor([&] { return emulator.driveLight() < 0; }, 3000));
         QTest::qWait(50);
         CHECK(screen->driveLightRect().isEmpty());
-        // The two choices are kept with the settings.
+        // PAL emulation: of the two screen lines a CPC line takes, the
+        // second is at half the brightness of the first, and a pixel
+        // runs into its neighbours along the line.
+        if (screen->size() == QSize(768, 540)) {
+            const QImage plain = screen->grab().toImage();
+            CHECK(plain.pixel(8, 100) == plain.pixel(8, 101));
+            settings.palEmulation = true;
+            window.applySettings(settings);
+            CHECK(screen->palEmulation());
+            const QImage pal = screen->grab().toImage();
+            const QColor border = plain.pixelColor(8, 100), full = pal.pixelColor(8, 100), dim = pal.pixelColor(8, 101);
+            CHECK(border.blue() > 100 && qAbs(full.blue() - border.blue()) <= 3);
+            CHECK(qAbs(dim.blue() - border.blue() / 2) <= 3);
+            // An edge between two colours is softened.
+            int soft = 0;
+            for (int x = 1; x < 767; ++x)
+                if (plain.pixel(x, 120) != plain.pixel(x + 1, 120) && pal.pixel(x, 120) != plain.pixel(x, 120))
+                    ++soft;
+            CHECK(soft > 0);
+            grab(window, "pal.png");
+        }
+        // The choices are kept with the settings.
         CHECK(settings.save());
         Settings saved;
         saved.load();
-        CHECK(saved.driveLed && saved.showDriveCylinders);
+        CHECK(saved.driveLed && saved.showDriveCylinders && saved.palEmulation);
     }
 
     if (g_failures)

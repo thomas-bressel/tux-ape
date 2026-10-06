@@ -544,12 +544,12 @@ void testDisplayPage(const QImage& frame, const QString& picture)
     QFile::remove(Settings::file());
 
     // What does not exist yet is greyed out.
-    for (const char* name : {"ckDXStretch", "ckPAL", "rb8bitFS", "rb16bitFS"}) {
+    for (const char* name : {"ckDXStretch", "rb8bitFS", "rb16bitFS"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
     }
     // The drive's light and its cylinder are there to tick.
-    for (const char* name : {"ckDriveLED", "ckShowTrack"}) {
+    for (const char* name : {"ckPAL", "ckDriveLED", "ckShowTrack"}) {
         const auto* box = dialog.findChild<QCheckBox*>(name);
         CHECK(box && box->isEnabled() && !box->isChecked());
     }

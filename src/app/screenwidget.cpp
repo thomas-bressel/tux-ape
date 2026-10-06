@@ -61,6 +61,15 @@ QImage ScreenWidget::screenshot() const
     return image_.scaled(kDisplayWidth, kDisplayHeight);
 }
 
+void ScreenWidget::setPalEmulation(bool pal)
+{
+    if (pal == pal_)
+        return;
+    pal_ = pal;
+    striped_ = QImage();
+    update();
+}
+
 void ScreenWidget::fetchFrame()
 {
     image_ = emulator_->frame();
@@ -109,7 +118,25 @@ void ScreenWidget::paintEvent(QPaintEvent*)
         painter.fillRect(rect(), Qt::black);
     // At half size a CPC line is one screen line: there is no second line
     // to leave out.
-    if (renderBoth_ || halfSize_ || image_.isNull()) {
+    if (pal_ && !halfSize_ && !image_.isNull()) {
+        // As a television shows it: along a line each pixel takes a
+        // quarter of each neighbour, and the line under is dimmer.
+        if (striped_.isNull())
+            striped_ = QImage(image_.width(), image_.height() * 2, QImage::Format_RGB32);
+        const int width = image_.width();
+        for (int y = 0; y < image_.height(); ++y) {
+            const auto* in = reinterpret_cast<const quint32*>(image_.constScanLine(y));
+            auto* full = reinterpret_cast<quint32*>(striped_.scanLine(y * 2));
+            auto* dim = reinterpret_cast<quint32*>(striped_.scanLine(y * 2 + 1));
+            for (int x = 0; x < width; ++x) {
+                const quint32 left = in[x ? x - 1 : 0], right = in[x + 1 < width ? x + 1 : x];
+                const quint32 mixed = ((in[x] & 0xFEFEFE) >> 1) + ((left & 0xFCFCFC) >> 2) + ((right & 0xFCFCFC) >> 2);
+                full[x] = mixed | 0xFF000000;
+                dim[x] = ((mixed & 0xFEFEFE) >> 1) | 0xFF000000;
+            }
+        }
+        painter.drawImage(target, striped_);
+    } else if (renderBoth_ || halfSize_ || image_.isNull()) {
         painter.drawImage(target, image_);
     } else {
         if (striped_.isNull()) {

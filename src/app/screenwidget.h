@@ -26,6 +26,11 @@ public:
     // CPC line takes, the second is left black.
     void setRenderBothLines(bool both);
     bool renderBothLines() const { return renderBoth_; }
+    // WinAPE's "PAL Emulation": each pixel runs a little into its
+    // neighbours along the line, and of the two screen lines a CPC line
+    // takes, the second is at half brightness.
+    void setPalEmulation(bool pal);
+    bool palEmulation() const { return pal_; }
     // WinAPE's "On-Screen Drive LED" and "Show Drive Cylinders": a light
     // in the picture's top right corner while a drive is at work, with the
     // drive's letter and, if asked, the cylinder its head is on.
@@ -48,6 +53,7 @@ private:
     QImage striped_;  // image_ with black lines between its own, when asked for
     bool halfSize_ = false;
     bool renderBoth_ = true;
+    bool pal_ = false;
     bool driveLightShown_ = false;
     bool driveCylinderShown_ = false;
     int driveLight_ = -1;
