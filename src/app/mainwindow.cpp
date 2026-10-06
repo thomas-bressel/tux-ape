@@ -104,6 +104,7 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
 
     connect(emulator_, &Emulator::statsChanged, this, &MainWindow::updateStats, Qt::QueuedConnection);
     connect(emulator_, &Emulator::stopped, this, &MainWindow::machineStopped, Qt::QueuedConnection);
+    connect(emulator_, &Emulator::printerOutput, this, &MainWindow::printToAssembler, Qt::QueuedConnection);
     connect(emulator_, &Emulator::playbackFinished, this, [this] { playSessionAction_->setChecked(false); },
             Qt::QueuedConnection);
     connect(QApplication::clipboard(), &QClipboard::dataChanged, this,
@@ -273,7 +274,7 @@ void MainWindow::createMenus()
     addItem(settings, tr("&Sound"), {}, [this] { showSetup(SetupDialog::Sound); });
     addItem(settings, tr("&Memory"), {}, [this] { showSetup(SetupDialog::Memory); });
     addItem(settings, tr("&Input"), {}, [this] { showSetup(SetupDialog::Input); });
-    addItem(settings, tr("&Other"));
+    addItem(settings, tr("&Other"), {}, [this] { showSetup(SetupDialog::Other); });
     settings->addSeparator();
     addItem(settings, tr("&Normal Speed (100%)"), SHIFT | Qt::Key_F3, [this] { setSpeed(100); });
     addItem(settings, tr("&High Speed (1000%)"), SHIFT | Qt::Key_F4, [this] { setSpeed(1000); });
@@ -603,6 +604,20 @@ void MainWindow::showDebugger()
     debugger_->show();
 }
 
+// What the machine prints goes to a tab of the assembler, which need not be
+// up for that.
+void MainWindow::printToAssembler()
+{
+    const QByteArray text = emulator_->takePrinterOutput();
+    if (text.isEmpty())
+        return;
+    if (!assembler_) {
+        showAssembler();
+        assembler_->hide();
+    }
+    assembler_->appendPrinterOutput(QString::fromLatin1(text));
+}
+
 void MainWindow::showAssembler()
 {
     if (!assembler_) {
@@ -661,6 +676,9 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
                         settings.soundVolume, settings.soundBufferSync / 10.0);
     emulator_->setTapeSounds(settings.tapeSounds);
+    emulator_->setAmDrum(settings.amDrum);
+    if (!emulator_->setPrinter(settings.printerMode, settings.printerFile))
+        report(tr("Cannot write what is printed to %1.").arg(QDir::toNativeSeparators(settings.printerFile)));
     emulator_->setJoystickEnabled(settings.joystick);
     applyWindowOptions();
 }

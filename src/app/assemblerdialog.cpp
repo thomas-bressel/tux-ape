@@ -1062,6 +1062,29 @@ void AssemblerDialog::gotoError(int row)
         current->setErrorLine(error.line);
 }
 
+void AssemblerDialog::appendPrinterOutput(const QString& text)
+{
+    const QString title = tr("Printer Output");
+    int index = -1;
+    for (int i = 0; i < fileCount() && index < 0; ++i)
+        if (files_[i].path.isEmpty() && files_[i].title == title)
+            index = i;
+    if (index < 0) {
+        // The tab the user is on stays in front.
+        const int front = currentFile();
+        index = newFile();
+        files_[index].title = title;
+        updateTab(index);
+        if (front >= 0)
+            setCurrentFile(front);
+    }
+    QString lines = text;
+    lines.remove('\r');
+    QTextCursor end(files_[index].editor->document());
+    end.movePosition(QTextCursor::End);
+    end.insertText(lines);
+}
+
 SymbolsDialog* AssemblerDialog::showSymbols()
 {
     if (!symbols_) {

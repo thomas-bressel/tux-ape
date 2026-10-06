@@ -93,6 +93,11 @@ add_executable(assembler assembler.cpp)
 target_link_libraries(assembler PRIVATE tuxape_core)
 add_test(NAME assembler COMMAND assembler)
 
+add_executable(devices devices.cpp)
+target_link_libraries(devices PRIVATE tuxape_core)
+add_test(NAME devices COMMAND devices)
+set_tests_properties(devices PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(condition condition.cpp)
 target_link_libraries(condition PRIVATE tuxape_core)
 add_test(NAME condition COMMAND condition)

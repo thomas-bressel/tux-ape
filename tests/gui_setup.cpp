@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenuBar>
 #include <QPushButton>
 #include <QRadioButton>
@@ -647,7 +648,7 @@ void testSoundPage(const QString& picture)
     CHECK_EQ(again.soundBufferSync, 0);
     QFile::remove(Settings::file());
 
-    for (const char* name : {"ckDiscSound", "ckAmDrum"}) {
+    for (const char* name : {"ckDiscSound"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
     }
@@ -855,9 +856,58 @@ void testDialog(const QString& picture)
     CHECK(tabs->isTabEnabled(2));
     CHECK(tabs->isTabEnabled(3));
     CHECK(tabs->isTabEnabled(4));
-    CHECK(!tabs->isTabEnabled(5));
+    CHECK(tabs->isTabEnabled(5) && tabs->tabText(5) == "Other");
     dialog.showPage(SetupDialog::Other);
+    CHECK_EQ(tabs->currentIndex(), 5);
+    dialog.showPage(SetupDialog::General);
     CHECK_EQ(tabs->currentIndex(), 0);
+
+    // The Other page: what is on the printer's port. A file's name is
+    // only asked for when printing goes to one; the Symbiface and the
+    // host's printer are still to come.
+    {
+        auto* disabled = dialog.findChild<QRadioButton*>("rbPrnDisabled");
+        auto* digiblaster = dialog.findChild<QRadioButton*>("rbPrnDigiblaster");
+        auto* hostPrinter = dialog.findChild<QRadioButton*>("rbPrnPrinter");
+        auto* toFile = dialog.findChild<QRadioButton*>("rbPrnFile");
+        auto* toAssembler = dialog.findChild<QRadioButton*>("rbPrnAssembler");
+        auto* file = dialog.findChild<QLineEdit*>("edPrinterFile");
+        auto* amDrum = dialog.findChild<QCheckBox*>("ckAmDrum");
+        const bool there = disabled && digiblaster && hostPrinter && toFile && toAssembler && file && amDrum;
+        CHECK(there);
+        if (there) {
+            CHECK(disabled->isChecked() && !hostPrinter->isEnabled() && !file->isEnabled());
+            CHECK(amDrum->isEnabled() && !amDrum->isChecked());
+            CHECK_EQ(dialog.settings().printerMode, Settings::PrinterDisabled);
+            digiblaster->setChecked(true);
+            CHECK_EQ(dialog.settings().printerMode, Settings::PrinterDigiblaster);
+            toAssembler->setChecked(true);
+            CHECK_EQ(dialog.settings().printerMode, Settings::PrinterAssembler);
+            toFile->setChecked(true);
+            CHECK(file->isEnabled());
+            file->setText("/tmp/printed.txt");
+            amDrum->setChecked(true);
+            Settings chosen = dialog.settings();
+            CHECK(chosen.printerMode == Settings::PrinterFile && chosen.printerFile == "/tmp/printed.txt" && chosen.amDrum);
+            // Kept with the settings, and shown again.
+            CHECK(chosen.save());
+            Settings loaded;
+            loaded.load();
+            CHECK(loaded.printerMode == Settings::PrinterFile && loaded.printerFile == "/tmp/printed.txt" && loaded.amDrum);
+            SetupDialog again(loaded);
+            CHECK(again.findChild<QRadioButton*>("rbPrnFile")->isChecked());
+            CHECK(again.findChild<QLineEdit*>("edPrinterFile")->text() == "/tmp/printed.txt");
+            CHECK(again.findChild<QCheckBox*>("ckAmDrum")->isChecked());
+            QFile::remove(Settings::file());
+            disabled->setChecked(true);
+            amDrum->setChecked(false);
+            file->clear();
+        }
+        for (const char* name : {"ckIDE", "ckRTC", "ckPS2Mouse", "ckAdjustMouse", "cbSmartWatch"}) {
+            const QWidget* widget = dialog.findChild<QWidget*>(name);
+            CHECK(widget && !widget->isEnabled());
+        }
+    }
 
     // What TuxAPE cannot do yet is greyed out.
     for (const char* name :
@@ -949,7 +999,14 @@ int main(int argc, char* argv[])
     QAction* input = actionNamed(window, "Input");
     QAction* other = actionNamed(window, "Other");
     CHECK(input && input->isEnabled());
-    CHECK(other && !other->isEnabled());
+    CHECK(other && other->isEnabled());
+    if (!prefix.isEmpty()) {
+        SetupDialog picture((Settings()));
+        picture.showPage(SetupDialog::Other);
+        picture.show();
+        QTest::qWait(50);
+        picture.grab().save(prefix + "other.png");
+    }
     CHECK(emulator.machine() == tuxape::stockMachine(tuxape::CpcModel::Cpc6128));
 
     Settings settings;

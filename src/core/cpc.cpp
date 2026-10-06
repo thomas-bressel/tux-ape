@@ -135,6 +135,22 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
     }
     if (!(port & 0x2000))
         memory_.selectUpperRom(value);
+    if (!(port & 0x1000)) {
+        // The printer's port: seven bits of data and the strobe, which
+        // the port turns upside down. A character goes as the strobe
+        // falls; a Digiblaster makes sound of the whole byte instead.
+        if (digiblaster_) {
+            syncSound();
+            dac_ = static_cast<uint8_t>(value ^ 0x80);
+        } else if (printerHook_ && (value & 0x80) && !(printerLatch_ & 0x80)) {
+            printerHook_(value & 0x7F);
+        }
+        printerLatch_ = value;
+    }
+    if (amDrum_ && high == 0xFF) {
+        syncSound();
+        dac_ = value;
+    }
     if (!(port & 0x0800)) {
         ppi_.write(high & 3, value);
         updatePsgBus();
@@ -238,6 +254,9 @@ uint8_t Cpc::portB()
     // Bit 5: /EXP, low with nothing on the expansion port. Bit 4: 50 Hz
     // link. Bits 3-1: maker links, 111 = Amstrad.
     uint8_t value = 0x5E;
+    // Bit 6: the printer is busy, unless there is one.
+    if (printerHook_ && !digiblaster_)
+        value &= static_cast<uint8_t>(~0x40);
     if (crtc_.vsync())
         value |= 0x01;
     // A program loading from tape reads this port all the time: the sound
@@ -278,10 +297,12 @@ void Cpc::syncSound()
     }
     // The tape, if it is to be heard: as the program last found it.
     const float tape = tapeSound_ && tapeHeard_ && tape_.playing() && tape_.motor() ? 0.3f : 0.0f;
+    // And the converters, around their middle.
+    const float other = tape + static_cast<float>(dac_ - 0x80) / 256.0f;
     while (soundClk_ + 8 <= now) {
         psg_.tick();
         audio_.addStep(Psg::amplitude(psg_.level(0)), Psg::amplitude(psg_.level(1)),
-                       Psg::amplitude(psg_.level(2)), tape);
+                       Psg::amplitude(psg_.level(2)), other);
         soundClk_ += 8;
     }
 }

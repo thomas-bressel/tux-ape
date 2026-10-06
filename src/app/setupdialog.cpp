@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include <QLineEdit>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -156,18 +157,12 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
 
     tabs_ = new QTabWidget;
     tabs_->setObjectName("PageControl");
-    // Pages that are still to come are empty and cannot be chosen.
-    auto addEmptyPage = [this](const QString& name) {
-        const int index = tabs_->addTab(new QWidget, name);
-        tabs_->setTabEnabled(index, false);
-        tabs_->setTabToolTip(index, tr("Not available yet"));
-    };
     tabs_->addTab(createGeneralPage(), tr("General"));
     tabs_->addTab(createDisplayPage(), tr("Display"));
     tabs_->addTab(createSoundPage(), tr("Sound"));
     tabs_->addTab(createMemoryPage(), tr("Memory"));
     tabs_->addTab(createInputPage(), tr("Input"));
-    addEmptyPage(tr("Other"));
+    tabs_->addTab(createOtherPage(), tr("Other"));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
     notYet(buttons->button(QDialogButtonBox::Help));
@@ -560,8 +555,10 @@ QWidget* SetupDialog::createSoundPage()
     discSounds->setObjectName("ckDiscSound");
     tapeSounds_ = new QCheckBox(tr("Tape Loading Sounds"));
     tapeSounds_->setObjectName("ckTapeSound");
-    auto* amDrum = notYet(new QCheckBox(tr("AmDrum")));
-    amDrum->setObjectName("ckAmDrum");
+    amDrum_ = new QCheckBox(tr("AmDrum"));
+    amDrum_->setObjectName("ckAmDrum");
+    amDrum_->setToolTip(tr("A sound converter on ports #FF00 to #FFFF"));
+    auto* amDrum = amDrum_;
     auto* otherLayout = new QHBoxLayout(otherBox);
     otherLayout->addWidget(discSounds);
     otherLayout->addWidget(tapeSounds_);
@@ -800,6 +797,114 @@ bool SetupDialog::saveKeyboard(const QString& path)
     return true;
 }
 
+QWidget* SetupDialog::createOtherPage()
+{
+    auto* page = new QWidget;
+
+    // ---- Symbiface II: to come ----
+    auto* symbiface = new QGroupBox(tr("Symbiface II"));
+    auto* symbifaceLayout = new QVBoxLayout(symbiface);
+    auto* ide = notYet(new QCheckBox(tr("Enable IDE Devices")));
+    ide->setObjectName("ckIDE");
+    symbifaceLayout->addWidget(ide);
+    for (const QString& title : {tr("Master"), tr("Slave")}) {
+        auto* box = new QGroupBox(title);
+        auto* kinds = new QHBoxLayout;
+        for (const QString& text : {tr("None"), tr("Logical Drive"), tr("IDE File")})
+            kinds->addWidget(notYet(new QRadioButton(text)));
+        kinds->addStretch(1);
+        auto* file = new QHBoxLayout;
+        file->addWidget(notYet(new QLineEdit), 1);
+        auto* browse = notYet(new QToolButton);
+        browse->setText("...");
+        file->addWidget(browse);
+        auto* inside = new QVBoxLayout(box);
+        inside->addLayout(kinds);
+        inside->addLayout(file);
+        symbifaceLayout->addWidget(box);
+    }
+    const struct {
+        QString text;
+        const char* name;
+    } kDevices[] = {{tr("Enable Real-Time Clock"), "ckRTC"},
+                    {tr("Enable PS/2 Mouse"), "ckPS2Mouse"},
+                    {tr("Adjust Mouse for Screen Mode"), "ckAdjustMouse"}};
+    for (const auto& device : kDevices) {
+        auto* box = notYet(new QCheckBox(device.text));
+        box->setObjectName(device.name);
+        symbifaceLayout->addWidget(box);
+    }
+    symbifaceLayout->addStretch(1);
+
+    // ---- Printer: what is on the printer's port ----
+    auto* printerBox = new QGroupBox(tr("Printer"));
+    const struct {
+        QString text;
+        const char* name;
+        int row, column;
+    } kModes[5] = {{tr("Disabled"), "rbPrnDisabled", 0, 0},
+                   {tr("Digiblaster"), "rbPrnDigiblaster", 0, 1},
+                   {tr("Printer"), "rbPrnPrinter", 1, 0},
+                   {tr("File"), "rbPrnFile", 1, 1},
+                   {tr("Assembler"), "rbPrnAssembler", 1, 2}};
+    auto* modes = new QGridLayout;
+    for (int mode = 0; mode < 5; ++mode) {
+        printer_[mode] = new QRadioButton(kModes[mode].text);
+        printer_[mode]->setObjectName(kModes[mode].name);
+        modes->addWidget(printer_[mode], kModes[mode].row, kModes[mode].column);
+    }
+    notYet(printer_[Settings::PrinterHost]);  // no printing on the host's printer
+    printer_[Settings::PrinterDigiblaster]->setToolTip(tr("A sound converter in the printer's place"));
+    printer_[Settings::PrinterFile]->setToolTip(tr("What is printed is added to a file"));
+    printer_[Settings::PrinterAssembler]->setToolTip(tr("What is printed goes to a tab of the assembler"));
+    printer_[Settings::PrinterDisabled]->setChecked(true);
+    printerFile_ = new QLineEdit;
+    printerFile_->setObjectName("edPrinterFile");
+    printerFile_->setPlaceholderText(tr("Printer Output"));
+    auto* browsePrinter = new QToolButton;
+    browsePrinter->setObjectName("bPrinterFile");
+    browsePrinter->setText("...");
+    auto* fileRow = new QHBoxLayout;
+    fileRow->addWidget(printerFile_, 1);
+    fileRow->addWidget(browsePrinter);
+    auto* printerLayout = new QVBoxLayout(printerBox);
+    printerLayout->addLayout(modes);
+    printerLayout->addLayout(fileRow);
+    // The file only matters when printing goes to one.
+    const auto fileWanted = [this, browsePrinter] {
+        const bool wanted = printer_[Settings::PrinterFile]->isChecked();
+        printerFile_->setEnabled(wanted);
+        browsePrinter->setEnabled(wanted);
+    };
+    for (QRadioButton* button : printer_)
+        connect(button, &QRadioButton::toggled, this, fileWanted);
+    fileWanted();
+    connect(browsePrinter, &QToolButton::clicked, this, [this] {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Printer Output"), printerFile_->text(),
+                                                          tr("Text files (*.txt);;All files (*)"), nullptr,
+                                                          QFileDialog::DontConfirmOverwrite);
+        if (!path.isEmpty())
+            printerFile_->setText(QDir::toNativeSeparators(path));
+    });
+
+    // ---- Other devices: to come ----
+    auto* devicesBox = new QGroupBox(tr("Other Devices"));
+    auto* devicesLayout = new QHBoxLayout(devicesBox);
+    devicesLayout->addWidget(notYet(new QLabel(tr("Dobbertin SmartWatch ROM Select:"))));
+    auto* smartWatch = notYet(new QComboBox);
+    smartWatch->setObjectName("cbSmartWatch");
+    devicesLayout->addWidget(smartWatch, 1);
+
+    auto* right = new QVBoxLayout;
+    right->addWidget(printerBox);
+    right->addWidget(devicesBox);
+    right->addStretch(1);
+    auto* layout = new QHBoxLayout(page);
+    layout->addWidget(symbiface, 1);
+    layout->addLayout(right, 1);
+    return page;
+}
+
 QWidget* SetupDialog::createMemoryPage()
 {
     auto* page = new QWidget;
@@ -1023,6 +1128,9 @@ void SetupDialog::setSettings(const Settings& settings)
     soundChannels_[settings.soundStereo ? 1 : 0]->setChecked(true);
     soundVolume_->setValue(settings.soundVolume);
     tapeSounds_->setChecked(settings.tapeSounds);
+    amDrum_->setChecked(settings.amDrum);
+    printer_[std::clamp(settings.printerMode, 0, 4)]->setChecked(true);
+    printerFile_->setText(QDir::toNativeSeparators(settings.printerFile));
     soundVolumeLabel_->setText(QString::number(settings.soundVolume));
     soundBufferSync_->setValue(settings.soundBufferSync);
     soundBufferSyncLabel_->setText(
@@ -1266,6 +1374,11 @@ Settings SetupDialog::settings() const
     settings.soundStereo = soundChannels_[1]->isChecked();
     settings.soundVolume = soundVolume_->value();
     settings.tapeSounds = tapeSounds_->isChecked();
+    settings.amDrum = amDrum_->isChecked();
+    for (int mode = 0; mode < 5; ++mode)
+        if (printer_[mode]->isChecked())
+            settings.printerMode = mode;
+    settings.printerFile = QDir::fromNativeSeparators(printerFile_->text().trimmed());
     settings.soundBufferSync = soundBufferSync_->value();
 
     settings.joystick = joystick_->isChecked();

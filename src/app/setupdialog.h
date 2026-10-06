@@ -10,6 +10,7 @@
 
 class QAbstractButton;
 class QCheckBox;
+class QLineEdit;
 class QComboBox;
 class QPushButton;
 class QLabel;
@@ -90,6 +91,10 @@ private:
     QCheckBox* turbo_ = nullptr;
     QCheckBox* plusPpi_ = nullptr;
     QCheckBox* tapeSounds_ = nullptr;
+    QCheckBox* amDrum_ = nullptr;
+    // The Other page: what is on the printer's port, by Settings::PrinterMode.
+    QRadioButton* printer_[5] = {};
+    QLineEdit* printerFile_ = nullptr;
     QCheckBox* driveLed_ = nullptr;
     QCheckBox* showTrack_ = nullptr;
     // Half size, both lines, hide mouse, hide panel, hide menus, no
@@ -133,6 +138,7 @@ private:
     QWidget* createDisplayPage();
     QWidget* createSoundPage();
     QWidget* createInputPage();
+    QWidget* createOtherPage();
     void showKeyBindings();
     void updateSoundOptions();
     QWidget* createMemoryPage();

@@ -53,6 +53,12 @@ struct Settings {
     bool soundStereo = true;
     int soundVolume = 15;       // 0 to 15
     bool tapeSounds = false;    // the tape is heard while it loads
+    bool amDrum = false;        // the AmDrum sound converter, on ports &FFxx
+
+    // The Other page: what is on the printer's port.
+    enum PrinterMode { PrinterDisabled, PrinterDigiblaster, PrinterHost, PrinterFile, PrinterAssembler };
+    int printerMode = PrinterDisabled;
+    QString printerFile;        // where printing goes, with PrinterFile
     int soundBufferSync = 0;    // tenths of a frame of extra sound kept in hand, 0 to 20
 
     // The Input page. The keyboard layout itself is kept in a file of its

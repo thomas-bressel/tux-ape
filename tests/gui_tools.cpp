@@ -17,6 +17,7 @@
 #include <QToolButton>
 #include <QTextBrowser>
 
+#include "assemblerdialog.h"
 #include "check.h"
 #include "core/inifile.h"
 #include "core/screen_text.h"
@@ -358,6 +359,51 @@ int main(int argc, char* argv[])
     CHECK(!emulator.startAviRecording(folder.filePath("missing/film.avi")));
     CHECK(!emulator.startWavRecording(folder.filePath("missing/sound.wav")));
     CHECK(!emulator.startYmRecording(folder.filePath("missing/tune.ym")));
+
+    // The printer: what BASIC prints goes to a file, or to a tab of the
+    // assembler, which need not be up for that.
+    {
+        Settings settings = window.settings();
+        const QString printed = folder.filePath("printed.txt");
+        settings.printerMode = Settings::PrinterFile;
+        settings.printerFile = printed;
+        window.applySettings(settings);
+        emulator.autoType(QStringLiteral("PRINT #8,\"Hello\"~RETURN~"));
+        CHECK(QTest::qWaitFor(
+            [&] {
+                QFile file(printed);
+                return file.open(QIODevice::ReadOnly) && file.readAll() == "Hello\r\n";
+            },
+            15000));
+        settings.printerMode = Settings::PrinterAssembler;
+        window.applySettings(settings);
+        CHECK(window.assembler() == nullptr);
+        emulator.autoType(QStringLiteral("PRINT #8,\"To a tab\"~RETURN~"));
+        const auto tabText = [&]() -> QString {
+            AssemblerDialog* assembler = window.assembler();
+            for (int i = 0; assembler && i < assembler->fileCount(); ++i)
+                if (assembler->fileTitle(i) == "Printer Output")
+                    return assembler->editor(i)->toPlainText();
+            return QString();
+        };
+        CHECK(QTest::qWaitFor([&] { return tabText() == "To a tab\n"; }, 15000));
+        CHECK(window.assembler() && !window.assembler()->isVisible());
+        // More goes to the same tab.
+        emulator.autoType(QStringLiteral("PRINT #8,1+1~RETURN~"));
+        CHECK(QTest::qWaitFor([&] { return tabText() == "To a tab\n 2 \n"; }, 15000));
+        if (window.assembler()) {
+            CHECK_EQ(window.assembler()->fileCount(), 2);
+            for (int i = 0; i < window.assembler()->fileCount(); ++i)
+                window.assembler()->editor(i)->document()->setModified(false);
+        }
+        // A file that cannot be written to is told of, and nothing is lost.
+        settings.printerMode = Settings::PrinterDisabled;
+        window.applySettings(settings);
+        CHECK(!emulator.setPrinter(Settings::PrinterFile, folder.filePath("missing/printed.txt")));
+        CHECK(emulator.setPrinter(Settings::PrinterDisabled, QString()));
+        QFile file(printed);
+        CHECK(file.open(QIODevice::ReadOnly) && file.readAll() == "Hello\r\n");
+    }
 
     // Help: F1 opens TuxAPE's own, with every menu entry and its key, and
     // whom the emulator owes what.

@@ -118,6 +118,24 @@ public:
     void setCartridge(const Cartridge* cartridge, bool discRom = true);
     bool plus() const { return plus_; }
     Asic& asic() { return asic_; }
+    // The printer's port (&EFxx). With a hook, a printer is there: each
+    // character a program prints is handed to it, and the port's "busy"
+    // line says the printer is ready for more.
+    using PrinterHook = std::function<void(uint8_t character)>;
+    void setPrinterHook(PrinterHook hook) { printerHook_ = std::move(hook); }
+    // Two converters that make sound of the bytes written to them: the
+    // Digiblaster, on the printer's port, and the AmDrum, on &FFxx. The
+    // last byte either was given is what is heard.
+    void setDigiblaster(bool on)
+    {
+        digiblaster_ = on;
+        dac_ = 0x80;
+    }
+    void setAmDrum(bool on)
+    {
+        amDrum_ = on;
+        dac_ = 0x80;
+    }
     // WinAPE's "Turbo Mode": every instruction takes one microsecond, an
     // output two. Nothing like a real machine, and a good deal faster.
     void setTurbo(bool on) { turbo_ = on; }
@@ -290,6 +308,11 @@ private:
     ExecHook execHook_;
     bool stopRun_ = false;
     bool breakInstructions_ = false;
+    PrinterHook printerHook_;
+    uint8_t printerLatch_ = 0;
+    bool digiblaster_ = false;
+    bool amDrum_ = false;
+    uint8_t dac_ = 0x80;  // what the converters were last given; &80 is silence
     bool turbo_ = false;
     unsigned turboLeft_ = 4;  // T-states the instruction in hand may still take
     bool plusPpi_ = false;

@@ -143,6 +143,9 @@ public:
     void gotoError(int row);
     void gotoSource(const QString& file, int line);
     SymbolsDialog* showSymbols();
+    // What the machine prints, when its printer is the assembler: added to
+    // a tab of its own, "Printer Output".
+    void appendPrinterOutput(const QString& text);
 
     // ---- Editing ----
     // Finds the next match and selects it; false if there is none.

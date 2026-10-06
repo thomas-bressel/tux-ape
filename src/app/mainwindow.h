@@ -153,6 +153,7 @@ private:
     void machineStopped();
     void showDebugger();
     void showAssembler();
+    void printToAssembler();
     void showRegisters();
     void showBreakpoints();
     void showDataAreas();

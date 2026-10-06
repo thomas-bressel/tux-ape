@@ -121,6 +121,52 @@ void Emulator::setAudioOutput(AudioOutput* output)
     });
 }
 
+void Emulator::setAmDrum(bool on)
+{
+    withMachine([&](Cpc& cpc) { cpc.setAmDrum(on); });
+}
+
+bool Emulator::setPrinter(int mode, const QString& file)
+{
+    return withMachine([&](Cpc& cpc) {
+        cpc.setPrinterHook(nullptr);
+        cpc.setDigiblaster(mode == 1);
+        printerFile_.close();
+        if (mode == 3) {
+            // What is printed is added to the file, a line at a time.
+            printerFile_.setFileName(file);
+            if (file.isEmpty() || !printerFile_.open(QIODevice::WriteOnly | QIODevice::Append))
+                return false;
+            cpc.setPrinterHook([this](uint8_t character) {
+                printerFile_.putChar(static_cast<char>(character));
+                if (character == '\n')
+                    printerFile_.flush();
+            });
+        } else if (mode == 4) {
+            cpc.setPrinterHook([this](uint8_t character) {
+                bool first = false;
+                {
+                    std::lock_guard lock(printerMutex_);
+                    first = printerBuffer_.isEmpty();
+                    printerBuffer_ += static_cast<char>(character);
+                }
+                // One notice is enough until the text has been taken.
+                if (first)
+                    emit printerOutput();
+            });
+        }
+        return true;
+    });
+}
+
+QByteArray Emulator::takePrinterOutput()
+{
+    std::lock_guard lock(printerMutex_);
+    QByteArray text;
+    text.swap(printerBuffer_);
+    return text;
+}
+
 void Emulator::setTapeSounds(bool on)
 {
     withMachine([&](Cpc& cpc) { cpc.setTapeSound(on); });

@@ -11,6 +11,8 @@
 #include <thread>
 #include <utility>
 
+#include <QFile>
+#include <QByteArray>
 #include <QImage>
 #include <QObject>
 #include <QString>
@@ -97,6 +99,15 @@ public:
     bool soundOn() const { return soundOn_; }
     // WinAPE's "Tape Loading Sounds": the tape is heard while it loads.
     void setTapeSounds(bool on);
+    // The AmDrum sound converter.
+    void setAmDrum(bool on);
+    // What is on the printer's port, as Settings::PrinterMode says: nothing,
+    // a Digiblaster, a file the characters printed are added to, or the
+    // assembler: printerOutput() is then sent, and takePrinterOutput()
+    // gives what has been printed since it was last asked for. False if
+    // the file cannot be written to.
+    bool setPrinter(int mode, const QString& file);
+    QByteArray takePrinterOutput();
 
     // The monitor: its kind (0 colour, 1 green, 2 greyscale), WinAPE's
     // "linear palette", the brightness knob (-100 to 100) and the vertical
@@ -249,6 +260,8 @@ signals:
     // The drive at work has changed, or its head has moved: see
     // driveLight().
     void driveLightChanged();
+    // Something has been printed for the assembler to show.
+    void printerOutput();
     // A session has been played to its end.
     void playbackFinished();
     // Sent about once a second: achieved speed and pictures per second.
@@ -297,6 +310,9 @@ private:
     // Debugging. All but stopRequested_ are only touched with the
     // machine's lock held.
     std::atomic<int> driveLight_{-1};
+    QFile printerFile_;          // touched by the emulation thread alone, once open
+    std::mutex printerMutex_;
+    QByteArray printerBuffer_;   // printed for the assembler, not yet taken
     std::set<uint16_t> breakpoints_;
     std::map<uint16_t, BreakProps> breakProps_;
     std::vector<MemoryBreak> memoryBreaks_;

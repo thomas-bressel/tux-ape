@@ -132,6 +132,10 @@ void Settings::read(const tuxape::IniFile& ini)
     soundStereo = ini.getBool(kConfiguration, "Sound Stereo", soundStereo);
     soundVolume = std::clamp(ini.getInt(kConfiguration, "Sound Volume", soundVolume), 0, 15);
     tapeSounds = ini.getBool(kConfiguration, "Tape Sound", tapeSounds);
+    amDrum = ini.getBool(kConfiguration, "AmDrum Enabled", amDrum);
+    printerMode = std::clamp(ini.getInt(kConfiguration, "Printer", printerMode), 0, static_cast<int>(PrinterAssembler));
+    if (ini.has(kConfiguration, "Printer File"))
+        printerFile = QString::fromStdString(ini.get(kConfiguration, "Printer File"));
     // Written like WinAPE's "0.4": frames, with one decimal.
     if (ini.has(kConfiguration, "Sound Frame Delay")) {
         // Read by hand: the C library would want a comma where the user's
@@ -214,6 +218,9 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kConfiguration, "Sound Stereo", soundStereo);
         ini.setInt(kConfiguration, "Sound Volume", soundVolume);
         ini.setBool(kConfiguration, "Tape Sound", tapeSounds);
+        ini.setBool(kConfiguration, "AmDrum Enabled", amDrum);
+        ini.setInt(kConfiguration, "Printer", printerMode);
+        ini.set(kConfiguration, "Printer File", printerFile.toStdString());
         ini.set(kConfiguration, "Sound Frame Delay",
                 std::to_string(soundBufferSync / 10) + "." + std::to_string(soundBufferSync % 10));
     }
