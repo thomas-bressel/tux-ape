@@ -438,12 +438,13 @@ void testProfiles(const QString& folder, const QString& picture)
 void testDisplayPage(const QImage& frame, const QString& picture)
 {
     // The defaults are WinAPE's: in full screen nothing but the picture.
+    // But for the mouse pointer, which WinAPE hides and TuxAPE leaves.
     const Settings defaults;
     CHECK_EQ(defaults.monitorType, 0);
     CHECK(defaults.linearPalette);
-    CHECK(defaults.windowed.renderBothLines && defaults.windowed.hideMouse);
+    CHECK(defaults.windowed.renderBothLines && !defaults.windowed.hideMouse);
     CHECK(!defaults.windowed.hidePanel && !defaults.windowed.hideMenus && !defaults.windowed.halfSize);
-    CHECK(defaults.fullScreen.hidePanel && defaults.fullScreen.hideMenus && defaults.fullScreen.hideMouse);
+    CHECK(defaults.fullScreen.hidePanel && defaults.fullScreen.hideMenus && !defaults.fullScreen.hideMouse);
 
     Settings settings;
     settings.verticalHold = -5;
@@ -522,7 +523,7 @@ void testDisplayPage(const QImage& frame, const QString& picture)
     CHECK_EQ(changed.verticalHold, 12);
     CHECK(!changed.linearPalette);
     CHECK(changed.windowed.halfSize && changed.windowed.hidePanel && changed.windowed.noRightClick);
-    CHECK(changed.windowed.renderBothLines && changed.windowed.hideMouse && !changed.windowed.hideMenus);
+    CHECK(changed.windowed.renderBothLines && !changed.windowed.hideMouse && !changed.windowed.hideMenus);
     CHECK(!changed.fullScreen.hidePanel && !changed.fullScreen.renderBothLines && changed.fullScreen.hideMenus);
 
     // Kept under WinAPE's keys, and brought back.
@@ -1077,18 +1078,18 @@ int main(int argc, char* argv[])
     CHECK(window.menuBar()->isVisibleTo(&window));
     CHECK(window.screen()->sizeHint() == QSize(768, 540));
     CHECK(window.screen()->renderBothLines());
-    CHECK(window.screen()->cursor().shape() == Qt::BlankCursor);  // WinAPE hides the pointer over the picture
+    CHECK(window.screen()->cursor().shape() == Qt::ArrowCursor);  // the pointer stays over the picture
     settings.monitorType = 1;
     settings.windowed.halfSize = true;
     settings.windowed.renderBothLines = false;
     settings.windowed.hideMenus = true;
-    settings.windowed.hideMouse = false;
+    settings.windowed.hideMouse = true;
     settings.windowed.noRightClick = true;
     window.applySettings(settings);
     CHECK(!window.menuBar()->isVisibleTo(&window));
     CHECK(window.screen()->sizeHint() == QSize(384, 270));
     CHECK(!window.screen()->renderBothLines());
-    CHECK(window.screen()->cursor().shape() == Qt::ArrowCursor);
+    CHECK(window.screen()->cursor().shape() == Qt::BlankCursor);
     CHECK(window.screen()->contextMenuPolicy() == Qt::NoContextMenu);
     // A green monitor: the pictures that follow have no red and no blue.
     emulator.autoType(QStringLiteral("PRINT 1\n"));

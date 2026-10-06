@@ -38,14 +38,14 @@ struct Settings {
     struct WindowOptions {
         bool halfSize = false;
         bool renderBothLines = true;
-        bool hideMouse = true;
+        bool hideMouse = false;  // WinAPE hides it; here the pointer stays unless asked
         bool hidePanel = false;
         bool hideMenus = false;
         bool noRightClick = false;
         bool operator==(const WindowOptions&) const = default;
     };
     WindowOptions windowed;
-    WindowOptions fullScreen{false, true, true, true, true, false};
+    WindowOptions fullScreen{false, true, false, true, true, false};
 
     // The Sound page.
     bool soundOn = true;        // WinAPE's "DirectSound", as against "None"
