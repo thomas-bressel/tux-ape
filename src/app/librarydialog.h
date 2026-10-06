@@ -87,6 +87,9 @@ public:
     bool setCategory(const QString& name);
     QStringList listedTitles() const;
     QStringList listedSubcategories() const;
+    // The Type column shows pictures; these are the names behind them:
+    // "Disc", "Tape", "Cartridge" or "Snapshot".
+    QStringList listedTypes() const;
     // Those of them whose AI box is ticked.
     QStringList listedAiTitles() const;
     // What the Release Type column says of each: "Original", "Crack",

@@ -1,5 +1,7 @@
 #include "librarydialog.h"
 
+#include "icons.h"
+
 #include <algorithm>
 
 #include <QDir>
@@ -30,6 +32,7 @@ bool isProgram(const QString& name)
 }
 
 constexpr int kSubcategoryColumn = 1;
+constexpr int kTypeColumn = 3;
 constexpr int kReleaseColumn = 4;
 constexpr int kAiColumn = 5;
 
@@ -237,7 +240,8 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setColumnWidth(0, 280);
     list_->setColumnWidth(kSubcategoryColumn, 130);
     list_->setColumnWidth(2, 50);
-    list_->setColumnWidth(3, 80);
+    list_->setColumnWidth(kTypeColumn, 44);
+    list_->setIconSize(QSize(18, 18));
     list_->setColumnWidth(kReleaseColumn, 100);
     list_->setColumnWidth(kAiColumn, 36);
     count_ = new QLabel;
@@ -340,7 +344,13 @@ void LibraryDialog::fill()
                              : entry.kind == LibraryEntry::Cartridge ? tr("Cartridge")
                                                                      : tr("Snapshot");
         // The kinds of release are names, not words to translate.
-        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.subcategory, entry.year, kind, entry.release, QString(), entry.details});
+        // The type shows as a picture: a disc, a tape, a cartridge, or a
+        // snapshot; its name is there for whoever points at it.
+        static const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
+                                       makeIcon(IconId::Cartridge)};
+        auto* item = new QTreeWidgetItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release, QString(), entry.details});
+        item->setIcon(kTypeColumn, kIcons[entry.kind]);
+        item->setToolTip(kTypeColumn, kind);
         item->setData(0, Qt::UserRole, i);
         // A box that shows, ticked or not, and is not for clicking.
         item->setFlags(item->flags() & ~Qt::ItemIsUserCheckable);
@@ -430,6 +440,15 @@ QStringList LibraryDialog::listedSubcategories() const
     for (int row = 0; row < list_->topLevelItemCount(); ++row)
         if (!list_->topLevelItem(row)->isHidden())
             names << list_->topLevelItem(row)->text(kSubcategoryColumn);
+    return names;
+}
+
+QStringList LibraryDialog::listedTypes() const
+{
+    QStringList names;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row)
+        if (!list_->topLevelItem(row)->isHidden())
+            names << list_->topLevelItem(row)->toolTip(kTypeColumn);
     return names;
 }
 

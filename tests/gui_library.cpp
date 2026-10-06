@@ -242,6 +242,10 @@ int main(int argc, char* argv[])
         auto* tabs = dialog.findChild<QTabBar*>("tabCategories");
         CHECK(tabs && tabs->isHidden());
         CHECK(programs && programs->headerItem()->text(1) == "Sub-category");
+        // The type is a picture, with its name for whoever points at it.
+        CHECK(programs && programs->headerItem()->text(3) == "Type");
+        CHECK(dialog.listedTypes() == (QStringList{"Disc", "Disc", "Snapshot", "Disc"}));
+        CHECK(programs && programs->topLevelItem(0)->text(3).isEmpty() && !programs->topLevelItem(0)->icon(3).isNull());
         CHECK(dialog.listedSubcategories() == (QStringList{"", "", "", ""}));
         // The Release Type column: Original, Crack or Hack, from the name.
         CHECK(programs && programs->headerItem()->text(4) == "Release Type");
