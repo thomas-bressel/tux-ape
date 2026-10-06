@@ -202,6 +202,11 @@ public:
     void clearDataArea();
     std::vector<DisassemblyView::DataArea> dataAreas() const { return dataAreas_; }
     void setDataAreas(const std::vector<DisassemblyView::DataArea>& areas);
+    // The "Any" view of memory: the ROMs switched in or out and the RAM
+    // bank chosen here, whatever the machine itself has. A bank is given
+    // as a program would select it, #C0 to #FF.
+    void setAnyView(bool lowerRom, bool upperRom, int upperRomNumber, int ramBank);
+    bool anyView() const;
     // The windows of the menu.
     void showFind();
     void showDataAreas();
@@ -232,6 +237,12 @@ private:
     QListWidget* stack_;
     QRadioButton* readView_;
     QRadioButton* writeViewButton_;
+    QRadioButton* anyView_;
+    QWidget* anyBox_;
+    QCheckBox* anyLower_;
+    QCheckBox* anyUpper_;
+    QLineEdit* anyUpperRom_;
+    QLineEdit* anyRamBank_;
     QCheckBox* followPc_;
     QCheckBox* hideOnRun_;
     QCheckBox* breakpointsOn_;
@@ -249,6 +260,14 @@ private:
     void showFill();
     void showCompare();
     void showDisassemble();
+    struct Mapping {
+        bool lower = false, upper = false;
+        uint8_t rom = 0, bank = 0xC0;
+    };
+    template <class Memory>
+    Mapping applyView(Memory& memory) const;
+    template <class Memory>
+    void restoreView(Memory& memory, const Mapping& saved) const;
     QByteArray selectedBytes() const;
     void writeBytes(int start, const QByteArray& bytes);
 };

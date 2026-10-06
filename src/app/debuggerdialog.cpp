@@ -580,18 +580,47 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     readView_->setChecked(true);
     writeViewButton_ = new QRadioButton(tr("Write"));
     writeViewButton_->setObjectName("rbWrite");
-    auto* anyView = new QRadioButton(tr("Any"));
-    anyView->setObjectName("rbAny");
-    anyView->setEnabled(false);
-    anyView->setToolTip(tr("Not available yet"));
+    anyView_ = new QRadioButton(tr("Any"));
+    anyView_->setObjectName("rbAny");
+    // With Any: which ROMs are in, and which bank of RAM.
+    anyBox_ = new QWidget;
+    auto* anyLayout = new QHBoxLayout(anyBox_);
+    anyLayout->setContentsMargins(0, 0, 0, 0);
+    anyLower_ = new QCheckBox(tr("Lower ROM"));
+    anyLower_->setObjectName("ckLowerRom");
+    anyUpper_ = new QCheckBox(tr("Upper ROM"));
+    anyUpper_->setObjectName("ckUpperRom");
+    anyUpperRom_ = new QLineEdit("0");
+    anyUpperRom_->setObjectName("edUpperRom");
+    anyUpperRom_->setMaxLength(2);
+    anyUpperRom_->setFixedWidth(32);
+    anyRamBank_ = new QLineEdit("C0");
+    anyRamBank_->setObjectName("edRamBank");
+    anyRamBank_->setMaxLength(2);
+    anyRamBank_->setFixedWidth(32);
+    anyLayout->addWidget(anyLower_);
+    anyLayout->addWidget(anyUpper_);
+    anyLayout->addWidget(anyUpperRom_);
+    anyLayout->addWidget(new QLabel(tr("RAM")));
+    anyLayout->addWidget(anyRamBank_);
+    anyBox_->setVisible(false);
     auto* memoryLayout = new QHBoxLayout(memoryBox);
     memoryLayout->addWidget(readView_);
     memoryLayout->addWidget(writeViewButton_);
-    memoryLayout->addWidget(anyView);
+    memoryLayout->addWidget(anyView_);
+    memoryLayout->addWidget(anyBox_);
     connect(writeViewButton_, &QRadioButton::toggled, this, [this](bool write) {
         writeView_ = write;
         refresh();
     });
+    connect(anyView_, &QRadioButton::toggled, this, [this](bool any) {
+        anyBox_->setVisible(any);
+        refresh();
+    });
+    connect(anyLower_, &QCheckBox::toggled, this, &DebuggerDialog::refresh);
+    connect(anyUpper_, &QCheckBox::toggled, this, &DebuggerDialog::refresh);
+    connect(anyUpperRom_, &QLineEdit::editingFinished, this, &DebuggerDialog::refresh);
+    connect(anyRamBank_, &QLineEdit::editingFinished, this, &DebuggerDialog::refresh);
 
     followPc_ = new QCheckBox(tr("Follow PC"));
     followPc_->setObjectName("ckFollowPC");
@@ -633,8 +662,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
 
     connect(disassembly_, &DisassemblyView::breakpointToggled, this, &DebuggerDialog::toggleBreakpoint);
     connect(dump_, &MemoryDumpView::byteEdited, this, [this](uint16_t address, uint8_t value) {
-        emulator_->withMachine([&](tuxape::Cpc& cpc) { cpc.memory().write(address, value); });
-        refresh();
+        writeBytes(address, QByteArray(1, static_cast<char>(value)));
     });
     connect(resetTimer, &QPushButton::clicked, this, [this] {
         emulator_->resetCycles();
@@ -676,10 +704,12 @@ void DebuggerDialog::refresh()
     };
     const bool write = writeView_;
     const Cpu cpu = emulator_->withMachine([&](tuxape::Cpc& cpc) {
-        const tuxape::Memory& memory = cpc.memory();
+        tuxape::Memory& memory = cpc.memory();
+        const Mapping saved = applyView(memory);
         for (int address = 0; address < 0x10000; ++address)
             memory_[static_cast<size_t>(address)] = write ? memory.readRam(static_cast<uint16_t>(address))
                                                           : memory.read(static_cast<uint16_t>(address));
+        restoreView(memory, saved);
         const auto& z80 = cpc.cpu();
         auto pair = [&](int high, int low) { return static_cast<uint16_t>(z80.reg[high] << 8 | z80.reg[low]); };
         return Cpu{pair(z80.A, z80.F), pair(z80.B, z80.C), pair(z80.D, z80.E), pair(z80.H, z80.L), z80.af2, z80.bc2,
@@ -898,10 +928,54 @@ QByteArray DebuggerDialog::selectedBytes() const
 void DebuggerDialog::writeBytes(int start, const QByteArray& bytes)
 {
     emulator_->withMachine([&](tuxape::Cpc& cpc) {
+        const Mapping saved = applyView(cpc.memory());
         for (qsizetype n = 0; n < bytes.size() && start + n < 0x10000; ++n)
             cpc.memory().write(static_cast<uint16_t>(start + n), static_cast<uint8_t>(bytes[n]));
+        restoreView(cpc.memory(), saved);
     });
     refresh();
+}
+
+// With the Any view, memory is looked at, and written to, as the boxes
+// beside it say; the machine's own mapping is put back afterwards.
+template <class Memory>
+DebuggerDialog::Mapping DebuggerDialog::applyView(Memory& memory) const
+{
+    const Mapping saved{memory.lowerRomEnabled(), memory.upperRomEnabled(), memory.selectedUpperRom(), memory.ramBank()};
+    if (anyView_->isChecked()) {
+        bool ok = false;
+        const unsigned rom = anyUpperRom_->text().toUInt(&ok, 16);
+        const unsigned bank = anyRamBank_->text().toUInt(nullptr, 16);
+        memory.setRomEnables(anyLower_->isChecked(), anyUpper_->isChecked());
+        memory.selectUpperRom(static_cast<uint8_t>(ok ? rom : 0));
+        memory.selectRamBank(static_cast<uint8_t>(bank >= 0xC0 && bank <= 0xFF ? bank : 0xC0), 0x7F);
+    }
+    return saved;
+}
+
+template <class Memory>
+void DebuggerDialog::restoreView(Memory& memory, const Mapping& saved) const
+{
+    if (!anyView_->isChecked())
+        return;
+    memory.setRomEnables(saved.lower, saved.upper);
+    memory.selectUpperRom(saved.rom);
+    memory.selectRamBank(saved.bank, 0x7F);
+}
+
+void DebuggerDialog::setAnyView(bool lowerRom, bool upperRom, int upperRomNumber, int ramBank)
+{
+    anyLower_->setChecked(lowerRom);
+    anyUpper_->setChecked(upperRom);
+    anyUpperRom_->setText(QString::number(upperRomNumber, 16).toUpper());
+    anyRamBank_->setText(QString::number(ramBank, 16).toUpper());
+    anyView_->setChecked(true);
+    refresh();
+}
+
+bool DebuggerDialog::anyView() const
+{
+    return anyView_->isChecked();
 }
 
 int DebuggerDialog::find(FindKind kind, const QString& what, bool caseSensitive)

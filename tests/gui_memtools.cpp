@@ -4,6 +4,7 @@
 // (QT_QPA_PLATFORM=offscreen); no ROM is needed.
 
 #include <functional>
+#include <vector>
 
 #include <QAction>
 #include <QApplication>
@@ -11,6 +12,7 @@
 #include <QFile>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -120,6 +122,16 @@ int main(int argc, char* argv[])
         return out.toHex();
     };
     using Kind = DebuggerDialog::FindKind;
+    // The start of the dump's line for an address, wherever the view has
+    // scrolled to: "C000 77".
+    const auto shown = [&](unsigned address) {
+        dump->setCursor(static_cast<uint16_t>(address));
+        const QString wanted = QString("%1").arg(address, 4, 16, QLatin1Char('0')).toUpper();
+        for (int row = 0; row <= dump->visibleLines(); ++row)
+            if (dump->lineText(row).startsWith(wanted))
+                return dump->lineText(row).left(7);
+        return QString("not shown");
+    };
 
     // The selection: the cursor's byte, stretched with Shift, or a block
     // given by its ends.
@@ -221,6 +233,53 @@ int main(int argc, char* argv[])
     debugger->clearDataArea();
     CHECK(debugger->dataAreas().empty());
     CHECK(debugger->disassembly()->instructionAt(0x9000).text == "LD C,B");
+
+    // The Any view: memory as the boxes say, whatever the machine has in.
+    // Here two ROMs fitted for the purpose, and a bank of the second 64K.
+    {
+        static std::vector<uint8_t> lower(0x4000, 0x11), upper0(0x4000, 0x22), upper7(0x4000, 0x77);
+        emulator.withMachine([&](tuxape::Cpc& cpc) {
+            cpc.memory().setLowerRom(lower);
+            cpc.memory().setUpperRom(0, upper0);
+            cpc.memory().setUpperRom(7, upper7);
+            cpc.out(0x7F00, 0x8C);                // both ROMs out, as the machine sees it
+            cpc.memory().write(0x0000, 0xA0);     // the RAM under them
+            cpc.memory().write(0xC000, 0xAC);
+            cpc.out(0x7F00, 0xC4);                // a bank of the second 64K at &4000...
+            cpc.memory().write(0x4000, 0xB4);
+            cpc.out(0x7F00, 0xC0);                // ...and the first back
+            cpc.memory().write(0x4000, 0xA4);
+        });
+        debugger->refresh();
+        CHECK(!debugger->anyView());
+        CHECK(shown(0x0000) == "0000 A0");
+        debugger->setAnyView(true, true, 7, 0xC4);
+        CHECK(debugger->anyView());
+        CHECK(shown(0x0000) == "0000 11");
+        CHECK(shown(0xC000) == "C000 77");
+        CHECK(shown(0x4000) == "4000 B4");
+        debugger->setAnyView(false, true, 0, 0xC0);
+        CHECK(shown(0xC000) == "C000 22");
+        CHECK(shown(0x0000) == "0000 A0");
+        // A byte typed in goes to the RAM of the view, in the bank shown.
+        debugger->setAnyView(false, false, 0, 0xC4);
+        dump->setCursor(0x4000);
+        dump->typeDigit(0x5);
+        dump->typeDigit(0xE);
+        CHECK(shown(0x4000) == "4000 5E");
+        // The machine's own mapping has not moved.
+        const bool same = emulator.withMachine([](tuxape::Cpc& cpc) {
+            return !cpc.memory().lowerRomEnabled() && !cpc.memory().upperRomEnabled() && cpc.memory().ramBank() == 0xC0
+                && cpc.memory().read(0x4000) == 0xA4;
+        });
+        CHECK(same);
+        auto* readView = debugger->findChild<QRadioButton*>("rbRead");
+        CHECK(readView != nullptr);
+        if (readView)
+            readView->setChecked(true);
+        CHECK(!debugger->anyView());
+        CHECK(shown(0x4000) == "4000 A4");
+    }
 
     // The Find window, and the disassembly sent to a new tab of the assembler.
     dump->setCursor(0);
