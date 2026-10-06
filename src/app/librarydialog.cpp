@@ -58,7 +58,8 @@ constexpr int kThumbnailColumn = 6;
 
 // A row of the list. A click on a column's heading sorts by that column,
 // from A to Z, and a second click from Z to A: text without regard to
-// case, the Type by its name, the boxes unticked first. Rows that say
+// case, the Type by its name, the AI boxes unticked first and the programs
+// without a picture before those with one. Rows that say
 // the same there stay in the order of their titles, whichever way.
 class LibraryItem : public QTreeWidgetItem {
 public:
@@ -69,10 +70,11 @@ public:
         const QTreeWidget* list = treeWidget();
         const int column = list ? list->sortColumn() : 0;
         const auto key = [column](const QTreeWidgetItem& item) {
-            return column == kTypeColumn ? item.toolTip(column)
-                   : column == kAiColumn || column == kThumbnailColumn
-                       ? QString(item.checkState(column) == Qt::Checked ? '1' : '0')
-                                         : item.text(column);
+            // A picture's column says the picture's file to the pointer.
+            return column == kTypeColumn        ? item.toolTip(column)
+                   : column == kThumbnailColumn ? QString(item.toolTip(column).isEmpty() ? '0' : '1')
+                   : column == kAiColumn        ? QString(item.checkState(column) == Qt::Checked ? '1' : '0')
+                                                : item.text(column);
         };
         if (const int order = key(*this).compare(key(other), Qt::CaseInsensitive))
             return order < 0;
@@ -686,8 +688,7 @@ void LibraryDialog::fill()
     filter();
 }
 
-// Looks for each program's picture, and ticks the boxes of those that
-// have one.
+// Looks for each program's picture, and marks those that have one.
 void LibraryDialog::updateThumbnails()
 {
     QHash<QString, Pictures> pictures;  // of each thumbnails folder
@@ -703,7 +704,9 @@ void LibraryDialog::updateThumbnails()
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         QTreeWidgetItem* item = list_->topLevelItem(row);
         const QString& picture = thumbnails_[item->data(0, Qt::UserRole).toInt()];
-        item->setCheckState(kThumbnailColumn, picture.isEmpty() ? Qt::Unchecked : Qt::Checked);
+        // A camera for those that have one, nothing for the others.
+        static const QIcon kPhoto = makeIcon(IconId::Photo);
+        item->setIcon(kThumbnailColumn, picture.isEmpty() ? QIcon() : kPhoto);
         item->setToolTip(kThumbnailColumn, QFileInfo(picture).fileName());
     }
     previewed_.clear();
@@ -740,7 +743,7 @@ QStringList LibraryDialog::listedThumbnailTitles() const
 {
     QStringList titles;
     for (int row = 0; row < list_->topLevelItemCount(); ++row)
-        if (!list_->topLevelItem(row)->isHidden() && list_->topLevelItem(row)->checkState(kThumbnailColumn) == Qt::Checked)
+        if (!list_->topLevelItem(row)->isHidden() && !list_->topLevelItem(row)->toolTip(kThumbnailColumn).isEmpty())
             titles << list_->topLevelItem(row)->text(0);
     return titles;
 }

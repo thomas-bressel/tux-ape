@@ -860,6 +860,12 @@ int main(int argc, char* argv[])
         CHECK_EQ(dialog.selectedTitles().size(), 3);
         CHECK(libraryThumbnail(entryOf(disc)) == shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Disc) [Original].png");
         CHECK(programs->topLevelItem(0)->toolTip(6) == "Gryzor (1987) (Run and Gun) (Tape).png");
+        // The column shows a camera for those that have one, and nothing,
+        // not a box, for the others.
+        CHECK(!programs->topLevelItem(0)->icon(6).isNull() && programs->topLevelItem(3)->icon(6).isNull());
+        CHECK(programs->topLevelItem(3)->text(0) == "Sorcery+" && programs->topLevelItem(3)->toolTip(6).isEmpty());
+        for (int row = 0; row < 4; ++row)
+            CHECK(!programs->topLevelItem(row)->data(6, Qt::CheckStateRole).isValid());
         // The column sorts as the others do: those without first.
         dialog.setSort(6, Qt::AscendingOrder);
         CHECK(dialog.listedTitles() == (QStringList{"Sorcery+", "Gryzor", "Gryzor", "Gryzor"}));

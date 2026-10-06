@@ -20,6 +20,7 @@ enum class IconId {
     Settings,
     FullScreen,
     Help,
+    Photo,
 };
 
 QIcon makeIcon(IconId id);

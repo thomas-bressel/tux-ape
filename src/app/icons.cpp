@@ -148,6 +148,17 @@ void draw(QPainter& p, IconId id)
         p.drawEllipse(QPointF(7, 9), 1.4, 1.4);
         p.drawEllipse(QPointF(13, 9), 1.4, 1.4);
         break;
+    case IconId::Photo:
+        // A camera: the hump of its viewfinder, its body, its lens.
+        p.setPen(outline());
+        p.setBrush(kInk.lighter(170));
+        p.drawRoundedRect(QRectF(7, 3.5, 6, 4), 1, 1);
+        p.drawRoundedRect(QRectF(2, 5.5, 16, 10.5), 1.5, 1.5);
+        p.setBrush(kPaper);
+        p.drawEllipse(QPointF(10, 10.8), 3.4, 3.4);
+        p.setBrush(kInk);
+        p.drawEllipse(QPointF(10, 10.8), 1.5, 1.5);
+        break;
     case IconId::LoadSnapshot:
         camera(p);
         arrow(p, {17, 3}, {17, 12}, kGreen);
