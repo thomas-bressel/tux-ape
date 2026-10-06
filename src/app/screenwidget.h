@@ -23,6 +23,9 @@ public:
 
     // The picture currently on screen, at the size WinAPE saves it (768x540).
     QImage screenshot() const;
+    // The picture as the user sees it: through the shader when that is
+    // on, no wider than asked.
+    QImage shownPicture(int widest = 960) const;
 
     // WinAPE's "Half Size Display": the picture asks for 384 x 270.
     void setHalfSize(bool half);

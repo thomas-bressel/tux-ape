@@ -1130,5 +1130,92 @@ int main(int argc, char* argv[])
         sequel.year = "1989";
         CHECK(libraryThumbnail(sequel).isEmpty());
     }
+    // The Print Screen key: the picture on the screen becomes the Library's
+    // thumbnail of the program in the machine. If it has one already, a
+    // question: replace it, or keep this picture beside it in the
+    // "snapshots" folder.
+    {
+        const QString shots = folder.filePath("shots");
+        QDir().mkpath(shots + "/Games/Platform");
+        const QString zub = shots + "/Games/Platform/Zub (UK) (Face A) (1986) [Original].dsk";
+        CHECK(QFile::copy(gryzor, zub));
+        Settings own = window.settings();
+        own.libraryFolders = QStringList{shots};
+        window.applySettings(own);
+        QAction* shot = nullptr;
+        for (QAction* each : window.findChildren<QAction*>()) {
+            if (each->text() == "Screen to &Thumbnail")
+                shot = each;
+            else if (each->text() == "R&emove Tape" && each->isEnabled())
+                each->trigger();
+        }
+        CHECK(shot != nullptr);
+        if (!shot)
+            return checkSummary("gui_library");
+        // The key itself, and with Ctrl for desktops that keep it.
+        CHECK(shot->shortcuts().contains(QKeySequence(Qt::Key_Print)));
+        CHECK(shot->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_Print)));
+        const auto press = [&](const char* button, bool* paused = nullptr) {
+            Modals modals([&](QWidget* modal) {
+                auto* box = qobject_cast<QMessageBox*>(modal);
+                if (!box || !button || box->objectName() != "ThumbnailQuestion")
+                    return modal->close(), void();
+                if (paused)
+                    *paused = emulator.isPaused();
+                if (auto* chosen = box->findChild<QPushButton*>(button))
+                    chosen->click();
+                else
+                    box->reject();
+            });
+            shot->trigger();
+            return modals.seen();
+        };
+        // Nothing in the machine: said, and nothing made.
+        window.discs()->remove(0);
+        window.discs()->remove(1);
+        CHECK(window.programInMachine().isEmpty());
+        CHECK_EQ(press(nullptr), 1);
+        CHECK(!QDir(shots + "/thumbnails").exists());
+        // A disc in drive A: with no thumbnail yet it gets one at once,
+        // under its name, the side with it.
+        CHECK(window.insertDiscFile(0, zub));
+        CHECK(window.programInMachine() == zub);
+        CHECK_EQ(press("bReplace"), 0);
+        const QString thumbnail = shots + "/thumbnails/Zub (1986) (Platform) (Disc) (Face A) [Original].png";
+        CHECK(QFile::exists(thumbnail));
+        const QImage made(thumbnail);
+        CHECK(!made.isNull() && made.width() >= 384 && made.width() <= 960 && made.height() > 200);
+        CHECK(libraryThumbnail(libraryEntryIn(zub, {shots})) == thumbnail);
+        // It has one now: the question, the machine standing still
+        // meanwhile. Kept beside it: in "snapshots", numbered.
+        bool paused = false;
+        CHECK_EQ(press("bAdd", &paused), 1);
+        CHECK(paused && !emulator.isPaused());
+        const QString beside = shots + "/snapshots/Zub (1986) (Platform) (Disc) (Face A) [Original] %1.png";
+        CHECK(QFile::exists(beside.arg("01")) && !QFile::exists(beside.arg("02")));
+        CHECK_EQ(press("bAdd"), 1);
+        CHECK(QFile::exists(beside.arg("02")));
+        CHECK_EQ(QDir(shots + "/thumbnails").entryList(QDir::Files).size(), 1);
+        // In its place: a small picture put there by hand is gone, the
+        // screen's is there, and there is still only one.
+        CHECK(QImage(8, 8, QImage::Format_RGB32).save(thumbnail));
+        CHECK_EQ(press("bReplace"), 1);
+        CHECK(QImage(thumbnail).width() >= 384);
+        CHECK_EQ(QDir(shots + "/thumbnails").entryList(QDir::Files).size(), 1);
+        CHECK_EQ(QDir(shots + "/snapshots").entryList(QDir::Files).size(), 2);
+        // Neither: nothing changes.
+        CHECK(QImage(8, 8, QImage::Format_RGB32).save(thumbnail));
+        CHECK_EQ(press("bNeither"), 1);
+        CHECK_EQ(QImage(thumbnail).width(), 8);
+        CHECK_EQ(QDir(shots + "/snapshots").entryList(QDir::Files).size(), 2);
+        // A program that is not in the library has its pictures beside it.
+        const QString loose = folder.filePath("elsewhere/Lone (1985).dsk");
+        QDir().mkpath(folder.filePath("elsewhere"));
+        CHECK(QFile::copy(gryzor, loose));
+        CHECK(window.insertDiscFile(0, loose));
+        CHECK_EQ(press("bReplace"), 0);
+        CHECK(QFile::exists(folder.filePath("elsewhere/thumbnails/Lone (1985) (Disc).png")));
+        window.discs()->remove(0);
+    }
     return checkSummary("gui_library");
 }

@@ -74,6 +74,9 @@ public:
     // was not one, and starts afresh, as one does when its cartridge is
     // changed.
     bool insertCartridgeFile(const QString& path);
+    // The file of the program in the machine: the disc in drive A:, or in
+    // another drive, or else the tape in the deck. Empty if there is none.
+    QString programInMachine() const;
 
     // Puts the user's settings into effect. The window starts with the
     // defaults; it is for the application to load the saved ones.
@@ -138,6 +141,7 @@ private:
     QAction* removeTapeAction_ = nullptr;
     QAction* playTapeAction_ = nullptr;
     QAction* recordTapeAction_ = nullptr;
+    QAction* thumbnailAction_ = nullptr;
     QString tapeRecording_;
     TapeDialog* tapeDialog_ = nullptr;
     QString tapePath_;    // the file the tape in the deck came from
@@ -204,6 +208,7 @@ private:
     void saveSnapshotAs();
     // Screenshots and Auto-Type.
     void saveScreenshot();
+    void thumbnailFromScreen();
     void autoType();
     void showLibrary();
     void chooseCartridge();

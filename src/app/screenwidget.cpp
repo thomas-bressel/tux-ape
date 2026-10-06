@@ -71,6 +71,18 @@ QImage ScreenWidget::screenshot() const
     return image_.scaled(kDisplayWidth, kDisplayHeight);
 }
 
+QImage ScreenWidget::shownPicture(int widest) const
+{
+    QImage picture;
+    if (crt_ && crt_->isValid() && !crt_->failed())
+        picture = crt_->grabFramebuffer().convertToFormat(QImage::Format_RGB32);
+    if (picture.isNull())
+        picture = screenshot();
+    if (picture.width() > widest)
+        picture = picture.scaledToWidth(widest, Qt::SmoothTransformation);
+    return picture;
+}
+
 void ScreenWidget::setAmxMouse(bool on)
 {
     amxMouse_ = on;

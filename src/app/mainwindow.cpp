@@ -22,6 +22,7 @@
 #include <QPointer>
 #include <QTimer>
 #include <QToolButton>
+#include <QToolTip>
 #include <QVBoxLayout>
 
 #include "assemblerdialog.h"
@@ -271,6 +272,11 @@ void MainWindow::createMenus()
     recordSessionAction_->setCheckable(true);
     file->addSeparator();
     addItem(file, tr("Save Screens&hot..."), CTRL | Qt::Key_F7, [this] { saveScreenshot(); });
+    // TuxAPE's own: the Print Screen key makes the picture on the screen
+    // the Library's thumbnail of the program in the machine. A desktop
+    // that keeps that key for itself leaves it with Ctrl.
+    thumbnailAction_ = addItem(file, tr("Screen to &Thumbnail"), Qt::Key_Print, [this] { thumbnailFromScreen(); });
+    thumbnailAction_->setShortcuts({QKeySequence(Qt::Key_Print), QKeySequence(CTRL | Qt::Key_Print)});
     recordAviAction_ = addItem(file, tr("R&ecord AVI..."), {}, [this] { toggleAviRecording(); });
     recordAviAction_->setCheckable(true);
     recordWavAction_ = addItem(file, tr("Record &WAV..."), {}, [this] { toggleWavRecording(); });
@@ -839,6 +845,69 @@ void MainWindow::setSpeed(int percent)
 
 // The picture is taken when the window opens: what is saved is what was on
 // screen when the user asked.
+QString MainWindow::programInMachine() const
+{
+    for (int drive = 0; drive < discs_->drives(); ++drive)
+        if (const DiscManager::Info info = discs_->info(drive); info.present && !info.path.isEmpty())
+            return info.path;
+    return tapePath_;
+}
+
+// The Print Screen key: the picture on the screen, through the shader if
+// it is on, becomes the thumbnail the Library shows for the program in
+// the machine. If it has one already the user says whether this one takes
+// its place or is kept beside it, in the "snapshots" folder.
+void MainWindow::thumbnailFromScreen()
+{
+    // The picture first: it is the game's, not the question's.
+    const QImage picture = screen_->shownPicture();
+    const QString program = programInMachine();
+    if (program.isEmpty()) {
+        report(tr("There is no disc or tape in the machine to give a thumbnail to."));
+        return;
+    }
+    const LibraryEntry entry = libraryEntryIn(program, libraryFoldersOrDefault(settings_.libraryFolders));
+    const QString current = libraryThumbnail(entry);
+    QString error, kept;
+    if (current.isEmpty()) {
+        error = setLibraryThumbnail(entry, picture);
+        kept = tr("Thumbnail of %1 made.").arg(entry.title);
+    } else {
+        // The machine stands still while the question is up.
+        const bool wasRunning = !emulator_->isPaused();
+        if (wasRunning)
+            emulator_->setPaused(true);
+        QMessageBox box(this);
+        box.setObjectName("ThumbnailQuestion");
+        box.setWindowTitle(tr("Screen to Thumbnail"));
+        box.setIconPixmap(QPixmap::fromImage(picture.scaledToWidth(240, Qt::SmoothTransformation)));
+        box.setText(tr("%1 has a thumbnail already.").arg(entry.title));
+        box.setInformativeText(tr("Replace it with this picture, or keep this picture beside it, in the snapshots folder?"));
+        QPushButton* replace = box.addButton(tr("&Replace the thumbnail"), QMessageBox::AcceptRole);
+        QPushButton* add = box.addButton(tr("&Add to the snapshots"), QMessageBox::ActionRole);
+        box.addButton(QMessageBox::Cancel);
+        replace->setObjectName("bReplace");
+        add->setObjectName("bAdd");
+        box.setDefaultButton(replace);
+        box.exec();
+        if (box.clickedButton() == replace) {
+            error = setLibraryThumbnail(entry, picture);
+            kept = tr("Thumbnail of %1 replaced.").arg(entry.title);
+        } else if (box.clickedButton() == add) {
+            const QString file = addLibraryScreenshot(entry, picture, &error);
+            kept = tr("Kept as %1.").arg(QFileInfo(file).fileName());
+        }
+        if (wasRunning)
+            emulator_->setPaused(false);
+        updateDebugActions();
+    }
+    if (!error.isEmpty())
+        report(error);
+    else if (!kept.isEmpty())
+        QToolTip::showText(screen_->mapToGlobal(QPoint(16, 16)), kept, screen_, QRect(), 2500);
+    screen_->setFocus();
+}
+
 void MainWindow::saveScreenshot()
 {
     // On the frame's flyback the picture is a whole frame's; otherwise it
