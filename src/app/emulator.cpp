@@ -778,6 +778,16 @@ void Emulator::setVerticalHold(int lines)
     withMachine([lines](Cpc& cpc) { cpc.monitor().setVerticalHold(lines); });
 }
 
+void Emulator::multifaceStop()
+{
+    withMachine([](Cpc& cpc) { cpc.multifaceStop(); });
+}
+
+bool Emulator::hasMultiface()
+{
+    return withMachine([](Cpc& cpc) { return cpc.hasMultiface(); });
+}
+
 void Emulator::reset(bool cold)
 {
     withMachine([cold](Cpc& cpc) {

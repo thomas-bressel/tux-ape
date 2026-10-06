@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <functional>
 #include <vector>
 
@@ -116,6 +117,17 @@ public:
     // 7 is the cartridge's AMSDOS. Without a cartridge the machine is a CPC
     // again. Neither resets the machine.
     void setCartridge(const Cartridge* cartridge, bool discRom = true);
+    // Romantic Robot's Multiface II, on the expansion port: its ROM (8K;
+    // empty for none). OUT &FEE8 pages its ROM and RAM in, OUT &FEEA out,
+    // and it keeps in its RAM what the machine writes to the ports that
+    // cannot be read back: the Gate Array's, the CRTC's, the ROM select
+    // and the PPI's control.
+    void setMultiface(std::span<const uint8_t> rom);
+    bool hasMultiface() const { return memory_.hasMultiface(); }
+    // Its red button: the machine is stopped where it is and the
+    // Multiface's own program takes over. Nothing without one, or while
+    // it is paged in already.
+    void multifaceStop();
     bool plus() const { return plus_; }
     Asic& asic() { return asic_; }
     // The AMX mouse, on the joystick's port. The host says how far it has
@@ -341,6 +353,9 @@ private:
     bool digiblaster_ = false;
     bool amDrum_ = false;
     uint8_t dac_ = 0x80;  // what the converters were last given; &80 is silence
+    // The Multiface's notes: the pen and the CRTC register last selected.
+    uint8_t multifacePen_ = 0;
+    uint8_t multifaceCrtc_ = 0;
     bool turbo_ = false;
     unsigned turboLeft_ = 4;  // T-states the instruction in hand may still take
     bool plusPpi_ = false;

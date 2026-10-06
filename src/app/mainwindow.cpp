@@ -322,7 +322,8 @@ void MainWindow::createMenus()
             report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
     });
     amxMouseAction_->setCheckable(true);
-    addItem(settings, tr("M&ultiface Stop"), Qt::Key_F11);
+    multifaceAction_ = addItem(settings, tr("M&ultiface Stop"), Qt::Key_F11, [this] { emulator_->multifaceStop(); });
+    multifaceAction_->setEnabled(emulator_->hasMultiface());
 
     // ---- Debug ----
     QMenu* debug = menuBar()->addMenu(tr("&Debug"));
@@ -733,6 +734,8 @@ void MainWindow::applySettings(const Settings& settings)
         if (!error.isEmpty())
             report(tr("%1.").arg(error.left(1).toUpper() + error.mid(1)));
     }
+    // Its red button is there to press only if the Multiface is.
+    multifaceAction_->setEnabled(emulator_->hasMultiface());
     emulator_->setCrtcType(static_cast<tuxape::CrtcType>(settings.crtcType));
     emulator_->setFastDisc(settings.fastDisc);
     // Drives C: and D: come and go with their menus and their lights. A

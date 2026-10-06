@@ -37,6 +37,10 @@ struct MachineConfig {
     bool cartridgeEnabled = false;
     bool plus = false;
     bool isPlus() const { return plus && cartridgeEnabled && !cartridge.empty(); }
+    // WinAPE's "Enable Multiface" and its ROM, looked for like the others;
+    // with none named, "multiface2" is.
+    std::string multifaceRom;
+    bool multifaceEnabled = false;
 
     bool operator==(const MachineConfig&) const = default;
 };
@@ -50,12 +54,16 @@ CpcModel modelOf(const MachineConfig& config);
 // Folder holding the ROM images: $TUXAPE_ROM_DIR if set, otherwise the ROM
 // folder of the WinAPE distribution next to the sources.
 std::filesystem::path defaultRomDir();
+// The user's own ROM folder, with folders of its own inside it, where a
+// ROM not found in the first is looked for by its name: $TUXAPE_USER_ROM_DIR
+// if set, otherwise the "roms" folder next to the sources.
+std::filesystem::path userRomDir();
 // Folder holding the profiles (.wpf): $TUXAPE_PROFILE_DIR if set, otherwise
 // the "Profile" folder beside the ROM folder, as in WinAPE.
 std::filesystem::path defaultProfileDir();
 
-// The ROM images of a folder, as WinAPE lists them: file names without
-// their ".ROM", in alphabetical order.
+// The ROM images of a folder and of the folders in it, as WinAPE lists
+// them: file names without their ".ROM", in alphabetical order.
 std::vector<std::string> romNames(const std::filesystem::path& romDir);
 // The file a ROM name stands for; an empty path if there is none.
 std::filesystem::path findRom(std::string_view name, const std::filesystem::path& romDir);

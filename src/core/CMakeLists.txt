@@ -38,4 +38,5 @@ target_compile_definitions(tuxape_core PRIVATE
     TUXAPE_VERSION="${PROJECT_VERSION}"
     # Where the ROM images are looked for when TUXAPE_ROM_DIR is not set.
     TUXAPE_DEV_ROM_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2/ROM"
+    TUXAPE_DEV_USER_ROM_DIR="${PROJECT_SOURCE_DIR}/roms"
 )

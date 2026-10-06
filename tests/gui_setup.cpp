@@ -275,10 +275,10 @@ void testMemoryPage(const QString& picture)
     CHECK_EQ(dialog.settings().crtcType, settings.crtcType);
     CHECK_EQ(dialog.settings().speedPercent, settings.speedPercent);
 
-    // The Multiface is still to come.
+    // The Multiface is there to enable (see gui_multiface).
     for (const char* name : {"ckEnableMultiface", "sbMultiface"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
-        CHECK(widget && !widget->isEnabled());
+        CHECK(widget && widget->isEnabled());
     }
 
     if (!picture.isEmpty()) {

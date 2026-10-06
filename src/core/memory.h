@@ -55,6 +55,17 @@ public:
     // The ASIC, whose page of registers RMR2 can show at &4000-&7FFF.
     void setAsic(Asic* asic) { asic_ = asic; }
 
+    // The Multiface II: 8K of ROM at &0000 and 8K of RAM at &2000, which
+    // take the place of what is there while it is paged in. What is
+    // written under its ROM goes to the machine's RAM as ever. An empty
+    // image takes the Multiface out; a shorter one is padded with FF.
+    void setMultiface(std::span<const uint8_t> rom);
+    bool hasMultiface() const { return !multiface_.empty(); }
+    void pageMultiface(bool in);
+    bool multifacePaged() const { return multifacePaged_; }
+    // Its 8K of RAM; null without one.
+    uint8_t* multifaceRam() { return multiface_.empty() ? nullptr : &multiface_[0x2000]; }
+
     void reset();
     void clearRam();
 
@@ -71,6 +82,8 @@ public:
     {
         if (registersMapped_ && (addr & 0xC000) == 0x4000)
             writeRegister(addr, value);
+        else if (multifacePaged_ && addr >= 0x2000 && addr < 0x4000)
+            multiface_[addr] = value;
         else
             writeMap_[addr >> 14][addr & 0x3FFF] = value;
     }
@@ -120,7 +133,11 @@ private:
     Asic* asic_ = nullptr;
     bool registersMapped_ = false;
 
+    std::vector<uint8_t> multiface_;  // its ROM, then its RAM: 16K, or none
+    bool multifacePaged_ = false;
+
     void remap();
+    void remapMachine();
     void writeRegister(uint16_t addr, uint8_t value);
 };
 

@@ -17,6 +17,13 @@ std::filesystem::path defaultRomDir()
     return TUXAPE_DEV_ROM_DIR;
 }
 
+std::filesystem::path userRomDir()
+{
+    if (const char* dir = std::getenv("TUXAPE_USER_ROM_DIR"); dir && *dir)
+        return dir;
+    return TUXAPE_DEV_USER_ROM_DIR;
+}
+
 std::filesystem::path defaultProfileDir()
 {
     if (const char* dir = std::getenv("TUXAPE_PROFILE_DIR"); dir && *dir)
@@ -92,7 +99,7 @@ std::vector<std::string> romNames(const std::filesystem::path& romDir)
 {
     std::vector<std::string> names;
     std::error_code ignored;
-    for (const auto& entry : std::filesystem::directory_iterator(romDir, ignored))
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(romDir, ignored))
         if (entry.is_regular_file(ignored) && isRomFile(entry.path()))
             names.push_back(entry.path().stem().string());
     std::sort(names.begin(), names.end(), [](const std::string& a, const std::string& b) {
@@ -124,6 +131,18 @@ std::filesystem::path findRom(std::string_view name, const std::filesystem::path
         if (isRomFile(file) && lowered(file.stem().string()) == wanted)
             found = file;
     }
+    if (!found.empty())
+        return found;
+    // Not there: the user's own folder, and the folders in it.
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(userRomDir(), ignored)) {
+        if (!entry.is_regular_file(ignored))
+            continue;
+        const std::filesystem::path& file = entry.path();
+        if (lowered(file.filename().string()) == wanted)
+            return file;
+        if (found.empty() && isRomFile(file) && lowered(file.stem().string()) == wanted)
+            found = file;
+    }
     return found;
 }
 
@@ -152,8 +171,17 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
     for (int slot = 0; slot < Memory::kRomSlots; ++slot) {
         const bool fitted = !config.disableAllRoms && (config.rom32 || slot < 16)
                             && (!config.onlyLower0And7 || slot == 0 || slot == 7);
-        memory.setUpperRom(slot, fitted ? load(config.upperRoms[static_cast<size_t>(slot)]) : std::vector<uint8_t>());
+        std::vector<uint8_t> image = fitted ? load(config.upperRoms[static_cast<size_t>(slot)]) : std::vector<uint8_t>();
+        // A file of 32K is a firmware followed by its BASIC: named for the
+        // lower ROM it gives the first, named for a slot the second.
+        if (image.size() == 2 * Memory::kBankSize)
+            image.erase(image.begin(), image.begin() + Memory::kBankSize);
+        memory.setUpperRom(slot, image);
     }
+
+    // The Multiface II.
+    cpc.setMultiface(config.multifaceEnabled ? load(config.multifaceRom.empty() ? "multiface2" : config.multifaceRom)
+                                             : std::vector<uint8_t>());
 
     // A Plus: the cartridge. The 464 Plus has no disc drive, and so no
     // AMSDOS in its ROM 7.

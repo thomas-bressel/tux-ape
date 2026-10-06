@@ -115,6 +115,12 @@ target_link_libraries(tape PRIVATE tuxape_core)
 add_test(NAME tape COMMAND tape)
 set_tests_properties(tape PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(multiface multiface.cpp)
+target_link_libraries(multiface PRIVATE tuxape_core)
+# The Multiface's ROM image, if the user keeps one in the "roms" folder.
+target_compile_definitions(multiface PRIVATE TUXAPE_USER_ROMS="${PROJECT_SOURCE_DIR}/roms")
+add_test(NAME multiface COMMAND multiface)
+
 add_executable(discfiles discfiles.cpp)
 target_link_libraries(discfiles PRIVATE tuxape_core)
 add_test(NAME discfiles COMMAND discfiles)
@@ -146,7 +152,7 @@ endif()
 
 if(TUXAPE_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Test)
-    foreach(test gui_smoke gui_discs gui_sound gui_snapshot gui_setup gui_tools gui_library gui_tape gui_plus gui_debugger gui_session gui_disceditor gui_assembler gui_registers gui_breakpoints gui_memtools gui_graphics gui_crt)
+    foreach(test gui_smoke gui_discs gui_sound gui_snapshot gui_setup gui_tools gui_library gui_tape gui_plus gui_debugger gui_session gui_disceditor gui_assembler gui_registers gui_breakpoints gui_memtools gui_graphics gui_crt gui_multiface)
         add_executable(${test} ${test}.cpp)
         target_link_libraries(${test} PRIVATE tuxape_app Qt6::Test)
         add_test(NAME ${test} COMMAND ${test})

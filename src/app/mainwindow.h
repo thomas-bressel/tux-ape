@@ -145,6 +145,7 @@ private:
     QAction* playTapeAction_ = nullptr;
     QAction* recordTapeAction_ = nullptr;
     QAction* thumbnailAction_ = nullptr;
+    QAction* multifaceAction_ = nullptr;
     QString lastProgram_;  // the disc, tape or cartridge last put in the machine
     QString tapeRecording_;
     TapeDialog* tapeDialog_ = nullptr;

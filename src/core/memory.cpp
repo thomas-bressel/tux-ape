@@ -130,8 +130,31 @@ void Memory::writeRegister(uint16_t addr, uint8_t value)
     asic_->write(addr, value);
 }
 
+void Memory::setMultiface(std::span<const uint8_t> rom)
+{
+    multifacePaged_ = false;
+    if (rom.empty()) {
+        multiface_.clear();
+    } else {
+        multiface_.assign(0x4000, 0);
+        std::fill(multiface_.begin(), multiface_.begin() + 0x2000, uint8_t{0xFF});
+        std::copy_n(rom.begin(), std::min<size_t>(rom.size(), 0x2000), multiface_.begin());
+    }
+    remap();
+}
+
+void Memory::pageMultiface(bool in)
+{
+    in = in && !multiface_.empty();
+    if (in == multifacePaged_)
+        return;
+    multifacePaged_ = in;
+    remap();
+}
+
 void Memory::reset()
 {
+    multifacePaged_ = false;
     lowerEnabled_ = upperEnabled_ = true;
     upperSelected_ = 0;
     rmr2_ = 0;
@@ -186,6 +209,14 @@ void Memory::selectRamBank(uint8_t value, uint8_t portHigh)
 }
 
 void Memory::remap()
+{
+    remapMachine();
+    // The Multiface, paged in, is in front of everything in the first 16K.
+    if (multifacePaged_)
+        readMap_[0] = multiface_.data();
+}
+
+void Memory::remapMachine()
 {
     // Selecting a page that is not fitted leaves the base RAM in place.
     const int offset = pageOffset_[ramPage_];

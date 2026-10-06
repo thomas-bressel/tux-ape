@@ -123,9 +123,54 @@ void Cpc::memoryAccess(uint16_t addr, uint8_t value, uint8_t previous, bool writ
 // "its" address bit is low, whatever the other bits are. Several devices can
 // therefore be addressed by the same access.
 
+void Cpc::setMultiface(std::span<const uint8_t> rom)
+{
+    memory_.setMultiface(rom);
+    multifacePen_ = multifaceCrtc_ = 0;
+}
+
+void Cpc::multifaceStop()
+{
+    if (!memory_.hasMultiface() || memory_.multifacePaged())
+        return;
+    // Its ROM comes in as the interrupt is taken: the entry at &0066 is
+    // the Multiface's own.
+    memory_.pageMultiface(true);
+    cpu_.nmi();
+}
+
 void Cpc::ioWrite(uint16_t port, uint8_t value)
 {
     const uint8_t high = static_cast<uint8_t>(port >> 8);
+
+    if (uint8_t* notes = memory_.multifaceRam()) {
+        // OUT &FEE8 pages the Multiface in, OUT &FEEA out.
+        if ((port & 0xFFFD) == 0xFEE8)
+            memory_.pageMultiface(!(port & 2));
+        // What the machine writes to its write-only ports, the Multiface
+        // keeps at set places of its RAM, to know the machine's state by.
+        if ((port & 0xC000) == 0x4000) {
+            switch (value & 0xC0) {
+            case 0x00:
+                notes[0x1FCF] = value;
+                multifacePen_ = value & 0x10 ? 16 : value & 0x0F;
+                break;
+            case 0x40: notes[0x1F90 + multifacePen_] = value; break;
+            case 0x80: notes[0x1FEF] = value; break;
+            default: notes[0x1FFF] = value; break;
+            }
+        }
+        if ((port & 0x4300) == 0x0000) {
+            notes[0x1CFF] = value;
+            multifaceCrtc_ = value & 0x0F;
+        } else if ((port & 0x4300) == 0x0100) {
+            notes[0x1DB0 + multifaceCrtc_] = value;
+        }
+        if (!(port & 0x2000))
+            notes[0x1AAC] = value;
+        if ((port & 0x0B00) == 0x0300)
+            notes[0x17FF] = value;
+    }
 
     if (!(port & 0x8000)) {
         if ((value & 0xC0) == 0xC0)

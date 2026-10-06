@@ -143,6 +143,11 @@ private:
     QString cartridge_;  // a file of the ROM folder by its name, or a path
     void setCartridge(const QString& cartridge);
     void chooseCartridge();
+    QCheckBox* enableMultiface_ = nullptr;
+    QLabel* multifaceFile_ = nullptr;
+    QString multifaceRom_;
+    void setMultifaceRom(const QString& rom);
+    void chooseMultifaceRom();
     QLabel* totalRam_ = nullptr;
     QTableWidget* roms_ = nullptr;
     QCheckBox* rom32_ = nullptr;

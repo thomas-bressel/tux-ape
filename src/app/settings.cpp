@@ -110,6 +110,9 @@ void Settings::read(const tuxape::IniFile& ini)
     if (ini.has(kRoms, "Cartridge"))
         machine.cartridge = ini.get(kRoms, "Cartridge");
     machine.cartridgeEnabled = ini.getBool(kRoms, "Cartridge Enabled", machine.cartridgeEnabled);
+    if (ini.has(kRoms, "Multiface"))
+        machine.multifaceRom = ini.get(kRoms, "Multiface");
+    machine.multifaceEnabled = ini.getBool(kRoms, "Multiface Enabled", machine.multifaceEnabled);
     machine.plus = ini.getBool(kConfiguration, "Enable Plus", machine.plus);
     machine.rom32 = ini.getBool(kRoms, "Enable 32 ROMs", machine.rom32);
     machine.disableAllRoms = ini.getBool(kRoms, "Disable All", machine.disableAllRoms);
@@ -213,6 +216,8 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
             ini.set(kRoms, upperKey(slot), machine.upperRoms[static_cast<size_t>(slot)]);
         ini.set(kRoms, "Cartridge", machine.cartridge);
         ini.setBool(kRoms, "Cartridge Enabled", machine.cartridgeEnabled);
+        ini.set(kRoms, "Multiface", machine.multifaceRom);
+        ini.setBool(kRoms, "Multiface Enabled", machine.multifaceEnabled);
         ini.setBool(kConfiguration, "Enable Plus", machine.plus);
         ini.setBool(kRoms, "Enable 32 ROMs", machine.rom32);
         ini.setBool(kRoms, "Disable All", machine.disableAllRoms);

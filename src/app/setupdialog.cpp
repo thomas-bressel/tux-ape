@@ -88,6 +88,14 @@ public:
             combo->addItem(text, text);
             listed = listed || text.compare(current, Qt::CaseInsensitive) == 0;
         }
+        // Then those of the user's own folder, which are found by name too.
+        for (const std::string& name : tuxape::romNames(tuxape::userRomDir())) {
+            const QString text = QString::fromStdString(name);
+            if (combo->findText(text, Qt::MatchFixedString) >= 0)
+                continue;
+            combo->addItem(text, text);
+            listed = listed || text.compare(current, Qt::CaseInsensitive) == 0;
+        }
         if (!listed)
             combo->addItem(QDir::toNativeSeparators(current), current);
         combo->addItem(SetupDialog::tr("Select File..."), kSelectFile);
@@ -1026,17 +1034,7 @@ QWidget* SetupDialog::createMemoryPage()
     totalRow->addStretch(1);
     ramLayout->addLayout(totalRow);
 
-    // ---- Cartridge and Multiface: to come ----
-    auto fileRow = [](const QString& label, const QString& file, const char* buttonName) {
-        auto* row = new QHBoxLayout;
-        row->addWidget(notYet(new QLabel(label)));
-        row->addWidget(notYet(new QLabel(file)), 1);
-        auto* browse = notYet(new QToolButton);
-        browse->setObjectName(buttonName);
-        browse->setText("...");
-        row->addWidget(browse);
-        return row;
-    };
+    // ---- Cartridge and Multiface ----
     auto* cartridgeBox = new QGroupBox(tr("Cartridge"));
     enableCartridge_ = new QCheckBox(tr("Enable Cartridge"));
     enableCartridge_->setObjectName("ckEnableCart");
@@ -1056,12 +1054,23 @@ QWidget* SetupDialog::createMemoryPage()
     cartridgeLayout->addLayout(cartridgeRow);
 
     auto* multifaceBox = new QGroupBox(tr("Multiface"));
-    auto* enableMultiface = notYet(new QCheckBox(tr("Enable Multiface")));
-    enableMultiface->setObjectName("ckEnableMultiface");
+    enableMultiface_ = new QCheckBox(tr("Enable Multiface"));
+    enableMultiface_->setObjectName("ckEnableMultiface");
+    enableMultiface_->setToolTip(tr("A Multiface II on the expansion port: Settings > Multiface Stop (F11) is its red button"));
+    multifaceFile_ = new QLabel;
+    multifaceFile_->setObjectName("edMultiface");
+    auto* browseMultiface = new QToolButton;
+    browseMultiface->setObjectName("sbMultiface");
+    browseMultiface->setText("...");
+    connect(browseMultiface, &QToolButton::clicked, this, &SetupDialog::chooseMultifaceRom);
+    auto* multifaceRow = new QHBoxLayout;
+    multifaceRow->addWidget(new QLabel(tr("ROM:")));
+    multifaceRow->addWidget(multifaceFile_, 1);
+    multifaceRow->addWidget(browseMultiface);
     auto* multifaceLayout = new QVBoxLayout(multifaceBox);
     multifaceLayout->setSpacing(3);
-    multifaceLayout->addWidget(enableMultiface);
-    multifaceLayout->addLayout(fileRow(tr("ROM:"), QString(), "sbMultiface"));
+    multifaceLayout->addWidget(enableMultiface_);
+    multifaceLayout->addLayout(multifaceRow);
 
     // ---- ROMs ----
     auto* romsBox = new QGroupBox(tr("ROMs"));
@@ -1133,6 +1142,28 @@ void SetupDialog::chooseCartridge()
     const QFileInfo file(path);
     setCartridge(QDir::cleanPath(file.absolutePath()) == romDir ? file.fileName() : QDir::toNativeSeparators(path));
     enableCartridge_->setChecked(true);
+}
+
+void SetupDialog::setMultifaceRom(const QString& rom)
+{
+    multifaceRom_ = rom;
+    multifaceFile_->setText(QFileInfo(QDir::fromNativeSeparators(rom)).fileName());
+    multifaceFile_->setToolTip(QDir::toNativeSeparators(rom));
+}
+
+void SetupDialog::chooseMultifaceRom()
+{
+    // The user's own ROM folder, if there is one, is where it is likely
+    // to be.
+    const QString own = QDir::cleanPath(QString::fromStdString(tuxape::userRomDir().string()));
+    const QString romDir = QDir::cleanPath(QString::fromStdString(tuxape::defaultRomDir().string()));
+    const QString path = QFileDialog::getOpenFileName(this, tr("Multiface ROM"), QDir(own).exists() ? own : romDir,
+                                                      tr("ROM images (*.rom);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    const QFileInfo file(path);
+    setMultifaceRom(QDir::cleanPath(file.absolutePath()) == romDir ? file.fileName() : QDir::toNativeSeparators(path));
+    enableMultiface_->setChecked(true);
 }
 
 void SetupDialog::updateTotalRam()
@@ -1239,6 +1270,8 @@ void SetupDialog::setSettings(const Settings& settings)
     crtcType_->setCurrentIndex(settings.crtcType);
     enablePlus_->setChecked(settings.machine.plus);
     enableCartridge_->setChecked(settings.machine.cartridgeEnabled);
+    enableMultiface_->setChecked(settings.machine.multifaceEnabled);
+    setMultifaceRom(QString::fromStdString(settings.machine.multifaceRom));
     setCartridge(QString::fromStdString(settings.machine.cartridge));
     fastDisc_->setChecked(settings.fastDisc);
     fourDrives_->setChecked(settings.fourDrives);
@@ -1441,6 +1474,8 @@ Settings SetupDialog::settings() const
     machine.siliconDisc = siliconDisc_->isChecked();
     machine.plus = enablePlus_->isChecked();
     machine.cartridgeEnabled = enableCartridge_->isChecked();
+    machine.multifaceEnabled = enableMultiface_->isChecked();
+    machine.multifaceRom = multifaceRom_.toStdString();
     machine.cartridge = cartridge_.toStdString();
     machine.lowerRom = romNames_[0].toStdString();
     for (int slot = 0; slot < tuxape::Memory::kRomSlots; ++slot)
