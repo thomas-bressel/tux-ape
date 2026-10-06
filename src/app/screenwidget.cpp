@@ -138,7 +138,10 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
         crt_->setAttribute(Qt::WA_TransparentForMouseEvents);
         crt_->setFocusPolicy(Qt::NoFocus);
         crt_->setGeometry(pictureRect());
-        crt_->overlay = [this](QPainter& painter) { paintDriveLight(painter, driveLightRect().translated(-crt_->pos())); };
+        crt_->overlay = [this](QPainter& painter) {
+            paintDriveLight(painter, driveLightRect().translated(-crt_->pos()));
+            paintBeamMarker(painter, crt_->rect());
+        };
         // A graphics card that will not have the shaders: plain drawing.
         connect(crt_, &CrtView::unusable, this, [this] { setCrtShader(false); }, Qt::QueuedConnection);
         // Each picture the screen has shown: the machine's cue for its
@@ -146,12 +149,14 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
         connect(crt_, &QOpenGLWidget::frameSwapped, this, [this] {
             if (swapsPerFrame_ <= 0 || !crt_)
                 return;
+            // Every picture the screen shows counts, whether the machine's
+            // has changed or not: the view is drawn again each time, and
+            // the machine told once in so many.
             if (++swaps_ >= swapsPerFrame_) {
                 swaps_ = 0;
                 emulator_->displayTick();
-            } else {
-                crt_->update();  // the same picture once more: a screen at a hundred a second
             }
+            crt_->update();
         });
         crt_->setFrame(image_);
         crt_->show();
@@ -192,6 +197,36 @@ void ScreenWidget::updateDisplayClock()
     swapsPerFrame_ = every;
     swaps_ = 0;
     emulator_->setDisplayClock(every > 0);
+    if (every > 0)
+        crt_->update();  // the first of the pictures that keep one another coming
+}
+
+// "Row Highlight": where the beam is, as a line across the picture and one
+// down it.
+void ScreenWidget::setBeamMarker(int line, int column)
+{
+    if (line == beamLine_ && column == beamColumn_)
+        return;
+    beamLine_ = line;
+    beamColumn_ = column;
+    update();
+    if (crt_)
+        crt_->update();
+}
+
+void ScreenWidget::paintBeamMarker(QPainter& painter, const QRect& picture) const
+{
+    if (beamLine_ < 0 && beamColumn_ < 0)
+        return;
+    painter.setPen(QColor(255, 255, 0, 200));
+    if (beamLine_ >= 0 && beamLine_ < tuxape::Monitor::kHeight) {
+        const int y = picture.top() + (beamLine_ * 2 + 1) * picture.height() / kDisplayHeight;
+        painter.drawLine(picture.left(), y, picture.right(), y);
+    }
+    if (beamColumn_ >= 0 && beamColumn_ < kDisplayWidth) {
+        const int x = picture.left() + beamColumn_ * picture.width() / kDisplayWidth;
+        painter.drawLine(x, picture.top(), x, picture.bottom());
+    }
 }
 
 void ScreenWidget::resizeEvent(QResizeEvent* event)
@@ -281,6 +316,7 @@ void ScreenWidget::paintEvent(QPaintEvent*)
         painter.drawImage(target, striped_);
     }
     paintDriveLight(painter, driveLightRect());
+    paintBeamMarker(painter, target);
 }
 
 // The drive's light: red, with the drive's letter and its cylinder.

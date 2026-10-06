@@ -214,6 +214,18 @@ void Emulator::playSound()
     }
     audioSilenced_ = false;
 
+    // The drives are heard beside the machine, not through it: their
+    // sounds are in what is played, not in what is recorded.
+    if (discSounds_) {
+        int steps = 0;
+        for (int drive = 0; drive < 4; ++drive) {
+            const int at = cpc_.fdc().drive(drive).cylinder;
+            steps += std::abs(at - headAt_[drive]);
+            headAt_[drive] = at;
+        }
+        driveSound_.mix(samples, audio_->sampleRate(), cpc_.fdc().motor(), steps);
+    }
+
     // "8 bit": 256 levels instead of 65536, as a sound card of the time
     // would have had.
     if (eightBit_)
@@ -893,6 +905,32 @@ QImage Emulator::frame()
     std::lock_guard lock(frameMutex_);
     framePending_ = false;
     return frame_.copy();
+}
+
+QImage Emulator::frameInProgress()
+{
+    QImage picture(Monitor::kWidth, Monitor::kHeight, QImage::Format_RGB32);
+    withMachine([&](Cpc& cpc) {
+        const Monitor& monitor = cpc.monitor();
+        const size_t row = static_cast<size_t>(Monitor::kWidth) * sizeof(uint32_t);
+        const int line = std::clamp(monitor.rasterLine(), 0, static_cast<int>(Monitor::kHeight));
+        std::memcpy(picture.bits(), monitor.frame(), row * Monitor::kHeight);
+        std::memcpy(picture.bits(), monitor.drawing(), row * static_cast<size_t>(line));
+        if (line < Monitor::kHeight) {
+            const int column = std::clamp(monitor.beamColumn(), 0, static_cast<int>(Monitor::kWidth));
+            std::memcpy(picture.scanLine(line), monitor.drawing() + static_cast<size_t>(line) * Monitor::kWidth,
+                        static_cast<size_t>(column) * sizeof(uint32_t));
+        }
+    });
+    return picture;
+}
+
+void Emulator::setDiscSounds(bool on)
+{
+    withMachine([&](Cpc&) {
+        discSounds_ = on;
+        driveSound_.reset();
+    });
 }
 
 void Emulator::publishFrame()

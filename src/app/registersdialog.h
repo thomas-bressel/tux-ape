@@ -24,6 +24,17 @@ public:
     explicit RegistersDialog(Emulator* emulator, QWidget* parent = nullptr);
 
     void refresh();
+    // WinAPE's "Row Highlight": while the box is ticked and the machine
+    // stands still, the screen shows where the beam is.
+    bool rowHighlight() const;
+    void setRowHighlight(bool on);
+
+signals:
+    // The line of the picture and the column in it the beam is at, for
+    // the screen to show; -1 and -1 when it is not to show any.
+    void beamChanged(int line, int column);
+
+public:
     // A field by its name: "Palette0" to "Palette16" (the border), "PSG0"
     // to "PSG15", "CRTC0" to "CRTC15", "VCC", "R52", "HDC", "HCC", "VMA",
     // "Mode", "VLC", "VSC", "VTAC", "HSC", "VDUR", "ICSR", and on a Plus
@@ -44,6 +55,9 @@ public:
 protected:
     void showEvent(QShowEvent* event) override;
 
+protected:
+    void hideEvent(QHideEvent* event) override;
+
 private:
     QLineEdit* field(const QString& name, int digits, bool editable = false);
     void put(const QString& name, unsigned value, bool highlight = false);
@@ -51,6 +65,7 @@ private:
     Emulator* emulator_;
     QHash<QString, QLineEdit*> fields_;
     QToolButton* asicButton_;
+    QCheckBox* rowHighlight_;
     QWidget* asicPane_;
     QLabel* colours_[32] = {};
     QCheckBox* unlocked_;

@@ -36,6 +36,7 @@ struct Settings {
     CrtLook crtLook;                  // and how that is set
     bool displaySync = true;          // a frame to each picture of a screen that shows fifty a second
     bool welcomePicture = true;       // shown for a moment as the program starts
+    bool screenshotOnFlyback = true;  // a screenshot is of a whole frame, not of the one being drawn
     bool driveLed = false;            // a light on the picture while a drive is at work
     bool showDriveCylinders = false;  // with the cylinder its head is on
     // What the window shows around the picture, and how the picture is
@@ -59,6 +60,7 @@ struct Settings {
     bool soundStereo = true;
     int soundVolume = 15;       // 0 to 15
     bool tapeSounds = false;    // the tape is heard while it loads
+    bool discSounds = false;    // the drives are heard: motor and head
     bool amDrum = false;        // the AmDrum sound converter, on ports &FFxx
 
     // The Other page: what is on the printer's port.

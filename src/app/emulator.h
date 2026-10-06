@@ -18,6 +18,7 @@
 #include <QObject>
 #include <QString>
 
+#include "drivesound.h"
 #include "avirecorder.h"
 #include "hostjoystick.h"
 
@@ -109,6 +110,10 @@ public:
     bool soundOn() const { return soundOn_; }
     // WinAPE's "Tape Loading Sounds": the tape is heard while it loads.
     void setTapeSounds(bool on);
+    // "Disc Drive Sounds": a whirr while a drive's motor runs, a click as
+    // its head moves.
+    void setDiscSounds(bool on);
+    bool discSounds() const { return discSounds_; }
     // The AmDrum sound converter.
     void setAmDrum(bool on);
     // What is on the printer's port, as Settings::PrinterMode says: nothing,
@@ -156,6 +161,10 @@ public:
 
     // The latest finished picture: 768 x 270, to be shown twice as tall.
     QImage frame();
+    // The picture as it is at this instant: this frame as far as the beam
+    // has drawn it, and the frame before under it. For a screenshot that
+    // does not wait for the frame to end.
+    QImage frameInProgress();
     // The drive whose light is on (0 for A:) times 256, plus the cylinder
     // its head is on; -1 when none is at work. As of the last frame.
     int driveLight() const { return driveLight_; }
@@ -324,6 +333,9 @@ private:
     std::atomic<int> displayEvery_{0};
     std::mutex wakeMutex_;
     std::condition_variable wake_;
+    std::atomic<bool> discSounds_{false};
+    DriveSound driveSound_;
+    int headAt_[4] = {};  // where each drive's head was at the last frame
     std::atomic<bool> displayClock_{false};
     std::mutex tickMutex_;
     std::condition_variable tick_;

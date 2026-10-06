@@ -64,6 +64,12 @@ public:
     void showDriveLight(int light);
     // Where the light is drawn, in the widget; empty when it is off.
     QRect driveLightRect() const;
+    // WinAPE's "Row Highlight": the line of the picture and the column in
+    // it (0 to 767) the beam is at, shown as a line across and a line
+    // down; -1 for none.
+    void setBeamMarker(int line, int column);
+    int beamMarkerLine() const { return beamLine_; }
+    int beamMarkerColumn() const { return beamColumn_; }
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -92,6 +98,9 @@ private:
     int driveLight_ = -1;
     QRect pictureRect() const;
     void paintDriveLight(QPainter& painter, const QRect& light) const;
+    void paintBeamMarker(QPainter& painter, const QRect& picture) const;
+    int beamLine_ = -1;
+    int beamColumn_ = -1;
     CrtView* crt_ = nullptr;
     bool syncWanted_ = true;
     int swapsPerFrame_ = 0;

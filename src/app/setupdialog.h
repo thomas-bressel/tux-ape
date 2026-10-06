@@ -104,6 +104,8 @@ private:
     QCheckBox* turbo_ = nullptr;
     QCheckBox* plusPpi_ = nullptr;
     QCheckBox* tapeSounds_ = nullptr;
+    QCheckBox* discSounds_ = nullptr;
+    QCheckBox* flyback_ = nullptr;
     QCheckBox* amDrum_ = nullptr;
     QCheckBox* fourDrives_ = nullptr;
     QCheckBox* amxMouse_ = nullptr;

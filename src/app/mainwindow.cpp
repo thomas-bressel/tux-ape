@@ -470,8 +470,11 @@ void MainWindow::updateDebugActions()
 
 void MainWindow::showRegisters()
 {
-    if (!registers_)
+    if (!registers_) {
         registers_ = new RegistersDialog(emulator_, this);
+        // "Row Highlight": where the beam is, on the picture.
+        connect(registers_, &RegistersDialog::beamChanged, screen_, &ScreenWidget::setBeamMarker);
+    }
     registers_->show();
     registers_->raise();
 }
@@ -750,6 +753,7 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
                         settings.soundVolume, settings.soundBufferSync / 10.0);
     emulator_->setTapeSounds(settings.tapeSounds);
+    emulator_->setDiscSounds(settings.discSounds);
     emulator_->setAmDrum(settings.amDrum);
     if (!emulator_->setPrinter(settings.printerMode, settings.printerFile))
         report(tr("Cannot write what is printed to %1.").arg(QDir::toNativeSeparators(settings.printerFile)));
@@ -837,7 +841,12 @@ void MainWindow::setSpeed(int percent)
 // screen when the user asked.
 void MainWindow::saveScreenshot()
 {
-    ScreenshotDialog dialog(screen_->screenshot(), this);
+    // On the frame's flyback the picture is a whole frame's; otherwise it
+    // is the one being drawn, as far as the beam has got.
+    const QImage picture = settings_.screenshotOnFlyback
+                               ? screen_->screenshot()
+                               : emulator_->frameInProgress().scaled(screen_->screenshot().size());
+    ScreenshotDialog dialog(picture, this);
     dialog.setHalfSize(settings_.screenshotHalfSize);
     dialog.setHalfHeight(settings_.screenshotHalfHeight);
     if (dialog.exec() != QDialog::Accepted)

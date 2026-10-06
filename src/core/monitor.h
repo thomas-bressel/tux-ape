@@ -42,6 +42,9 @@ public:
 
     // Last complete picture, kWidth x kHeight, 0xAARRGGBB.
     const uint32_t* frame() const { return front_; }
+    // The picture being drawn: its lines above the beam are this frame's,
+    // those under it an older frame's.
+    const uint32_t* drawing() const { return back_; }
     // Number of pictures completed so far.
     uint64_t frameNumber() const { return frameNumber_; }
 
@@ -52,6 +55,9 @@ public:
     int beamY() const { return y_; }
     // The line of the picture being drawn: 0 for its first, less above it.
     int rasterLine() const { return y_ - firstLine_; }
+    // And the pixel of that line the beam is at: 0 for its first, less
+    // before it, kWidth or more after its last.
+    int beamColumn() const { return (x_ - kFirstColumn) * kCellWidth; }
 
 private:
     // Position of the visible area relative to the sync pulses, chosen so

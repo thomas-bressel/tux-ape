@@ -34,6 +34,7 @@ struct LibraryEntry {
     QString details;  // the other notes of the name, e.g. "UK, CPM, Original"
     bool ai = false;  // the name carries the note "(AI)"
     QString release;  // "Original", "Crack", "Hack", "File" or "<machine> Port" if the name says so, or empty
+    QString origin;   // where the file comes from, "CPC-Power", "NVG"..., if the name says so, or empty
     QString category;     // the category folder it is filed under ("Games"...), or empty
     QString subcategory;  // the folder under that ("Racing"...), or empty
     QString root;         // the library folder it was found in
@@ -59,7 +60,10 @@ QString libraryCategoryTitle(const QString& category);
 // "Hacked", or TOSEC's "h"), "File", for a program that only ever came
 // out as a file, never on a disc or a tape of its own, or, for one brought
 // over from another machine, any note that ends in "Port": "[Atari ST
-// Port]", "[Amiga Port]", "[MSX Port]"...
+// Port]", "[Amiga Port]", "[MSX Port]"... And so has the collection the file
+// was taken from, which tells two dumps of one program apart: "(CPC-Power)",
+// "(NVG)", "(Web-Archive)", "(CPCRulez)", "(TOSEC)" or "(CPCWiki)", with or
+// without the hyphen.
 LibraryEntry libraryEntry(const QString& path);
 // The disc images, tapes, cartridges, snapshots and recorded sessions
 // (.dsk, .cdt, .cpr, .sna, .snr)
@@ -139,6 +143,7 @@ public:
     // What the Release Type column says of each: "Original", "Crack",
     // "Hack", "File", "Amiga Port" and the like, or nothing.
     QStringList listedReleases() const;
+    QStringList listedOrigins() const;
     bool select(const QString& title);
 
     // Several programs may be selected, with the mouse or the keyboard

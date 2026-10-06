@@ -98,6 +98,11 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     asicButton_->setCheckable(true);
     asicButton_->setToolTip(tr("ASIC Registers"));
     counters->addWidget(asicButton_, 1, 12, Qt::AlignRight);
+    rowHighlight_ = new QCheckBox(tr("Row Highlight"));
+    rowHighlight_->setObjectName("ckRowHighlight");
+    rowHighlight_->setToolTip(tr("Shows on the picture where the beam is, while the machine stands still"));
+    counters->addWidget(rowHighlight_, 0, 12, Qt::AlignRight);
+    connect(rowHighlight_, &QCheckBox::toggled, this, [this] { refresh(); });
     counters->setColumnStretch(12, 1);
     layout->addLayout(counters);
 
@@ -315,12 +320,28 @@ void RegistersDialog::showEvent(QShowEvent* event)
     refresh();
 }
 
+bool RegistersDialog::rowHighlight() const
+{
+    return rowHighlight_->isChecked();
+}
+
+void RegistersDialog::setRowHighlight(bool on)
+{
+    rowHighlight_->setChecked(on);
+}
+
+void RegistersDialog::hideEvent(QHideEvent* event)
+{
+    QDialog::hideEvent(event);
+    emit beamChanged(-1, -1);
+}
+
 void RegistersDialog::refresh()
 {
     struct State {
         uint8_t ink[17], pen, psg[16], psgSelected, crtc[16], crtcSelected;
         uint8_t vcc, vlc, r52, vsc, hcc, hsc, vtac, mode, icsr;
-        int hdc, vdur;
+        int hdc, vdur, beamColumn;
         uint16_t vma;
         bool hsync, vsync, adjust, plus;
         uint16_t colours[32];
@@ -359,6 +380,7 @@ void RegistersDialog::refresh()
         out.mode = ga.mode();
         out.hdc = cpc.monitor().beamX();
         out.vdur = cpc.monitor().rasterLine();
+        out.beamColumn = cpc.monitor().beamColumn();
         // Where in memory the byte being shown comes from.
         const unsigned ma = crtc.ma();
         out.vma = static_cast<uint16_t>((ma & 0x3000) << 2 | (crtc.ra() & 7) << 11 | (ma & 0x3FF) << 1);
@@ -388,6 +410,12 @@ void RegistersDialog::refresh()
         }
         return out;
     });
+    // "Row Highlight": the screen shows where the beam is, while the
+    // machine stands still.
+    if (rowHighlight_->isChecked() && isVisible() && emulator_->isPaused())
+        emit beamChanged(s.vdur, s.beamColumn);
+    else
+        emit beamChanged(-1, -1);
 
     for (int pen = 0; pen < 17; ++pen)
         put(QString("Palette%1").arg(pen), s.ink[pen], pen == s.pen);

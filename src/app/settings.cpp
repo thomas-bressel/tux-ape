@@ -145,6 +145,8 @@ void Settings::read(const tuxape::IniFile& ini)
     soundStereo = ini.getBool(kConfiguration, "Sound Stereo", soundStereo);
     soundVolume = std::clamp(ini.getInt(kConfiguration, "Sound Volume", soundVolume), 0, 15);
     tapeSounds = ini.getBool(kConfiguration, "Tape Sound", tapeSounds);
+    discSounds = ini.getBool(kConfiguration, "Disc Sound", discSounds);
+    screenshotOnFlyback = ini.getBool(kConfiguration, "Save On Flyback", screenshotOnFlyback);
     amDrum = ini.getBool(kConfiguration, "AmDrum Enabled", amDrum);
     printerMode = std::clamp(ini.getInt(kConfiguration, "Printer", printerMode), 0, static_cast<int>(PrinterAssembler));
     if (ini.has(kConfiguration, "Printer File"))
@@ -245,6 +247,8 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kConfiguration, "Sound Stereo", soundStereo);
         ini.setInt(kConfiguration, "Sound Volume", soundVolume);
         ini.setBool(kConfiguration, "Tape Sound", tapeSounds);
+        ini.setBool(kConfiguration, "Disc Sound", discSounds);
+        ini.setBool(kConfiguration, "Save On Flyback", screenshotOnFlyback);
         ini.setBool(kConfiguration, "AmDrum Enabled", amDrum);
         ini.setInt(kConfiguration, "Printer", printerMode);
         ini.set(kConfiguration, "Printer File", printerFile.toStdString());

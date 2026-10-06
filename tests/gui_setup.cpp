@@ -649,9 +649,10 @@ void testSoundPage(const QString& picture)
     CHECK_EQ(again.soundBufferSync, 0);
     QFile::remove(Settings::file());
 
+    // The drives can be heard too.
     for (const char* name : {"ckDiscSound"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
-        CHECK(widget && !widget->isEnabled());
+        CHECK(widget && widget->isEnabled());
     }
     // The tape can be heard while it loads.
     {
@@ -916,11 +917,11 @@ void testDialog(const QString& picture)
     }
 
     // What TuxAPE cannot do yet is greyed out.
-    for (const char* name :
-         {"ckFlyback", "ckDisableUpdate", "bUpdate"}) {
+    for (const char* name : {"ckDisableUpdate", "bUpdate"}) {
         const QWidget* widget = dialog.findChild<QWidget*>(name);
         CHECK(widget && !widget->isEnabled());
     }
+    CHECK(dialog.findChild<QWidget*>("ckFlyback") && dialog.findChild<QWidget*>("ckFlyback")->isEnabled());
     // Turbo and the Plus's PPI are there to tick.
     for (const char* name : {"ckPlusPPI", "ckTurbo", "ckFourDrives"}) {
         const auto* box = dialog.findChild<QCheckBox*>(name);

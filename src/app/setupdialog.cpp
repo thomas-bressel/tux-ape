@@ -251,9 +251,9 @@ QWidget* SetupDialog::createGeneralPage()
     auto* fourDrives = fourDrives_;
     fastDisc_ = new QCheckBox(tr("&Fast Disc Emulation"));
     fastDisc_->setObjectName("ckFastDisc");
-    auto* flyback = notYet(new QCheckBox(tr("Save Screenshot on Frame Flyback")));
-    flyback->setObjectName("ckFlyback");
-    flyback->setChecked(true);
+    flyback_ = new QCheckBox(tr("Save Screenshot on Frame Flyback"));
+    flyback_->setObjectName("ckFlyback");
+    auto* flyback = flyback_;
     // TuxAPE never looks for updates by itself.
     auto* disableUpdate = notYet(new QCheckBox(tr("Disable Automatic Update")));
     disableUpdate->setObjectName("ckDisableUpdate");
@@ -635,10 +635,11 @@ QWidget* SetupDialog::createSoundPage()
     syncLayout->addWidget(soundBufferSync_);
     syncLayout->addWidget(soundBufferSyncLabel_);
 
-    // ---- Other Sounds: to come ----
+    // ---- Other Sounds ----
     auto* otherBox = new QGroupBox(tr("Other Sounds"));
-    auto* discSounds = notYet(new QCheckBox(tr("Disc Drive Sounds")));
-    discSounds->setObjectName("ckDiscSound");
+    discSounds_ = new QCheckBox(tr("Disc Drive Sounds"));
+    discSounds_->setObjectName("ckDiscSound");
+    auto* discSounds = discSounds_;
     tapeSounds_ = new QCheckBox(tr("Tape Loading Sounds"));
     tapeSounds_->setObjectName("ckTapeSound");
     amDrum_ = new QCheckBox(tr("AmDrum"));
@@ -1220,6 +1221,8 @@ void SetupDialog::setSettings(const Settings& settings)
     soundChannels_[settings.soundStereo ? 1 : 0]->setChecked(true);
     soundVolume_->setValue(settings.soundVolume);
     tapeSounds_->setChecked(settings.tapeSounds);
+    discSounds_->setChecked(settings.discSounds);
+    flyback_->setChecked(settings.screenshotOnFlyback);
     amDrum_->setChecked(settings.amDrum);
     printer_[std::clamp(settings.printerMode, 0, 4)]->setChecked(true);
     printerFile_->setText(QDir::toNativeSeparators(settings.printerFile));
@@ -1473,6 +1476,8 @@ Settings SetupDialog::settings() const
     settings.soundStereo = soundChannels_[1]->isChecked();
     settings.soundVolume = soundVolume_->value();
     settings.tapeSounds = tapeSounds_->isChecked();
+    settings.discSounds = discSounds_->isChecked();
+    settings.screenshotOnFlyback = flyback_->isChecked();
     settings.amDrum = amDrum_->isChecked();
     for (int mode = 0; mode < 5; ++mode)
         if (printer_[mode]->isChecked())

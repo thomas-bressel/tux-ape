@@ -9,18 +9,24 @@
 #include <vector>
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QTest>
 
 #include "audiooutput.h"
 #include "check.h"
+#include "settings.h"
+#include "setupdialog.h"
+#include "drivesound.h"
 #include "core/screen_text.h"
 #include "emulator.h"
 
 int main(int argc, char* argv[])
 {
     QTemporaryDir folder;
+    // The settings this test saves are its own, never the user's.
+    Settings::setFile(folder.filePath("TuxAPE.ini"));
     const QByteArray rawPath = folder.filePath("sound.raw").toLocal8Bit();
     setenv("SDL_AUDIODRIVER", "disk", 1);
     setenv("SDL_DISKAUDIOFILE", rawPath.constData(), 1);
@@ -106,5 +112,78 @@ int main(int argc, char* argv[])
         CHECK(pitch > 436 && pitch < 446);
     }
 
+    // "Disc Drive Sounds": a whirr while a motor runs, a click for each
+    // cylinder a head crosses, made from noise; nothing otherwise.
+    {
+        const auto loudest = [](const std::vector<int16_t>& sound) {
+            int most = 0;
+            for (int16_t sample : sound)
+                most = std::max(most, std::abs(static_cast<int>(sample)));
+            return most;
+        };
+        const std::vector<int16_t> quiet(4410 * 2, 0);  // a tenth of a second, in stereo
+        DriveSound drive;
+        std::vector<int16_t> sound = quiet;
+        drive.mix(sound, 44100, false, 0);
+        CHECK(sound == quiet);
+        // The motor: it runs up, then whirrs evenly, well under the
+        // machine's own sound; the same in both ears.
+        int whirr = 0;
+        for (int n = 0; n < 6; ++n) {
+            sound = quiet;
+            drive.mix(sound, 44100, true, 0);
+            whirr = loudest(sound);
+        }
+        CHECK(whirr > 60 && whirr < 1500);
+        bool same = true;
+        for (size_t i = 0; i < sound.size(); i += 2)
+            same = same && sound[i] == sound[i + 1];
+        CHECK(same);
+        // The head: three cylinders, three knocks, far louder, and over
+        // within a few hundredths of a second.
+        sound = quiet;
+        drive.mix(sound, 44100, true, 3);
+        CHECK(loudest(sound) > 1800);
+        int knocks = 0;
+        bool loud = false;
+        for (size_t i = 0; i < sound.size(); i += 2) {
+            const bool now = std::abs(static_cast<int>(sound[i])) > 1700;
+            knocks += now && !loud && (i < 400 || std::abs(static_cast<int>(sound[i - 300])) < 1700);
+            loud = now;
+        }
+        CHECK(knocks >= 3 && knocks <= 9);
+        sound = quiet;
+        drive.mix(sound, 44100, true, 0);
+        CHECK(loudest(sound) < 1500);
+        // The motor stopped: the whirr dies away.
+        for (int n = 0; n < 6; ++n) {
+            sound = quiet;
+            drive.mix(sound, 44100, false, 0);
+        }
+        CHECK(sound == quiet);
+        // Added to what is there, never wrapping round.
+        std::vector<int16_t> full(4410 * 2, 32767);
+        drive.mix(full, 44100, true, 5);
+        CHECK(*std::min_element(full.begin(), full.end()) > 20000);
+        drive.reset();
+        sound = quiet;
+        drive.mix(sound, 44100, false, 0);
+        CHECK(sound == quiet);
+
+        // A setting, with its box on the Sound page; off unless asked for.
+        Settings settings;
+        CHECK(!settings.discSounds);
+        SetupDialog dialog(settings);
+        auto* box = dialog.findChild<QCheckBox*>("ckDiscSound");
+        CHECK(box && box->isEnabled() && !box->isChecked());
+        if (box)
+            box->setChecked(true);
+        CHECK(dialog.settings().discSounds);
+        settings.discSounds = true;
+        CHECK(settings.save());
+        Settings read;
+        read.load();
+        CHECK(read.discSounds);
+    }
     return checkSummary("gui_sound");
 }

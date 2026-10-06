@@ -22,6 +22,8 @@ add_library(tuxape_app STATIC
     discdialogs.h
     discmanager.cpp
     discmanager.h
+    drivesound.cpp
+    drivesound.h
     emulator.cpp
     emulator.h
     graphicsdialog.cpp

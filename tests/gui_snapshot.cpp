@@ -12,6 +12,7 @@
 #include "core/screen_text.h"
 #include "emulator.h"
 #include "mainwindow.h"
+#include "settings.h"
 
 namespace {
 
@@ -38,6 +39,9 @@ QAction* actionNamed(MainWindow& window, const char* text)
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    // The settings are this test's own, never the user's.
+    QTemporaryDir settingsFolder;
+    Settings::setFile(settingsFolder.filePath("TuxAPE.ini"));
 
     Emulator emulator;
     if (!emulator.setupMachine(tuxape::CpcModel::Cpc6128).isEmpty()) {

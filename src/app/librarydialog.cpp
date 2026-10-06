@@ -54,8 +54,9 @@ bool isProgram(const QString& name)
 constexpr int kSubcategoryColumn = 1;
 constexpr int kTypeColumn = 3;
 constexpr int kReleaseColumn = 4;
-constexpr int kAiColumn = 5;
-constexpr int kThumbnailColumn = 6;
+constexpr int kOriginColumn = 5;
+constexpr int kAiColumn = 6;
+constexpr int kThumbnailColumn = 7;
 
 // A row of the list. A click on a column's heading sorts by that column,
 // from A to Z, and a second click from Z to A: text without regard to
@@ -133,6 +134,27 @@ QString releaseOf(const QString& note, bool* whole)
     static const QRegularExpression port("^\\S.* port$", QRegularExpression::CaseInsensitiveOption);
     *whole = port.match(note).hasMatch();
     return *whole ? note : QString();
+}
+
+// The collection a note of a file name says the file was taken from, or
+// nothing: "CPC-Power", "cpc power" and "cpcpower" are one.
+QString originOf(const QString& note)
+{
+    static const struct {
+        const char* origin;
+        QStringList words;
+    } kOrigins[] = {{"CPC-Power", {"cpcpower"}},
+                    {"NVG", {"nvg"}},
+                    {"Web Archive", {"webarchive", "internetarchive", "archiveorg"}},
+                    {"CPCRulez", {"cpcrulez"}},
+                    {"TOSEC", {"tosec"}},
+                    {"CPCWiki", {"cpcwiki"}}};
+    static const QRegularExpression separators("[\\s._-]");
+    const QString text = note.toLower().remove(separators);
+    for (const auto& known : kOrigins)
+        if (known.words.contains(text))
+            return known.origin;
+    return {};
 }
 
 LibraryEntry::Kind kindOf(const QString& name)
@@ -405,6 +427,11 @@ LibraryEntry libraryEntry(const QString& path)
                 entry.release = release;
             if (!release.isEmpty() && whole)
                 continue;
+            if (const QString origin = originOf(text); !origin.isEmpty()) {
+                if (entry.origin.isEmpty())
+                    entry.origin = origin;
+                continue;
+            }
             if (side.match(text).hasMatch())
                 entry.side += (entry.side.isEmpty() ? "" : ", ") + text;
             if (text.compare("AI", Qt::CaseInsensitive) == 0)
@@ -506,8 +533,8 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     tabs_->setObjectName("tabCategories");
     tabs_->setExpanding(false);
     tabs_->setDrawBase(false);
-    list_->setHeaderLabels({tr("Title"), tr("Sub-category"), tr("Year"), tr("Type"), tr("Release Type"), tr("AI"),
-                            tr("Thumbnail"), tr("Notes")});
+    list_->setHeaderLabels({tr("Title"), tr("Sub-category"), tr("Year"), tr("Type"), tr("Release Type"), tr("Origin"),
+                            tr("AI"), tr("Thumbnail"), tr("Notes")});
     // Several programs at once, to give them a picture.
     list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     list_->setRootIsDecorated(false);
@@ -520,6 +547,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setColumnWidth(kTypeColumn, 44);
     list_->setIconSize(QSize(18, 18));
     list_->setColumnWidth(kReleaseColumn, 100);
+    list_->setColumnWidth(kOriginColumn, 90);
     list_->setColumnWidth(kAiColumn, 36);
     list_->setColumnWidth(kThumbnailColumn, 84);
     // A program's picture, beside the pointer while it is over the program.
@@ -689,8 +717,8 @@ void LibraryDialog::fill()
         // snapshot; its name is there for whoever points at it.
         static const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
                                        makeIcon(IconId::Cartridge), makeIcon(IconId::Run)};
-        auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release, QString(),
-                                             QString(), entry.details});
+        auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release,
+                                             entry.origin, QString(), QString(), entry.details});
         item->setIcon(kTypeColumn, kIcons[entry.kind]);
         item->setToolTip(kTypeColumn, kind);
         item->setData(0, Qt::UserRole, i);
@@ -1154,6 +1182,15 @@ QStringList LibraryDialog::listedReleases() const
         if (!list_->topLevelItem(row)->isHidden())
             releases << list_->topLevelItem(row)->text(kReleaseColumn);
     return releases;
+}
+
+QStringList LibraryDialog::listedOrigins() const
+{
+    QStringList origins;
+    for (int row = 0; row < list_->topLevelItemCount(); ++row)
+        if (!list_->topLevelItem(row)->isHidden())
+            origins << list_->topLevelItem(row)->text(kOriginColumn);
+    return origins;
 }
 
 bool LibraryDialog::select(const QString& title)

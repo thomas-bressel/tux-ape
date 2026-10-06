@@ -6,8 +6,11 @@
 //   gui_registers [prefix]   also saves a picture of the window as
 //                            <prefix>registers.png
 
+#include <algorithm>
+
 #include <QAction>
 #include <QApplication>
+#include <QImage>
 #include <QCheckBox>
 #include <QGroupBox>
 #include <QLabel>
@@ -23,6 +26,7 @@
 #include "emulator.h"
 #include "mainwindow.h"
 #include "registersdialog.h"
+#include "screenwidget.h"
 #include "settings.h"
 
 namespace {
@@ -214,5 +218,59 @@ int main(int argc, char* argv[])
 
     if (!prefix.isEmpty())
         registers->grab().save(prefix + "registers.png");
+    // "Row Highlight": while its box is ticked and the machine stands
+    // still, the screen shows where the beam is: the line of the picture
+    // and the place along it. Not while the machine runs, nor once the
+    // box is cleared or the window gone.
+    {
+        auto* row = registers->findChild<QCheckBox*>("ckRowHighlight");
+        ScreenWidget* screen = window.screen();
+        CHECK(row && !row->isChecked() && !registers->rowHighlight());
+        CHECK(screen->beamMarkerLine() == -1 && screen->beamMarkerColumn() == -1);
+        emulator.setPaused(true);
+        // A quarter of a frame on: the beam is somewhere down the picture.
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.run(5000); });
+        const int line = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.monitor().rasterLine(); });
+        const int column = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.monitor().beamColumn(); });
+        if (row)
+            row->setChecked(true);
+        CHECK(registers->rowHighlight());
+        CHECK_EQ(screen->beamMarkerLine(), line);
+        CHECK_EQ(screen->beamMarkerColumn(), column);
+        CHECK(registers->value("VDUR").toInt(nullptr, 16) == (line & 0xFFFF) || registers->value("VDUR").toInt() == line);
+        // It follows the machine from one stop to the next.
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.run(640); });  // ten lines
+        registers->refresh();
+        CHECK_EQ(screen->beamMarkerLine(),
+                 emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.monitor().rasterLine(); }));
+        CHECK(screen->beamMarkerLine() != line);
+        // On the picture: a line across, at the beam's line. The line is
+        // yellow on a picture that has none of it.
+        if (screen->beamMarkerLine() >= 0 && screen->beamMarkerLine() < 270) {
+            const QImage shown = screen->grab().toImage();
+            const int y = (screen->beamMarkerLine() * 2 + 1) * screen->height() / 540;
+            int yellow = 0;
+            for (int x = 0; x < shown.width(); x += 8) {
+                const QColor colour = shown.pixelColor(x, std::min(y, shown.height() - 1));
+                yellow += colour.red() > 180 && colour.green() > 180 && colour.blue() < 120;
+            }
+            CHECK(yellow > shown.width() / 8 / 2);
+        }
+        emulator.setPaused(false);
+        registers->refresh();
+        CHECK_EQ(screen->beamMarkerLine(), -1);
+        emulator.setPaused(true);
+        registers->refresh();
+        CHECK(screen->beamMarkerLine() != -1);
+        if (row)
+            row->setChecked(false);
+        CHECK(screen->beamMarkerLine() == -1 && screen->beamMarkerColumn() == -1);
+        registers->setRowHighlight(true);
+        CHECK(screen->beamMarkerLine() != -1);
+        registers->hide();
+        CHECK_EQ(screen->beamMarkerLine(), -1);
+        registers->setRowHighlight(false);
+        emulator.setPaused(false);
+    }
     return checkSummary("gui_registers");
 }

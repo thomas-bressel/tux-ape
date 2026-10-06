@@ -50,6 +50,9 @@ void grab(QWidget& widget, const char* name)
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    // The settings are this test's own, never the user's.
+    QTemporaryDir settingsFolder;
+    Settings::setFile(settingsFolder.filePath("TuxAPE.ini"));
 
     Emulator emulator;
     if (!emulator.setupMachine(tuxape::CpcModel::Cpc6128).isEmpty()) {

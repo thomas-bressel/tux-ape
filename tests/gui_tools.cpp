@@ -26,6 +26,7 @@
 #include "mainwindow.h"
 #include "screenwidget.h"
 #include "settings.h"
+#include "setupdialog.h"
 #include "tooldialogs.h"
 
 namespace {
@@ -469,5 +470,46 @@ int main(int argc, char* argv[])
     }
 
     emulator.stop();
+    // "Save Screenshot on Frame Flyback": a screenshot is of a whole
+    // frame; with the box cleared it is of the frame being drawn, as far
+    // as the beam has got, over the frame before.
+    {
+        Settings kept = window.settings();
+        CHECK(kept.screenshotOnFlyback);
+        SetupDialog dialog(kept);
+        auto* box = dialog.findChild<QCheckBox*>("ckFlyback");
+        CHECK(box && box->isEnabled() && box->isChecked());
+        if (box)
+            box->setChecked(false);
+        CHECK(!dialog.settings().screenshotOnFlyback);
+
+        emulator.setPaused(true);
+        const auto border = [&](int colour) {
+            emulator.withMachine([colour](tuxape::Cpc& cpc) {
+                cpc.out(0x7F00, 0x10);
+                cpc.out(0x7F00, static_cast<uint8_t>(0x40 | colour));
+            });
+        };
+        // Two whole frames with a red border, then green for the upper
+        // part of a third.
+        border(0x0C);
+        emulator.withMachine([](tuxape::Cpc& cpc) {
+            cpc.runFrame();
+            cpc.runFrame();
+        });
+        const QRgb red = emulator.frameInProgress().pixel(4, 265);
+        border(0x12);
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.run(9000); });
+        const int line = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.monitor().rasterLine(); });
+        CHECK(line > 60 && line < 200);
+        const QImage part = emulator.frameInProgress();
+        CHECK(part.size() == QSize(768, 270));
+        const QRgb green = part.pixel(4, line - 20);
+        CHECK(qGreen(green) > qRed(green) && qRed(red) > qGreen(red));
+        CHECK(qGreen(part.pixel(4, 60)) > qRed(part.pixel(4, 60)));
+        // Under the beam, the frame before.
+        CHECK(part.pixel(4, line + 20) == red && part.pixel(4, 265) == red);
+        emulator.setPaused(false);
+    }
     return checkSummary("gui_tools");
 }
