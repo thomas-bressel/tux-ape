@@ -23,9 +23,11 @@ public:
         if (port < 3) {
             latch_[port] = value;
         } else if (value & 0x80) {
-            // Setting the mode clears all output latches.
+            // Setting the mode clears all output latches of an 8255. A
+            // Plus keeps them (see setPlus).
             control_ = value;
-            latch_[0] = latch_[1] = latch_[2] = 0;
+            if (!plus_)
+                latch_[0] = latch_[1] = latch_[2] = 0;
         } else {
             // Set or reset a single bit of port C.
             const uint8_t bit = static_cast<uint8_t>(1 << ((value >> 1) & 7));
@@ -64,6 +66,12 @@ public:
     // respect. Whatever the control register says, port B is an input and
     // port C an output; and the control register reads port A's pins.
     // (Kevin Thacker's "asicppi" test, run on real machines.)
+    //
+    // Nor does setting the mode clear the output latches: what port C was
+    // telling the sound chip and the keyboard still holds once port A has
+    // been turned round. A cartridge that picks the keyboard line first and
+    // makes port A an input afterwards reads its joystick on a Plus and a
+    // GX4000; on a CPC the same code reads nothing.
     void setPlus(bool plus) { plus_ = plus; }
 
     bool aIsInput() const { return control_ & 0x10; }

@@ -307,8 +307,24 @@ void testAsic()
     CHECK_EQ(plain.memory().read(0x4000), 0x55);
 }
 
+// The joystick's line read the way a cartridge written on a Plus may read
+// it: the line is picked first, port A made an input afterwards.
+uint8_t joystickLinePickedFirst(Cpc& cpc)
+{
+    cpc.out(0xF400, 0x0E);  // the sound chip's register 14: the keyboard
+    cpc.out(0xF600, 0xC0);
+    cpc.out(0xF600, 0x00);
+    cpc.out(0xF600, 0x49);  // read it, line 9...
+    cpc.out(0xF700, 0x92);  // ...and only now port A as an input
+    const uint8_t line = cpc.in(0xF400);
+    cpc.out(0xF700, 0x82);
+    cpc.out(0xF600, 0x00);
+    return line;
+}
+
 // The ASIC's stand-in for the 8255: port B always an input, port C always
-// an output, and port A read through the control register's address.
+// an output, port A read through the control register's address, and
+// latches that setting the mode leaves alone.
 void testPpi()
 {
     Cpc cpc;
@@ -325,8 +341,20 @@ void testPpi()
     cpc.out(0xF700, 0x82);
     cpc.out(0xF400, 0x38);
     CHECK_EQ(cpc.in(0xF700), 0x00);  // port A an output
+    // Port C keeps the keyboard's line through a change of mode.
+    cpc.out(0xF600, 0x49);
+    cpc.out(0xF700, 0x92);
+    CHECK_EQ(cpc.in(0xF600), 0x49);
+    cpc.out(0xF700, 0x82);
+    cpc.out(0xF600, 0x00);
+    cpc.keyboard().set(CpcKey::JoyRight, true);
+    CHECK_EQ(joystickLinePickedFirst(cpc), 0xF7);
+    cpc.keyboard().set(CpcKey::JoyRight, false);
+    cpc.keyboard().set(CpcKey::JoyFire2, true);
+    CHECK_EQ(joystickLinePickedFirst(cpc), 0xEF);
 
-    // A CPC's 8255 does as it is told.
+    // A CPC's 8255 does as it is told, and a change of mode empties its
+    // latches: the line picked too soon is lost.
     Cpc plain;
     plain.out(0xF700, 0x80);
     plain.out(0xF500, 0x00);
@@ -335,6 +363,15 @@ void testPpi()
     plain.out(0xF600, 0x25);
     CHECK_EQ(plain.in(0xF600), 0xFF);
     CHECK_EQ(plain.in(0xF700), 0xFF);
+    plain.out(0xF700, 0x82);
+    plain.out(0xF600, 0x49);
+    plain.out(0xF700, 0x82);
+    CHECK_EQ(plain.in(0xF600), 0x00);
+    plain.keyboard().set(CpcKey::JoyRight, true);
+    CHECK_EQ(joystickLinePickedFirst(plain), 0xFF);
+    // ...unless it is given a Plus's ways (WinAPE's "Plus PPI Emulation").
+    plain.setPlusPpi(true);
+    CHECK_EQ(joystickLinePickedFirst(plain), 0xF7);
 }
 
 // A Plus with a cartridge that does nothing (DI, and a jump to itself), the
