@@ -829,6 +829,62 @@ void r4OnTheLastCharacter()
     }
 }
 
+void r6ShowsACharacterLater()
+{
+    // R6 brought to C4 in the middle of a line: the border for the rest
+    // of the frame, but the character of the write is still shown (Shaker
+    // AP, "patchwork R6=9/25": five characters on the photograph of a real
+    // chip, for a write on the fifth).
+    {
+        Rig rig;
+        rig.seek(9, 0, 4);
+        rig.set(6, 9);
+        CHECK(rig.crtc.displayEnable(0) && rig.crtc.displayEnable(1));
+        rig.crtc.tick();
+        CHECK(!rig.crtc.displayEnable(0) && !rig.crtc.displayEnable(1));
+        rig.set(6, 25);  // too late: until the next frame
+        rig.nextLine();
+        rig.to(10);
+        CHECK(!rig.crtc.displayEnable());
+        rig.seek(0, 0, 10);
+        CHECK(rig.crtc.displayEnable());
+    }
+    // On the first line of a frame R6 = 0 only has each character half
+    // border, half shown, and another value calls that off. Both follow
+    // the write by a character, and on the screen the border comes first:
+    // written on characters 9 and 13, the line is shown up to 10, from
+    // 10.5 to 11, 11.5 to 12, 12.5 to 13 and from 13.5 on (the same
+    // test's "patchwork R6=0/8", measured on the photograph).
+    {
+        Rig rig;
+        rig.seek(0, 0, 9);
+        rig.set(6, 0);
+        CHECK(rig.crtc.displayEnable(0) && rig.crtc.displayEnable(1));
+        for (int c0 = 10; c0 <= 12; ++c0) {
+            rig.crtc.tick();
+            CHECK(!rig.crtc.displayEnable(0) && rig.crtc.displayEnable(1));
+        }
+        rig.crtc.tick();
+        rig.set(6, 8);
+        CHECK(!rig.crtc.displayEnable(0) && rig.crtc.displayEnable(1));
+        rig.crtc.tick();
+        CHECK(rig.crtc.displayEnable(0) && rig.crtc.displayEnable(1));
+        // The frame goes on to its eighth row as if nothing had happened.
+        rig.seek(7, 7, 10);
+        CHECK(rig.crtc.displayEnable());
+        rig.seek(8, 0, 10);
+        CHECK(!rig.crtc.displayEnable());
+    }
+    // Type 2 shows the border on the character of the write (four
+    // characters on its photograph).
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(9, 0, 4);
+        rig.set(6, 9);
+        CHECK(!rig.crtc.displayEnable(0) && !rig.crtc.displayEnable(1));
+    }
+}
+
 int main()
 {
     displaySkew();
@@ -851,5 +907,6 @@ int main()
     lastLineMadeOnCharacterOne();
     adjustmentCalledOff();
     r4OnTheLastCharacter();
+    r6ShowsACharacterLater();
     return checkSummary("crtc0");
 }

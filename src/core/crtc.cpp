@@ -23,6 +23,7 @@ void Crtc::reset()
     hsyncCut_ = previousHsyncCut_ = HsyncCut::None;
     hDisp_ = vDisp_ = false;
     r6Conflict_ = false;
+    r6Due_ = R6Write::None;
     dispHistory_ = 0;
     inAdjust_ = false;
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
@@ -118,10 +119,19 @@ void Crtc::write(uint8_t value, bool early)
             // On types 0 and 2 the first line of a frame is a case of its
             // own: R6 = 0 there starts the coming and going of the border,
             // and another value calls it off (18.3.2).
+            R6Write effect = R6Write::None;
             if (vcc_ == 0 && vlc_ == 0)
-                r6Conflict_ = reg_[6] == 0 && vDisp_;
+                effect = reg_[6] == 0 ? R6Write::ConflictOn : R6Write::ConflictOff;
             else if (vcc_ == reg_[6])
-                vDisp_ = false;
+                effect = R6Write::Border;
+            // Type 2 shows it on the character of the write, type 0 on the
+            // next one (Shaker AP, "R6 stories", the patchworks of R6 = 0/8
+            // and of R6 = 9/25: photographs of both chips, five characters
+            // shown on type 0 and four on type 2 for a write on the fifth).
+            if (type_ == CrtcType::HD6845S)
+                r6Due_ = effect;
+            else
+                r6Written(effect);
         }
         break;
     case 7:
@@ -178,6 +188,7 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     hsync_ = hsync;
     vsync_ = vsync;
     hsyncCut_ = previousHsyncCut_ = HsyncCut::None;
+    r6Due_ = R6Write::None;
     // What a snapshot does not hold is set to what an undisturbed frame
     // would have at this place.
     hDisp_ = hcc_ < reg_[1];
@@ -252,9 +263,13 @@ uint8_t Crtc::dispNow() const
     if (!hDisp_ || !vDisp_)
         return 0;
     // First line of a frame with R6 = 0, types 0 and 2: each character is
-    // shown for its first half and is border for its second (18.3.2).
+    // border for half of its time and shown for the other (18.3.2). On a
+    // type 0's screen the border comes first (Shaker AP, the patchwork of
+    // R6 = 0/8, measured on a photograph: shown from 10.5 to 11, from 11.5
+    // to 12... for a write on character 9). The photograph of a type 2
+    // does not settle which half it is there.
     if (r6Conflict_)
-        return 1;
+        return type_ == CrtcType::HD6845S ? 2 : 1;
     const bool lateBorder = hcc_ == reg_[0] && (type_ == CrtcType::HD6845S || type_ == CrtcType::MC6845);
     return lateBorder ? 1 : 3;
 }
@@ -290,6 +305,10 @@ void Crtc::tick()
     previousHsyncCut_ = hsyncCut_;
     hsyncCut_ = HsyncCut::None;
     dispHistory_ = static_cast<uint8_t>((dispHistory_ << 2 | dispNow()) & 0x0F);
+    if (r6Due_ != R6Write::None) [[unlikely]] {
+        r6Written(r6Due_);
+        r6Due_ = R6Write::None;
+    }
 
     const bool type0 = type_ == CrtcType::HD6845S;
     const bool newLine = hcc_ == reg_[0];
@@ -451,6 +470,17 @@ void Crtc::tick()
     // HSYNC lies on the first character.
     if (newLine && type_ == CrtcType::MC6845)
         lineStart2();
+}
+
+// What a write to R6 does to the picture, on types 0 and 2.
+void Crtc::r6Written(R6Write effect)
+{
+    switch (effect) {
+    case R6Write::ConflictOn: r6Conflict_ = vDisp_; break;
+    case R6Write::ConflictOff: r6Conflict_ = false; break;
+    case R6Write::Border: vDisp_ = false; break;
+    case R6Write::None: break;
+    }
 }
 
 // C0 has met R1: the border from here to the end of the line.

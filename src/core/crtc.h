@@ -114,6 +114,10 @@ private:
     // Types 0 and 2, first line of a frame with R6 = 0: the border comes
     // and goes with each character, until the line's display ends (18.3.2).
     bool r6Conflict_ = false;
+    // What a write to R6 has just decided, which type 0 only shows from
+    // the next character on.
+    enum class R6Write : uint8_t { None, ConflictOn, ConflictOff, Border };
+    R6Write r6Due_ = R6Write::None;
     // DISPTMG before R8's skew, for the character before the one in
     // progress (bits 0 and 1: its two halves) and the one before that (bits
     // 2 and 3).
@@ -176,6 +180,7 @@ private:
 
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
     void displayEnds(bool keepAddress);
+    void r6Written(R6Write effect);
     void endOfLine(bool oneCharacter);
     void startRow();
     void startFrame();
