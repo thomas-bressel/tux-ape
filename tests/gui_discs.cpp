@@ -17,6 +17,7 @@
 #include <QTest>
 
 #include "check.h"
+#include "contrast.h"
 #include "core/screen_text.h"
 #include "discdialogs.h"
 #include "discmanager.h"
@@ -208,7 +209,10 @@ int main(int argc, char* argv[])
         const QRect light = screen->driveLightRect();
         CHECK(light.width() > small.width());
         const QImage picture = screen->grab().toImage();
-        CHECK(picture.pixelColor(light.left() + 1, light.top() + 1) == QColor(255, 32, 32));
+        // Red, and deep enough for its white letter to read on it.
+        const QColor lit = picture.pixelColor(light.left() + 1, light.top() + 1);
+        CHECK(lit == readable(QColor(255, 32, 32), Qt::white));
+        CHECK(lit.red() > 2 * lit.green() && contrastRatio(lit, Qt::white) >= kTextContrast);
         grab(window, "drive_light.png");
         emulator.withMachine([](tuxape::Cpc& cpc) { cpc.out(0xFA7E, 0); });
         CHECK(QTest::qWaitFor([&] { return emulator.driveLight() < 0; }, 3000));

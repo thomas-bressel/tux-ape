@@ -1,5 +1,8 @@
 #include "registersdialog.h"
 
+#include "contrast.h"
+
+#include <QGuiApplication>
 #include <QCheckBox>
 #include <QFontDatabase>
 #include <QGridLayout>
@@ -19,7 +22,7 @@
 namespace {
 
 const char kPlain[] = "";
-const char kLit[] = "background: #40e0ff;";  // the register last selected, a counter at work
+const char kLit[] = "background: #40e0ff; color: #000000;";  // the register last selected, a counter at work
 
 QRgb rgbOf(uint16_t grb)
 {
@@ -179,7 +182,8 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
         dmaNext_[channel] = new QLabel;
         dmaNext_[channel]->setObjectName(QString("lDma%1").arg(channel));
         dmaNext_[channel]->setAlignment(Qt::AlignCenter);
-        dmaNext_[channel]->setStyleSheet("color: purple;");
+        dmaNext_[channel]->setStyleSheet(
+            QString("color: %1;").arg(readable(QColor(128, 0, 128), QGuiApplication::palette().color(QPalette::Window)).name()));
         inside->addWidget(dmaNext_[channel], 3, 0, 1, 2);
         dmaBox_[channel] = box;
         lower->addWidget(box);

@@ -14,6 +14,8 @@ add_library(tuxape_app STATIC
     avirecorder.h
     breakpointsdialog.cpp
     breakpointsdialog.h
+    contrast.cpp
+    contrast.h
     debuggerdialog.cpp
     debuggerdialog.h
     disceditordialog.cpp
@@ -52,6 +54,8 @@ add_library(tuxape_app STATIC
     setupdialog.h
     tapedialog.cpp
     tapedialog.h
+    theme.cpp
+    theme.h
     tooldialogs.cpp
     tooldialogs.h
     tuxape.qrc

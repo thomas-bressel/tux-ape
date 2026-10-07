@@ -1,7 +1,11 @@
 #include "icons.h"
 
+#include "contrast.h"
+
 #include <cmath>
 
+#include <QAbstractButton>
+#include <QApplication>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
@@ -11,14 +15,19 @@ namespace {
 // Icons are designed on a 20 x 20 grid and rendered at several scales.
 constexpr int kGrid = 20;
 
-const QColor kInk(0x30, 0x30, 0x38);
+// The outlines: nearly black, or as light as the window in use needs
+// them to be to stand out from it.
+QColor ink()
+{
+    return readable(QColor(0x30, 0x30, 0x38), QGuiApplication::palette().color(QPalette::Window));
+}
 const QColor kGreen(0x1E, 0x9E, 0x3A);
 const QColor kBlue(0x2F, 0x6F, 0xD0);
 const QColor kRed(0xC8, 0x30, 0x30);
 const QColor kYellow(0xE8, 0xB0, 0x20);
 const QColor kPaper(0xF4, 0xF4, 0xF0);
 
-QPen outline(const QColor& colour = kInk, qreal width = 1.4)
+QPen outline(const QColor& colour = ink(), qreal width = 1.4)
 {
     QPen pen(colour, width);
     pen.setJoinStyle(Qt::RoundJoin);
@@ -91,7 +100,7 @@ void draw(QPainter& p, IconId id)
             p.drawLine(QPointF(2, y), QPointF(5, y));
             p.drawLine(QPointF(15, y), QPointF(18, y));
         }
-        p.setBrush(kInk.lighter(160));
+        p.setBrush(ink().lighter(160));
         p.drawRect(QRectF(5, 2.5, 10, 15));
         p.setBrush(kPaper);
         p.drawEllipse(QPointF(10, 4.8), 1.2, 1.2);
@@ -113,14 +122,14 @@ void draw(QPainter& p, IconId id)
         p.setPen(outline());
         p.setBrush(kBlue);
         p.drawRoundedRect(QRectF(4, 2, 12, 16), 1, 1);
-        p.setBrush(kInk.lighter(220));
+        p.setBrush(ink().lighter(220));
         p.drawRect(QRectF(7, 2, 6, 5));
         p.setBrush(kPaper);
         p.drawRect(QRectF(6, 10, 8, 6));
         break;
     case IconId::Cartridge:
         p.setPen(outline());
-        p.setBrush(kInk.lighter(170));
+        p.setBrush(ink().lighter(170));
         p.drawPolygon(QPolygonF({{3, 4}, {17, 4}, {17, 14}, {14, 14}, {14, 17}, {6, 17}, {6, 14}, {3, 14}}));
         p.setBrush(kYellow);
         p.drawRect(QRectF(6, 6.5, 8, 4.5));
@@ -140,23 +149,23 @@ void draw(QPainter& p, IconId id)
         break;
     case IconId::Tape:
         p.setPen(outline());
-        p.setBrush(kInk.lighter(170));
+        p.setBrush(ink().lighter(170));
         p.drawRoundedRect(QRectF(2, 4.5, 16, 11), 1.5, 1.5);
         p.setBrush(kPaper);
         p.drawRect(QRectF(4.5, 6.5, 11, 5));
-        p.setBrush(kInk);
+        p.setBrush(ink());
         p.drawEllipse(QPointF(7, 9), 1.4, 1.4);
         p.drawEllipse(QPointF(13, 9), 1.4, 1.4);
         break;
     case IconId::Photo:
         // A camera: the hump of its viewfinder, its body, its lens.
         p.setPen(outline());
-        p.setBrush(kInk.lighter(170));
+        p.setBrush(ink().lighter(170));
         p.drawRoundedRect(QRectF(7, 3.5, 6, 4), 1, 1);
         p.drawRoundedRect(QRectF(2, 5.5, 16, 10.5), 1.5, 1.5);
         p.setBrush(kPaper);
         p.drawEllipse(QPointF(10, 10.8), 3.4, 3.4);
-        p.setBrush(kInk);
+        p.setBrush(ink());
         p.drawEllipse(QPointF(10, 10.8), 1.5, 1.5);
         break;
     case IconId::LoadSnapshot:
@@ -170,7 +179,7 @@ void draw(QPainter& p, IconId id)
     case IconId::Settings: {
         // A cog wheel.
         p.setPen(Qt::NoPen);
-        p.setBrush(kInk.lighter(140));
+        p.setBrush(ink().lighter(140));
         p.translate(10, 10);
         for (int tooth = 0; tooth < 8; ++tooth) {
             p.drawRect(QRectF(-1.6, -8.5, 3.2, 4));
@@ -205,7 +214,7 @@ void draw(QPainter& p, IconId id)
     case IconId::SaveData:
         // A disc as programs draw them: shutter at the top, label below.
         p.setPen(outline());
-        p.setBrush(kInk.lighter(120));
+        p.setBrush(ink().lighter(120));
         p.drawPolygon(QPolygonF({{3, 3}, {15, 3}, {17, 5}, {17, 17}, {3, 17}}));
         p.setBrush(kPaper);
         p.drawRect(QRectF(6, 3, 7, 5));
@@ -222,7 +231,7 @@ void draw(QPainter& p, IconId id)
         break;
     case IconId::Find:
         // A magnifying glass.
-        p.setPen(outline(kInk, 2.4));
+        p.setPen(outline(ink(), 2.4));
         p.drawLine(QPointF(12, 12), QPointF(17, 17));
         p.setPen(outline());
         p.setBrush(QColor(0xC8, 0xE0, 0xF8));
@@ -240,7 +249,7 @@ void draw(QPainter& p, IconId id)
             p.drawLine(QPointF(x, 4), QPointF(x, 7));
             p.drawLine(QPointF(x, 13), QPointF(x, 16));
         }
-        p.setBrush(kInk.lighter(130));
+        p.setBrush(ink().lighter(130));
         p.drawRect(QRectF(2.5, 7, 15, 6));
         break;
     case IconId::Timers:
@@ -268,6 +277,22 @@ void draw(QPainter& p, IconId id)
         p.drawLine(QPointF(13, 14.5), QPointF(12, 18));
         p.drawLine(QPointF(9, 12), QPointF(6.5, 15));
         p.drawLine(QPointF(6.5, 15), QPointF(3.5, 16));
+        break;
+    }
+    case IconId::Theme: {
+        // Half a sun, half a moon.
+        p.setPen(outline());
+        p.setBrush(kYellow);
+        p.drawEllipse(QPointF(10, 10), 5, 5);
+        QPainterPath night;
+        night.moveTo(10, 5);
+        night.arcTo(QRectF(5, 5, 10, 10), 90, -180);
+        night.closeSubpath();
+        p.setBrush(ink());
+        p.drawPath(night);
+        p.setPen(outline(ink(), 1.6));
+        for (const QPointF& ray : {QPointF(2.5, 10), QPointF(4.7, 4.7), QPointF(4.7, 15.3), QPointF(10, 2.5), QPointF(10, 17.5)})
+            p.drawPoint(ray);
         break;
     }
     case IconId::Help: {
@@ -302,4 +327,54 @@ QIcon makeIcon(IconId id)
         icon.addPixmap(pixmap);
     }
     return icon;
+}
+
+QIcon makeToggleIcon(IconId id)
+{
+    QIcon icon = makeIcon(id);
+    const QPalette look = QGuiApplication::palette();
+    for (int scale : {1, 2, 3}) {
+        QPixmap pixmap(kGrid * scale, kGrid * scale);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.scale(scale, scale);
+        // The plate, of the window's colour: the pictogram is drawn to
+        // stand out from that one.
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(look.color(QPalette::Window));
+        painter.drawRoundedRect(QRectF(0, 0, kGrid, kGrid), 3, 3);
+        painter.save();
+        draw(painter, id);
+        painter.restore();
+        // The tick, in the corner.
+        const QColor mark = readable(look.color(QPalette::Text), look.color(QPalette::Window));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(mark);
+        painter.drawEllipse(QPointF(14.5, 14.5), 5.2, 5.2);
+        painter.setPen(outline(look.color(QPalette::Window), 1.8));
+        painter.drawPolyline(QPolygonF({{11.8, 14.6}, {13.8, 16.6}, {17.2, 12.6}}));
+        painter.end();
+        pixmap.setDevicePixelRatio(scale);
+        icon.addPixmap(pixmap, QIcon::Normal, QIcon::On);
+        icon.addPixmap(pixmap, QIcon::Active, QIcon::On);
+    }
+    return icon;
+}
+
+void setThemedIcon(QAbstractButton* button, IconId id, bool toggle)
+{
+    button->setProperty("themedIcon", static_cast<int>(id));
+    button->setProperty("themedToggle", toggle);
+    button->setIcon(toggle ? makeToggleIcon(id) : makeIcon(id));
+}
+
+void refreshThemedIcons()
+{
+    for (QWidget* widget : QApplication::allWidgets()) {
+        const QVariant id = widget->property("themedIcon");
+        if (auto* button = qobject_cast<QAbstractButton*>(widget); button && id.isValid())
+            button->setIcon(widget->property("themedToggle").toBool() ? makeToggleIcon(static_cast<IconId>(id.toInt()))
+                                                                      : makeIcon(static_cast<IconId>(id.toInt())));
+    }
 }

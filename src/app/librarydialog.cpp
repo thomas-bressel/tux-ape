@@ -1,5 +1,6 @@
 #include "librarydialog.h"
 
+#include "contrast.h"
 #include "icons.h"
 
 #include <algorithm>
@@ -739,19 +740,30 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     buttons->addWidget(close);
 
     // The filters: a button for each kind of program, with its picture,
-    // and one for each machine.
+    // and one for each machine. Up, a button is the page's colour in a
+    // thin frame; down, it is the other way round, text and frame, in a
+    // thick one, with a tick: the state does not hang on a hue alone.
     struct FilterButton {
         const char* name;
         QString text, hint;
-        QIcon icon;
+        IconId icon;
     };
     const FilterButton filterButtons[5] = {
-        {"bDiscs", QString(), tr("Lists the discs"), makeIcon(IconId::Disc)},
-        {"bTapes", QString(), tr("Lists the tapes"), makeIcon(IconId::Tape)},
-        {"bCartridges", QString(), tr("Lists the cartridges"), makeIcon(IconId::Cartridge)},
-        {"bCpc", tr("CPC"), tr("Lists the programs for the CPC: those not marked for the Plus"), QIcon()},
-        {"bPlus", tr("CPC+"), tr("Lists the programs for the Plus: the cartridges, and what is marked CPC+"), QIcon()},
+        {"bDiscs", QString(), tr("Discs: lists them alone when down"), IconId::Disc},
+        {"bTapes", QString(), tr("Tapes: lists them alone when down"), IconId::Tape},
+        {"bCartridges", QString(), tr("Cartridges: lists them alone when down"), IconId::Cartridge},
+        {"bCpc", tr("CPC"), tr("Lists the programs for the CPC: those not marked for the Plus"), IconId::Run},
+        {"bPlus", tr("CPC+"), tr("Lists the programs for the Plus: the cartridges, and what is marked CPC+"), IconId::Run},
     };
+    const QColor paper = palette().color(QPalette::Base);
+    const QColor ink = readable(palette().color(QPalette::Text), paper);
+    const QString look = QStringLiteral(
+                             "QToolButton { background: %1; color: %2; border: 1px solid %2; border-radius: 4px;"
+                             " padding: 3px 7px; margin: 1px; min-height: 22px; }"
+                             "QToolButton:hover { border: 2px solid %2; margin: 0px; }"
+                             "QToolButton:checked { background: %2; color: %1; border: 3px solid %2; margin: 0px;"
+                             " padding: 2px 6px; font-weight: bold; }")
+                             .arg(paper.name(), ink.name());
     auto* layout = new QVBoxLayout(this);
     auto* top = new QHBoxLayout;
     top->addWidget(search_, 1);
@@ -760,13 +772,21 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
         button->setObjectName(filterButtons[n].name);
         button->setCheckable(true);
         button->setToolTip(filterButtons[n].hint);
-        if (filterButtons[n].icon.isNull())
-            button->setText(filterButtons[n].text);
-        else
-            button->setIcon(filterButtons[n].icon);
-        button->setIconSize(QSize(20, 20));
+        button->setStyleSheet(look);
+        const QString text = filterButtons[n].text;
+        if (text.isEmpty()) {
+            setThemedIcon(button, filterButtons[n].icon, true);
+            button->setIconSize(QSize(22, 22));
+        } else {
+            button->setText(text);
+        }
         button->setFocusPolicy(Qt::NoFocus);
-        connect(button, &QToolButton::toggled, this, [this] { filter(); });
+        connect(button, &QToolButton::toggled, this, [this, button, text](bool down) {
+            // In words too: a tick before the name.
+            if (!text.isEmpty())
+                button->setText(down ? QChar(0x2713) + QStringLiteral(" ") + text : text);
+            filter();
+        });
         filterButtons_[n] = button;
         if (n == 3)
             top->addSpacing(8);
@@ -862,6 +882,9 @@ void LibraryDialog::fill()
     list_->clear();
     // Sorted once they are all there, not one by one.
     list_->setSortingEnabled(false);
+    // The pictures of the kinds, drawn for the look in use.
+    const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
+                            makeIcon(IconId::Cartridge), makeIcon(IconId::Run)};
     for (int i = 0; i < entries_.size(); ++i) {
         const LibraryEntry& entry = entries_[i];
         const QString kind = entry.kind == LibraryEntry::Disc        ? tr("Disc")
@@ -872,8 +895,6 @@ void LibraryDialog::fill()
         // The kinds of release are names, not words to translate.
         // The type shows as a picture: a disc, a tape, a cartridge, or a
         // snapshot; its name is there for whoever points at it.
-        static const QIcon kIcons[] = {makeIcon(IconId::Disc), makeIcon(IconId::LoadSnapshot), makeIcon(IconId::Tape),
-                                       makeIcon(IconId::Cartridge), makeIcon(IconId::Run)};
         auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release,
                                              entry.origin, entry.dump, QString(), QString(), entry.details});
         item->setIcon(kTypeColumn, kIcons[entry.kind]);
@@ -903,11 +924,11 @@ void LibraryDialog::updateThumbnails()
         const QString picture = pictureOf(entry, *found);
         thumbnails_ << (picture.isEmpty() ? QString() : folder + '/' + picture);
     }
+    const QIcon kPhoto = makeIcon(IconId::Photo);
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
         QTreeWidgetItem* item = list_->topLevelItem(row);
         const QString& picture = thumbnails_[item->data(0, Qt::UserRole).toInt()];
         // A camera for those that have one, nothing for the others.
-        static const QIcon kPhoto = makeIcon(IconId::Photo);
         item->setIcon(kThumbnailColumn, picture.isEmpty() ? QIcon() : kPhoto);
         item->setToolTip(kThumbnailColumn, QFileInfo(picture).fileName());
     }
@@ -1179,10 +1200,9 @@ int LibraryDialog::filters() const
 
 void LibraryDialog::setFilters(int filters)
 {
-    for (int n = 0; n < 5; ++n) {
-        const QSignalBlocker quiet(filterButtons_[n]);
+    // Each button says for itself that it has changed; the list follows.
+    for (int n = 0; n < 5; ++n)
         filterButtons_[n]->setChecked(filters & 1 << n);
-    }
     filter();
 }
 

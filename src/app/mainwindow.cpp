@@ -41,6 +41,7 @@
 #include "screenwidget.h"
 #include "setupdialog.h"
 #include "tapedialog.h"
+#include "theme.h"
 #include "tooldialogs.h"
 
 #include "core/version.h"
@@ -56,8 +57,10 @@ namespace {
 constexpr int kPanelHeight = 30;
 constexpr int kButtonSize = 26;
 
-const char kLedOff[] = "background-color: #500000;";
-const char kLedOn[] = "background-color: #ff2020;";
+// The drives' lights. Their edge is of the text's colour, to show on any
+// window; lit and unlit differ by far more than their hue.
+const char kLedOff[] = "background-color: #500000; border: 1px solid palette(window-text);";
+const char kLedOn[] = "background-color: #ff2020; border: 1px solid palette(window-text);";
 
 QString discFilter()
 {
@@ -324,6 +327,16 @@ void MainWindow::createMenus()
             report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
     });
     amxMouseAction_->setCheckable(true);
+    // TuxAPE's own: its windows light or dark, at once and for the next
+    // time too.
+    darkThemeAction_ = addItem(settings, tr("Dar&k Theme"), {}, [this] {
+        settings_.darkTheme = darkThemeAction_->isChecked();
+        applyTheme(settings_.darkTheme ? Theme::Dark : Theme::Light);
+        if (!settings_.save())
+            report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+    });
+    darkThemeAction_->setCheckable(true);
+    darkThemeAction_->setChecked(settings_.darkTheme);
     multifaceAction_ = addItem(settings, tr("M&ultiface Stop"), Qt::Key_F11, [this] { emulator_->multifaceStop(); });
     multifaceAction_->setEnabled(emulator_->hasMultiface());
 
@@ -366,7 +379,7 @@ void MainWindow::createMenus()
 QToolButton* MainWindow::addButton(IconId icon, const QString& hint, QAction* action)
 {
     auto* button = new QToolButton(controlPanel_);
-    button->setIcon(makeIcon(icon));
+    setThemedIcon(button, icon);
     button->setIconSize(QSize(20, 20));
     button->setFixedSize(kButtonSize, kButtonSize);
     button->setAutoRaise(true);
@@ -410,6 +423,12 @@ void MainWindow::createControlPanel()
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Settings, tr("Settings (F12)"), setupAction_);
     addButton(IconId::FullScreen, tr("Toggle Full Screen (F10)"), fullScreenAction_);
+    // The switch between the light look and the dark one: down for dark.
+    QToolButton* theme = addButton(IconId::Theme, tr("Dark Theme"), darkThemeAction_);
+    theme->setObjectName("bTheme");
+    theme->setCheckable(true);
+    theme->setChecked(darkThemeAction_->isChecked());
+    connect(darkThemeAction_, &QAction::toggled, theme, &QToolButton::setChecked);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Help, tr("Help (F1)"), helpAction_);
 

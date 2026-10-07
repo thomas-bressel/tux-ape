@@ -33,6 +33,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
+#include "contrast.h"
 #include "emulator.h"
 #include "icons.h"
 
@@ -212,16 +213,17 @@ void DisassemblyView::paintEvent(QPaintEvent*)
         const QRect row(kMargin, y, viewport()->width() - kMargin, height);
         QColor text = palette().color(QPalette::Text);
         if (line.address == pc_) {
-            painter.fillRect(row, QColor(0xFF, 0x00, 0x00));
+            // White on red, a red deep enough for the white to read on.
             text = Qt::white;
+            painter.fillRect(row, readable(QColor(0xFF, 0x00, 0x00), text));
         } else if (line.address == selected_) {
-            painter.fillRect(row, palette().highlight());
             text = palette().color(QPalette::HighlightedText);
+            painter.fillRect(row, readable(palette().color(QPalette::Highlight), text));
         }
         if (breakpoints_.count(line.address)) {
             painter.setRenderHint(QPainter::Antialiasing);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(0xD0, 0x10, 0x10));
+            painter.setBrush(readable(QColor(0xD0, 0x10, 0x10), palette().color(QPalette::Button), kGraphicContrast));
             painter.drawEllipse(QRectF(3.5, y + (height - 9) / 2.0, 9, 9));
         }
         const qsizetype space = line.instruction.indexOf(' ');
@@ -234,7 +236,7 @@ void DisassemblyView::paintEvent(QPaintEvent*)
         painter.drawText(left + character * 10, y + ascent, operands);
         painter.drawText(left + character * 28, y + ascent, line.bytes);
         if (line.address != pc_ && line.address != selected_)
-            painter.setPen(QColor(0x00, 0x80, 0x00));
+            painter.setPen(readable(QColor(0x00, 0x80, 0x00), palette().color(QPalette::Base)));
         painter.drawText(left + character * 41, y + ascent, line.characters);
         y += height;
     }
@@ -422,6 +424,7 @@ void MemoryDumpView::paintEvent(QPaintEvent*)
         // Memory breakpoints, the selection, and over them the byte under
         // the cursor, in both columns.
         const int first = selectionStart(), last = first + selectionLength() - 1;
+        const QColor ink = palette().color(QPalette::Text);
         for (int index = 0; index < 16 && address + index < limit_; ++index) {
             const int at = address + index;
             QColor back;
@@ -437,10 +440,14 @@ void MemoryDumpView::paintEvent(QPaintEvent*)
                 back = palette().highlight().color();
             if (!back.isValid())
                 continue;
+            // The text goes over these in its usual colour: each is taken
+            // as far from it as it has to be for the text to read.
+            back = readable(back, ink);
             painter.fillRect(4 + character * (5 + index * 3), y, character * 2, height, back);
-            painter.fillRect(4 + character * (5 + 48 + index), y, character, height, at == cursor_ ? back.lighter(150) : back);
+            painter.fillRect(4 + character * (5 + 48 + index), y, character, height,
+                             at == cursor_ ? readable(back.lighter(150), ink) : back);
         }
-        painter.setPen(palette().color(QPalette::Text));
+        painter.setPen(ink);
         painter.drawText(4, y + ascent, lineText(row));
     }
 }
@@ -665,7 +672,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     const auto button = [this](IconId icon, const char* name, const QString& hint) {
         auto* made = new QToolButton;
         made->setObjectName(name);
-        made->setIcon(makeIcon(icon));
+        setThemedIcon(made, icon);
         made->setToolTip(hint);
         made->setAutoRaise(true);
         made->setFocusPolicy(Qt::NoFocus);

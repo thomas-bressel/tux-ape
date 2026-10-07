@@ -1,11 +1,14 @@
 #include "assemblerdialog.h"
 
+#include "contrast.h"
+
 #include "help.h"
 
 #include <array>
 #include <map>
 #include <memory>
 
+#include <QGuiApplication>
 #include <QAction>
 #include <QCheckBox>
 #include <QDialogButtonBox>
@@ -66,9 +69,11 @@ protected:
                                                  "DE", "HL", "SP", "IX", "IY",  "HX",  "LX",  "HY",  "LY", "NZ", "Z",
                                                  "NC", "PO", "PE", "P",  "IXH", "IXL", "IYH", "IYL", "M"};
         QTextCharFormat word, string, comment;
-        word.setForeground(QColor(0, 0, 128));
-        string.setForeground(QColor(200, 0, 0));
-        comment.setForeground(QColor(0, 128, 0));
+        // WinAPE's colours, as far as they read on the page.
+        const QColor page = QGuiApplication::palette().color(QPalette::Base);
+        word.setForeground(readable(QColor(0, 0, 128), page));
+        string.setForeground(readable(QColor(200, 0, 0), page));
+        comment.setForeground(readable(QColor(0, 128, 0), page));
         const int n = static_cast<int>(text.size());
         for (int i = 0; i < n;) {
             const QChar c = text[i];
@@ -360,6 +365,11 @@ void SymbolsDialog::fill()
     list_->clear();
     const QRegularExpression pattern(QRegularExpression::wildcardToRegularExpression(filter_->text() + '*'),
                                      QRegularExpression::CaseInsensitiveOption);
+    // Blue for the values and red for the marks, as far as they read on
+    // the list's two shades of row.
+    const QColor row = list_->palette().color(QPalette::Base), shaded = list_->palette().color(QPalette::AlternateBase);
+    const QColor valueColour = readable(QColor(0, 102, 204), row, shaded);
+    const QColor markColour = readable(QColor(200, 0, 0), row, shaded);
     for (size_t i = 0; i < symbols_.size(); ++i) {
         const tuxape::AsmSymbol& symbol = symbols_[i];
         const QString name = QString::fromLatin1(symbol.name.c_str());
@@ -368,8 +378,8 @@ void SymbolsDialog::fill()
         const QString value = QString("%1").arg(symbol.value & 0xFFFF, 4, 16, QLatin1Char('0')).toUpper();
         auto* item = new QTreeWidgetItem(list_, {name, value, symbol.used ? QString(QChar(0x2714)) : QString(QChar(0x2718))});
         item->setData(0, Qt::UserRole, static_cast<int>(i));
-        item->setForeground(1, QColor(0, 102, 204));
-        item->setForeground(2, QColor(200, 0, 0));
+        item->setForeground(1, valueColour);
+        item->setForeground(2, markColour);
         item->setToolTip(2, symbol.used ? tr("Used by the program") : tr("Not used by the program"));
     }
     if (list_->topLevelItemCount())

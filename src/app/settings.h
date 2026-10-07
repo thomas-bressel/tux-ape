@@ -86,6 +86,8 @@ struct Settings {
     // And whether it shows them as their pictures, not as a list.
     bool libraryThumbnailView = false;
     int libraryThumbnailSize = 360;  // the side of a picture's box there
+    // TuxAPE's own: the dark look of its windows, in place of the light one.
+    bool darkTheme = false;
 
     // The assembler's options: where files named by read and incbin are
     // looked for (folders between semicolons), whether Run pushes the

@@ -190,6 +190,7 @@ void Settings::read(const tuxape::IniFile& ini)
     }
     libraryThumbnailView = ini.getBool("Library", "Thumbnail View", libraryThumbnailView);
     libraryThumbnailSize = ini.getInt("Library", "Thumbnail Size", libraryThumbnailSize);
+    darkTheme = ini.getBool("Interface", "Dark Theme", darkTheme);
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -280,6 +281,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
             ini.set("Library", "Folder" + std::to_string(n + 1), libraryFolders[n].toStdString());
         ini.setBool("Library", "Thumbnail View", libraryThumbnailView);
         ini.setInt("Library", "Thumbnail Size", libraryThumbnailSize);
+        ini.setBool("Interface", "Dark Theme", darkTheme);
     }
 }
 

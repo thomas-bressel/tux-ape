@@ -169,7 +169,7 @@ void TapeDialog::refresh()
     if (state.loaded && !block_->view()->isVisible() && block_->currentIndex() != state.block)
         block_->setCurrentIndex(state.block);
     const bool lit = state.motor && (state.playing || state.recording);
-    led_->setStyleSheet(QStringLiteral("background: %1; border: 1px solid #404040; border-radius: 7px")
+    led_->setStyleSheet(QStringLiteral("background: %1; border: 1px solid palette(window-text); border-radius: 7px")
                             .arg(lit ? "#30e030" : "#205020"));
     led_->setProperty("lit", lit);
 }

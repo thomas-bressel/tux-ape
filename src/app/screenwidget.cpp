@@ -1,5 +1,7 @@
 #include "screenwidget.h"
 
+#include "contrast.h"
+
 #include <cmath>
 #include <cstring>
 
@@ -336,8 +338,9 @@ void ScreenWidget::paintDriveLight(QPainter& painter, const QRect& light) const
 {
     if (light.isEmpty())
         return;
+    // A red deep enough for the white letter to read on.
     painter.setPen(QColor(64, 0, 0));
-    painter.setBrush(QColor(255, 32, 32));
+    painter.setBrush(readable(QColor(255, 32, 32), Qt::white));
     painter.drawRect(light.adjusted(0, 0, -1, -1));
     QFont font = painter.font();
     font.setPixelSize(std::max(6, light.height() - 2));

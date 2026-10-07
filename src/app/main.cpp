@@ -7,6 +7,7 @@
 #include "core/version.h"
 #include "emulator.h"
 #include "mainwindow.h"
+#include "theme.h"
 #include "welcome.h"
 
 int main(int argc, char* argv[])
@@ -35,6 +36,8 @@ int main(int argc, char* argv[])
     Emulator emulator;
     Settings settings;
     settings.load();
+    // The look of the windows, before any is made.
+    applyTheme(settings.darkTheme ? Theme::Dark : Theme::Light);
     const QString error = emulator.setupMachine(settings.machine, true);
     if (!error.isEmpty()) {
         const QString message = error.left(1).toUpper() + error.mid(1) + ".";
