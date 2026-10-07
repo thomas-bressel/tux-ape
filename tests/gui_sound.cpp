@@ -62,6 +62,15 @@ int main(int argc, char* argv[])
         // low it gets says nothing here: the disk driver empties it faster
         // than a sound card would.)
         CHECK(audio.queue(nullptr, 0) < 0.15);
+
+        // At another speed the sound goes on, its pitch following: the
+        // same note at five quarters of the speed is a major third higher
+        // and over sooner. (A slider a few per cent off 100 once left the
+        // machine silent.)
+        emulator.setSpeedPercent(125);
+        emulator.autoType("SOUND 1,142,200,15\n");
+        QTest::qWait(4000);
+        CHECK(audio.queue(nullptr, 0) < 0.15);
         emulator.stop();
     }
 
@@ -94,22 +103,35 @@ int main(int argc, char* argv[])
             break;
         }
     }
-    // Two seconds at 440 Hz. The disk driver takes sound a few percent
-    // faster than a sound card would, so the capture can have a gap or two
-    // where the queue ran dry; that costs a cycle at most each time.
-    CHECK(rises.size() > 870 && rises.size() <= 881);
-    if (rises.size() > 2) {
-        const double seconds = static_cast<double>(rises.back() - rises.front()) / rate;
-        CHECK(seconds > 1.95 && seconds < 2.3);
+    // The two notes, with the silence between them.
+    size_t second = rises.size();
+    for (size_t i = 1; i < rises.size(); ++i)
+        if (rises[i] - rises[i - 1] > static_cast<size_t>(rate) / 10)
+            second = i;
+    const std::vector<size_t> notes[2] = {{rises.begin(), rises.begin() + static_cast<ptrdiff_t>(second)},
+                                          {rises.begin() + static_cast<ptrdiff_t>(second), rises.end()}};
+    // Two seconds at 440 Hz, then the same 880 cycles at five quarters of
+    // the speed. The disk driver takes sound a few percent faster than a
+    // sound card would, so the capture can have a gap or two where the
+    // queue ran dry; that costs a cycle at most each time.
+    const double speeds[2] = {1.0, 1.25};
+    for (int note = 0; note < 2; ++note) {
+        const std::vector<size_t>& cycles = notes[note];
+        CHECK(cycles.size() > 870 && cycles.size() <= 881);
+        if (cycles.size() <= 2)
+            continue;
+        const double seconds = static_cast<double>(cycles.back() - cycles.front()) / rate;
+        CHECK(seconds > 1.95 / speeds[note] && seconds < 2.3 / speeds[note]);
         // The pitch is judged on the typical cycle, which gaps do not affect.
         std::vector<size_t> periods;
-        for (size_t i = 1; i < rises.size(); ++i)
-            periods.push_back(rises[i] - rises[i - 1]);
+        for (size_t i = 1; i < cycles.size(); ++i)
+            periods.push_back(cycles[i] - cycles[i - 1]);
         std::nth_element(periods.begin(), periods.begin() + static_cast<ptrdiff_t>(periods.size() / 2), periods.end());
         const double pitch = static_cast<double>(rate) / static_cast<double>(periods[periods.size() / 2]);
-        if (!(pitch > 436 && pitch < 446))
-            std::printf("tone: %zu cycles over %.3f s, typical pitch %.1f Hz\n", rises.size(), seconds, pitch);
-        CHECK(pitch > 436 && pitch < 446);
+        const bool right = pitch > 436 * speeds[note] && pitch < 446 * speeds[note];
+        if (!right)
+            std::printf("note %d: %zu cycles over %.3f s, typical pitch %.1f Hz\n", note + 1, cycles.size(), seconds, pitch);
+        CHECK(right);
     }
 
     // "Disc Drive Sounds": a whirr while a motor runs, a click for each

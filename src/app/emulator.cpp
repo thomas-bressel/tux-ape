@@ -20,6 +20,16 @@
 using tuxape::Cpc;
 using tuxape::Monitor;
 
+namespace {
+
+// The sound is played from half a real machine's speed to twice it, its
+// pitch following the speed as a record's would. Further off there would
+// only be noise.
+constexpr int kSlowestHeard = 50;
+constexpr int kFastestHeard = 200;
+
+}  // namespace
+
 Emulator::Emulator(QObject* parent)
     : QObject(parent)
     , autoType_(cpc_.keyboard())
@@ -204,10 +214,19 @@ void Emulator::playSound()
         samples.clear();
         return;
     }
-    // Speeded up or slowed down, the sound would only be noise.
-    if (speedPercent_ != 100 || displayEvery_ != 0) {
-        if (!audioSilenced_)
+    // Flat out, or far from a real machine's speed, there is nothing to
+    // listen to. Nor at any other speed than the machine's own while a
+    // recording is made: the mixer then keeps the recording's pace, which
+    // is not the listener's.
+    const int speed = speedPercent_;
+    const bool recording = wav_.active() || avi_.active();
+    const bool heard = displayEvery_ == 0
+                       && (speed == 100 || (!recording && speed >= kSlowestHeard && speed <= kFastestHeard));
+    if (!heard) {
+        if (!audioSilenced_) {
             audio_->clear();
+            cpc_.audio().setSampleRate(audio_->sampleRate());
+        }
         audioSilenced_ = true;
         samples.clear();
         return;
@@ -244,7 +263,9 @@ void Emulator::playSound()
     // slightly more or fewer samples to keep the queue at its target length;
     // the half percent this takes at most is inaudible.
     const double error = std::clamp((queued - target) / target, -1.0, 1.0);
-    cpc_.audio().setSampleRate(audio_->sampleRate() * (1.0 - 0.005 * error));
+    // At another speed the machine's second is not the sound card's: it
+    // has that many fewer samples, or more, and the pitch follows.
+    cpc_.audio().setSampleRate(audio_->sampleRate() * (100.0 / speed) * (1.0 - 0.005 * error));
 }
 
 void Emulator::setPaused(bool paused)
@@ -290,6 +311,9 @@ int Emulator::startMixerForRecording()
     if (!cpc_.audio().enabled()) {
         cpc_.audio().setSampleRate(rate);
         recordingOwnsMixer_ = true;
+    } else if (speedPercent_ != 100) {
+        // The mixer was following the listener's speed (see playSound).
+        cpc_.audio().setSampleRate(rate);
     }
     return rate;
 }

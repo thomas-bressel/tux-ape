@@ -28,6 +28,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTreeWidget>
+#include <QWheelEvent>
 
 #include "check.h"
 #include "core/inifile.h"
@@ -856,6 +857,27 @@ void testDialog(const QString& picture)
     CHECK(!every->isChecked());
     CHECK_EQ(frames->value(), 50);
     CHECK(dialog.settings() == settings);
+
+    // Dragged near 100 the slider settles there: the pointer could not
+    // stop on it otherwise. The arrow keys still go by one, and the wheel
+    // leaves the speed alone.
+    speed->setSliderPosition(104);  // what a drag does
+    CHECK_EQ(speed->value(), 100);
+    CHECK(speedLabel->text() == "100%");
+    speed->setSliderPosition(92);
+    CHECK_EQ(speed->value(), 100);
+    speed->setSliderPosition(120);
+    CHECK_EQ(speed->value(), 120);
+    speed->setValue(100);
+    speed->triggerAction(QAbstractSlider::SliderSingleStepAdd);
+    CHECK_EQ(speed->value(), 101);
+    {
+        QWheelEvent wheel(QPointF(5, 5), speed->mapToGlobal(QPointF(5, 5)), QPoint(), QPoint(0, 120), Qt::NoButton,
+                          Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(speed, &wheel);
+        CHECK_EQ(speed->value(), 101);
+    }
+    speed->setValue(300);
 
     // Six pages as in WinAPE; only the first is there yet.
     CHECK_EQ(tabs->count(), 6);

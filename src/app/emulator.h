@@ -76,7 +76,9 @@ public:
     void setPaused(bool paused);
     bool isPaused() const { return paused_; }
 
-    // Emulation speed, 100 being the speed of a real CPC.
+    // Emulation speed, 100 being the speed of a real CPC. The sound follows
+    // it from half that speed to twice it, higher as the machine goes
+    // faster; further off there is none.
     void setSpeedPercent(int percent);
     int speedPercent() const { return speedPercent_; }
     // WinAPE's "Display Every n frame(s)": the machine runs as fast as the

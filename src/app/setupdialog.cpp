@@ -3,6 +3,7 @@
 #include "help.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include <QLineEdit>
 #include <QCheckBox>
@@ -30,6 +31,7 @@
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 
 #include "core/files.h"
 #include "core/gate_array.h"
@@ -46,6 +48,21 @@ Widget* notYet(Widget* widget)
     widget->setToolTip(SetupDialog::tr("Not available yet"));
     return widget;
 }
+
+// The speed slider. Its range is so wide that the pointer cannot stop on 100
+// exactly, and a machine a few per cent off runs too fast and out of tune
+// without saying why: dragged near 100, it settles there. The arrow keys
+// still go one per cent at a time. The wheel is not its business: a turn of
+// it over the page must not change the machine's speed.
+constexpr int kSpeedSnap = 10;
+
+class SpeedSlider : public QSlider {
+public:
+    using QSlider::QSlider;
+
+protected:
+    void wheelEvent(QWheelEvent* event) override { event->ignore(); }
+};
 
 QString versionInformation()
 {
@@ -284,10 +301,15 @@ QWidget* SetupDialog::createGeneralPage()
 
     // ---- Timing ----
     auto* timingBox = new QGroupBox(tr("Timing"));
-    speed_ = new QSlider(Qt::Horizontal);
+    speed_ = new SpeedSlider(Qt::Horizontal);
     speed_->setObjectName("slSpeed");
     speed_->setRange(5, 1000);
     speed_->setPageStep(50);
+    // Where the pointer has put it is not yet the value: it can be moved.
+    connect(speed_, &QSlider::actionTriggered, this, [this](int action) {
+        if (action == QAbstractSlider::SliderMove && std::abs(speed_->sliderPosition() - 100) <= kSpeedSnap)
+            speed_->setSliderPosition(100);
+    });
     speedLabel_ = new QLabel;
     speedLabel_->setObjectName("lbSpeed");
     speedLabel_->setMinimumWidth(fontMetrics().horizontalAdvance("1000%"));
