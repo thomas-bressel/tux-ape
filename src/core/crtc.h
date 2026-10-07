@@ -213,6 +213,8 @@ private:
     void r6Written(R6Write effect);
     [[gnu::cold]] void settleLate();
     void endOfLine1(bool oneCharacter);
+    bool rowEnds1() const;
+    void nextRow1();
     void newFrame1();
     void startRow();
     void startFrame();
@@ -252,6 +254,7 @@ private:
     // split on the ASICs. (Kept after everything else: where the rest
     // sits was measured, and moving it costs a few per cent.)
     bool hsyncJoined_ = false;     // the HSYNC in progress began as the one before ended
+    uint8_t r8Due_ = 0;            // type 1: interlace video has just come on (1) or gone off (2)
     bool late_ = false;
     uint8_t splitDue_ = 0;         // characters to go before the split written is seen
     uint8_t splitDueLine_ = 0;

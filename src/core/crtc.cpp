@@ -36,6 +36,7 @@ void Crtc::reset()
     r9AtStart_ = 0;
     lastLine1_ = false;
     fromR12_ = true;
+    r8Due_ = 0;
     parityFrame_ = parityR6_ = parityC9_ = false;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
     c9Out_ = 0;
@@ -64,7 +65,21 @@ void Crtc::write(uint8_t value, bool early)
         // R0 brought to the character in progress makes it the line's
         // last: type 1 takes its note of the frame's end there.
         if (type_ == CrtcType::UM6845R && hcc_ == reg_[0] && old != reg_[0])
-            lastLine1_ = vcc_ == reg_[4] && vlc_ == reg_[9];
+            lastLine1_ = vcc_ == reg_[4] && rowEnds1();
+        break;
+    case 8:
+        // Type 1, "interlace sync & video" coming on or going off: bit 0 of
+        // C9 and the two parities are worked out anew, in two steps a
+        // microsecond apart (19.5.3). On the first, the parity of the
+        // lines is that of C9, turned over on an odd row when R9 is even,
+        // and C9's lowest bit takes it.
+        if (type_ == CrtcType::UM6845R && ((old & 3) == 3) != interlaceVideo()) {
+            const bool oddRow = (vcc_ & 1) && !(reg_[9] & 1);
+            parityC9_ = ((vlc_ & 1) != 0) != oddRow;
+            vlc_ = static_cast<uint8_t>((vlc_ & 0x1E) | parityC9_);
+            r8Due_ = interlaceVideo() ? 1 : 2;
+            late_ = true;
+        }
         break;
     case 2:
         // R2 set to the character in progress starts the HSYNC there and
@@ -169,6 +184,14 @@ void Crtc::write(uint8_t value, bool early)
                     vsyncFresh_ = true;
                 }
             }
+        } else if (type_ == CrtcType::UM6845R && old != reg_[7] && vcc_ == reg_[7] && !vsync_ && interlace()
+                   && !parityFrame_) {
+            // Type 1, an even frame with an interlace mode set: the VSYNC
+            // this write calls for waits for the middle of a line like any
+            // other (19.7.2; Shaker "VSYNC IVM story", R7 = 0 written on
+            // the frame's second line: 96 microseconds from the frame's
+            // start on a real chip, not 80).
+            midVsync_ = true;
         } else if (!asic() && old != reg_[7] && vcc_ == reg_[7] && !vsync_) {
             // Making R7 equal to the current row starts a VSYNC straight
             // away. Not on the ASICs, which only look at R7 as a row
@@ -336,7 +359,7 @@ void Crtc::tick()
     // C0 met R1 ends, not as it begins: R1 moved away during that very
     // character, and nothing is kept (17.4.2, Shaker "R1 stories": R1
     // raised above R0 on C0 = R1, on a real chip).
-    if (type1 && hcc_ == reg_[1] && vlc_ == reg_[9])
+    if (type1 && hcc_ == reg_[1] && rowEnds1())
         maRow_ = ma_;
     const bool newLine = hcc_ == reg_[0];
     if (newLine) {
@@ -364,7 +387,7 @@ void Crtc::tick()
     // Type 1 notes, as a line's last character begins, whether the frame
     // ends with it (11.2.4).
     if (type1 && hcc_ == reg_[0])
-        lastLine1_ = vcc_ == reg_[4] && vlc_ == reg_[9];
+        lastLine1_ = vcc_ == reg_[4] && rowEnds1();
 
     if (type0) {
         // R7 was made equal to C4 on the character before this one, the
@@ -437,7 +460,8 @@ void Crtc::tick()
     // The VSYNC of an even frame, held back to the middle of the line.
     if (midVsync_ && hcc_ == reg_[0] / 2) {
         midVsync_ = false;
-        if (!vsync_) {
+        // (Type 1 still wants C4 at R7 there.)
+        if (!vsync_ && (!type1 || vcc_ == reg_[7])) {
             startVsync();
             vsyncFresh_ = true;
         }
@@ -517,6 +541,24 @@ void Crtc::settleLate()
         splitLine_ = splitDueLine_;
         splitAddress_ = splitDueAddress_;
     }
+    if (r8Due_ != 0) {
+        // Type 1, a microsecond after "interlace sync & video" came on or
+        // went off (19.5.3). Coming on in an even frame, the lines take
+        // the parity of the row (even, unless R9 is even and the row odd);
+        // and the frame becomes even, unless it was odd and the lines too.
+        // Going off, the frame takes the parity of the lines.
+        if (r8Due_ == 1) {
+            const bool oddRow = (vcc_ & 1) && !(reg_[9] & 1);
+            if (!parityFrame_) {
+                parityC9_ = oddRow;
+                vlc_ = static_cast<uint8_t>((vlc_ & 0x1E) | parityC9_);
+            }
+            parityFrame_ = parityFrame_ && parityC9_ != oddRow;
+        } else {
+            parityFrame_ = parityC9_;
+        }
+        r8Due_ = 0;
+    }
     late_ = splitDue_ != 0;
 }
 
@@ -577,25 +619,34 @@ void Crtc::endOfLine1(bool oneCharacter)
             vsync_ = false;
     }
 
-    const bool rowEnds = vlc_ == reg_[9];
+    // C9 goes up one line at a time; in "interlace sync & video" two, from
+    // the parity of the lines, and a row ends when it has R9 but for its
+    // lowest bit (19.8.2).
+    const bool video = interlaceVideo();
+    const bool rowEnds = rowEnds1();
     const bool lastRow = vcc_ == reg_[4];
+    const uint8_t nextLine = static_cast<uint8_t>((vlc_ + (video ? 2 : 1)) & 0x1F);
     // Each line starts at R12/R13 until a row ends; not the frame's last
     // row, so that with R4 = 0 the first row of the lines of R5 does too
     // (11.2.4, 17.4.2; Shaker "UPD OFF ADD LINE" on a real chip).
     if (rowEnds && !lastRow)
         fromR12_ = false;
+    // An even frame gets one line more with an interlace mode set, counted
+    // as if R5 were one more (11.2.3, 19.6.2).
+    const uint8_t lines = static_cast<uint8_t>((reg_[5] + (interlace() && !parityFrame_ ? 1 : 0)) & 0x1F);
+    const bool anyLines = reg_[5] != 0 || (interlace() && !parityFrame_);
 
     if (inAdjust_) {
         const uint8_t next = (vtac_ + 1) & 0x1F;
-        if (reg_[5] != 0 && next == reg_[5]) {
+        if (anyLines && next == lines) {
             inAdjust_ = false;
             newFrame1();
             return;
         }
         vtac_ = next;
         if (!rowEnds) {
-            vlc_ = (vlc_ + 1) & 0x1F;
-        } else if (reg_[5] == 0 && lastRow) {
+            vlc_ = nextLine;
+        } else if (!anyLines && lastRow) {
             // (That the lines of R5 are over with it is what the Shaker's
             // module E needs: each of its measurements leaves R5 at 0 in
             // the middle of them, and a real chip is found counting whole
@@ -603,40 +654,66 @@ void Crtc::endOfLine1(bool oneCharacter)
             inAdjust_ = false;
             newFrame1();
         } else {
-            vlc_ = 0;
             vcc_ = (vcc_ + 1) & 0x7F;
-            startRow();
+            nextRow1();
         }
         return;
     }
-    if (lastLine1_ && reg_[5] != 0) {
+    if (lastLine1_ && anyLines) {
         // The first of the lines of R5: counted by R4 and R9 as they are
         // now.
         inAdjust_ = true;
         vtac_ = 0;
         if (rowEnds) {
-            vlc_ = 0;
             vcc_ = (vcc_ + 1) & 0x7F;
-            startRow();
+            nextRow1();
         } else {
-            vlc_ = (vlc_ + 1) & 0x1F;
+            vlc_ = nextLine;
         }
         return;
     }
     if (!rowEnds) {
-        vlc_ = (vlc_ + 1) & 0x1F;
+        vlc_ = nextLine;
     } else if (lastRow) {
         newFrame1();
     } else {
-        vlc_ = 0;
         vcc_ = (vcc_ + 1) & 0x7F;
-        startRow();
+        nextRow1();
     }
 }
 
+// Has C9 reached the end of its row, as type 1 sees it? In "interlace sync
+// & video" the lowest bit, which is the parity of the lines, is left out,
+// after C9 has been moved up one if R9 is even (19.8.2).
+bool Crtc::rowEnds1() const
+{
+    if (!interlaceVideo())
+        return vlc_ == reg_[9];
+    return ((vlc_ + (~reg_[9] & 1)) & 0x1E) == (reg_[9] & 0x1E);
+}
+
+// A new row on type 1. In "interlace sync & video" its first line has the
+// parity of the lines, which turns over with each row when R9 is even: rows
+// of even lines and rows of odd lines then follow one another (19.5.3).
+void Crtc::nextRow1()
+{
+    if (interlaceVideo()) {
+        if (!(reg_[9] & 1))
+            parityC9_ = !parityC9_;
+        vlc_ = parityC9_;
+    } else {
+        vlc_ = 0;
+    }
+    startRow();
+}
+
+// A new frame on type 1. The parity of the frame turns over, whatever R8
+// holds, and the lines take it (19.5.3).
 void Crtc::newFrame1()
 {
-    vlc_ = 0;
+    parityFrame_ = !parityFrame_;
+    parityC9_ = parityFrame_;
+    vlc_ = interlaceVideo() ? parityC9_ : 0;
     vcc_ = 0;
     vDisp_ = true;
     fromR12_ = true;
@@ -653,7 +730,11 @@ void Crtc::startRow()
         else
             vDisp_ = false;
     }
-    if (vcc_ == reg_[7] && !vsync_) {
+    if (vcc_ == reg_[7] && !vsync_ && type_ == CrtcType::UM6845R && interlace() && !parityFrame_) {
+        // Type 1, an even frame with an interlace mode set: the VSYNC
+        // waits for the middle of the line (19.7.2).
+        midVsync_ = true;
+    } else if (vcc_ == reg_[7] && !vsync_) {
         startVsync();
         // Type 2: an HSYNC that reaches the line's last character hides
         // the VSYNC that the next line's first one brings (15.6). This is

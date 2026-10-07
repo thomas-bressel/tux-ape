@@ -326,11 +326,157 @@ void earlyWriteToR0()
     CHECK(cpc.crtc().hcc() <= 2);
 }
 
+// Leaves the chip at the start of a frame of the parity asked for.
+void toFrame(Rig& rig, bool odd)
+{
+    rig.seek(0, 0);
+    while (rig.crtc.vcc() != 0 || rig.crtc.vlc() > 1 || rig.crtc.hcc() != 0 || rig.crtc.oddFrame() != odd)
+        rig.crtc.tick();
+}
+
+// Lines of the frame in progress, from its first character.
+int frameLines(Rig& rig)
+{
+    int lines = 0;
+    int row = rig.crtc.vcc();
+    while (lines < 2000) {
+        rig.nextLine();
+        ++lines;
+        if (rig.crtc.vcc() == 0 && row != 0)
+            break;
+        row = rig.crtc.vcc();
+    }
+    return lines;
+}
+
+// Interlace on type 1 (19.5.3, 19.6.2, 19.7.2, 19.8.2; what the Shaker's
+// "interlace C4/C9 counters", "IVM delays" and "interlace VSYNC nightmare"
+// measure, each figure of which is now the real chip's).
+void interlace()
+{
+    // The parity of the frame turns over with every frame, whatever R8
+    // holds.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.seek(0, 0);
+        const bool odd = rig.crtc.oddFrame();
+        CHECK_EQ(frameLines(rig), 312);
+        CHECK(rig.crtc.oddFrame() != odd);
+        CHECK_EQ(frameLines(rig), 312);
+        CHECK(rig.crtc.oddFrame() == odd);
+    }
+    // Either interlace mode: an even frame has one line more, counted as
+    // one more line of R5, and its VSYNC waits for the middle of the line.
+    for (const int r5 : {0, 3}) {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(8, 1);
+        rig.set(5, r5);
+        toFrame(rig, false);
+        rig.seek(30, 0);
+        CHECK(!rig.crtc.vsync());
+        rig.to(31);
+        CHECK(rig.crtc.vsync());
+        toFrame(rig, false);
+        CHECK_EQ(frameLines(rig), 313 + r5);
+        CHECK(rig.crtc.oddFrame());
+        CHECK_EQ(frameLines(rig), 312 + r5);
+        // An odd frame's VSYNC starts with its row.
+        toFrame(rig, true);
+        rig.seek(30, 0);
+        CHECK(rig.crtc.vsync());
+    }
+    // "Sync & video" with R9 = 7: rows of four lines, the even ones on an
+    // even frame, the odd ones on an odd frame.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(4, 77);
+        rig.set(6, 50);
+        rig.set(7, 60);
+        rig.set(8, 3);
+        for (const bool odd : {false, true}) {
+            toFrame(rig, odd);
+            for (int line = 0; line < 12; ++line) {
+                CHECK_EQ(rig.crtc.vcc(), line / 4);
+                CHECK_EQ(rig.crtc.vlc(), line % 4 * 2 + (odd ? 1 : 0));
+                rig.nextLine();
+            }
+            toFrame(rig, odd);
+            CHECK_EQ(frameLines(rig), odd ? 312 : 313);
+        }
+    }
+    // With R9 = 8 a row has nine lines to share between two frames: rows
+    // of five even lines and rows of four odd lines follow one another,
+    // an even frame starting with the five and an odd one with the four.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(9, 8);
+        rig.set(8, 3);
+        static const int kEven[] = {0, 2, 4, 6, 8, 1, 3, 5, 7, 0, 2, 4, 6, 8, 1};
+        static const int kOdd[] = {1, 3, 5, 7, 0, 2, 4, 6, 8, 1, 3, 5, 7, 0, 2};
+        for (const bool odd : {false, true}) {
+            toFrame(rig, odd);
+            for (int line = 0; line < 15; ++line) {
+                CHECK_EQ(rig.crtc.vlc(), (odd ? kOdd : kEven)[line]);
+                rig.nextLine();
+            }
+        }
+    }
+}
+
+// "Sync & video" coming on and going off in the middle of a line, as the
+// Shaker's thirty "IVM on/off" tests have it (19.5.3, the sixteen diagrams).
+// C9's lowest bit and the two parities are worked out in two steps, on the
+// character of the write and on the next one.
+void interlaceOnOff()
+{
+    struct Case {
+        bool oddFrame, oddR9, oddRow, oddLine;
+        int on, onNext, off;       // C9's lowest bit after each step
+        bool frameOn, frameOff;    // the frame is odd once the mode is on, and once it is off again
+    };
+    static const Case kCases[] = {
+        {false, false, false, false, 0, 0, 0, false, false},
+        {false, false, false, true, 1, 0, 0, false, false},
+        {false, false, true, false, 1, 1, 0, false, false},
+        {false, false, true, true, 0, 1, 0, false, false},
+        {false, true, false, false, 0, 0, 0, false, false},
+        {false, true, false, true, 1, 0, 0, false, false},
+        {false, true, true, false, 0, 0, 0, false, false},
+        {false, true, true, true, 1, 0, 0, false, false},
+        {true, false, false, false, 0, 0, 0, false, false},
+        {true, false, false, true, 1, 1, 1, true, true},
+        {true, false, true, false, 1, 1, 0, false, false},
+        {true, false, true, true, 0, 0, 1, true, true},
+        {true, true, false, false, 0, 0, 0, false, false},
+        {true, true, false, true, 1, 1, 1, true, true},
+        {true, true, true, false, 0, 0, 0, false, false},
+        {true, true, true, true, 1, 1, 1, true, true},
+    };
+    for (const Case& c : kCases) {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(9, c.oddR9 ? 7 : 6);
+        toFrame(rig, c.oddFrame);
+        rig.seek(c.oddRow ? 3 : 2, c.oddLine ? 3 : 2, 5);
+        rig.set(8, 3);
+        CHECK_EQ(rig.crtc.vlc() & 1, c.on);
+        rig.crtc.tick();
+        CHECK_EQ(rig.crtc.vlc() & 1, c.onNext);
+        CHECK(rig.crtc.oddFrame() == c.frameOn);
+        rig.to(9);
+        rig.set(8, 0);
+        CHECK_EQ(rig.crtc.vlc() & 1, c.off);
+        rig.crtc.tick();
+        CHECK(rig.crtc.oddFrame() == c.frameOff);
+    }
+}
+
 }  // namespace
 
 int main()
 {
     videoPointer();
+    interlace();
+    interlaceOnOff();
     earlyWriteToR0();
     linesOfR5();
     addressInLinesOfR5();
