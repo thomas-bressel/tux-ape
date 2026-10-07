@@ -88,6 +88,7 @@ void GateArray::reset()
     countsDue_ = vsyncDue_ = 0;
     interrupt_ = false;
     prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
+    rasterMatch_ = rasterDue_ = false;
 }
 
 uint32_t GateArray::monitorColour(int hardwareColour, MonitorKind kind, bool linear, int brightness)
@@ -259,6 +260,28 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         }
     }
 
+    if (plus_) {
+        // The Plus's raster interrupt: asked for a microsecond after "HSYNC,
+        // on the line set" has become true. That is as the HSYNC of the
+        // line starts; but also as the line begins, if the previous line's
+        // HSYNC is still on, and the line's own HSYNC then asks a second
+        // time. For this the pulse counts from the moment the CRTC starts
+        // it to a microsecond after it has ended: one that ends with its
+        // line is still seen on the next, and one that starts on a line's
+        // last character belongs to that line. ("pritest", "PRI trigger
+        // bug": on a real machine, two interrupts a frame for every R2 from
+        // 64 minus the width up, 63 included.)
+        if (rasterDue_) {
+            rasterDue_ = false;
+            asic_->raiseRasterInterrupt();
+            interrupt_ = true;
+        }
+        const uint8_t line = asic_->rasterInterruptLine();
+        const bool match = (hsync || crtc.hsync()) && line != 0 && crtc.asicLine() == line;
+        rasterDue_ = match && !rasterMatch_;
+        rasterMatch_ = match;
+    }
+
     if (hsync) {
         // Of the CRTC's HSYNC the Gate Array makes a pulse of its own, six
         // microseconds at most. Two microseconds in, it starts the sync
@@ -266,13 +289,6 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         // screen mode takes effect: a mode asked for during the first six
         // microseconds of a long HSYNC is still in time (Compendium 9.3.2,
         // Shaker "Gate Array moderisation").
-        // The Plus's raster interrupt comes as the HSYNC of its line
-        // starts.
-        if (hsyncAge_ == 0 && plus_ && asic_->rasterInterruptLine() != 0
-            && crtc.asicLine() == asic_->rasterInterruptLine()) {
-            asic_->raiseRasterInterrupt();
-            interrupt_ = true;
-        }
         // Its sound channels take an instruction each on every line.
         if (hsyncAge_ == 0 && plus_ && asic_->soundChannelsOn())
             asic_->soundTick();

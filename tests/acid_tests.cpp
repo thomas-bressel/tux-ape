@@ -98,6 +98,13 @@ const Program kPrograms[] = {
     // It does, with the interrupt where the Compendium has it.)
     {"dmatest", "plus/asic1.dsk", "DMATEST", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 40000, 25,
      {"dma int request test (dcsr bits)", "CRTC R0 length and dma"}},
+    // The raster interrupt on the line of the program's choice. Two of the
+    // twenty tests cannot pass on any machine: "enable norm during pri int
+    // handler" is unfinished and compares its one figure with what the test
+    // before it left behind, and "im2 vector (norm)" expects one ordinary
+    // interrupt a frame (its author's notes beside it list the errors).
+    {"pritest", "plus/asic1.dsk", "PRITEST", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 80000, 20,
+     {"PRI (enable norm during pri int handler)", "im2 vector (norm)"}},
 };
 
 struct Verdict {

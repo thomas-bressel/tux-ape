@@ -133,6 +133,8 @@ private:
     uint32_t vsyncDue_ = 0;
     bool interrupt_ = false;
     bool prevHsync_ = false;
+    bool rasterMatch_ = false;  // the Plus: HSYNC is on, on the line set for the raster interrupt
+    bool rasterDue_ = false;    // ... and has just come on: the interrupt follows
     bool prevVsync_ = false;
     bool delayedHsync_ = false;  // the CRTC's HSYNC one microsecond ago
     bool hsync_ = false;         // HSYNC as the Gate Array sees it now

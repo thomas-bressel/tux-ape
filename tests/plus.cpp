@@ -620,6 +620,47 @@ void testRasterInterrupt()
         // was the raster's: a handler reads it to know why it was called.
         CHECK_EQ(cpc.memory().read(0x6C0F) & 0x80, 0x80);
     }
+    // How many in a frame: one, whatever the line. The ASIC numbers lines
+    // with six bits of C4, so that lines 256 and up, which only differ
+    // from 0 to 55 by the bit a register of eight cannot hold, match
+    // nothing ("pritest" on a real machine; counted in pairs before).
+    auto inOneFrame = [&] {
+        int count = 0;
+        const uint64_t start = cpc.microseconds();
+        while (cpc.microseconds() - start < 312 * 64) {
+            cpc.run(1);
+            if (cpc.gateArray().interruptRequested()) {
+                cpc.irqAck();
+                ++count;
+            }
+        }
+        return count;
+    };
+    for (const int line : {10, 77, 200}) {
+        m.write(0x6800, static_cast<uint8_t>(line));
+        nextInterrupt();
+        cpc.irqAck();
+        CHECK_EQ(inOneFrame(), 1);
+    }
+    // Two, though, when the HSYNC runs on into the next line: the line
+    // begins with the pulse still on, and then has its own. From R2 = 50
+    // with a pulse of 14, and with R2 = 63 too.
+    cpc.out(0xBC00, 3);
+    cpc.out(0xBD00, 0x8E);
+    for (const int r2 : {49, 50, 63}) {
+        cpc.out(0xBC00, 2);
+        cpc.out(0xBD00, static_cast<uint8_t>(r2));
+        m.write(0x6800, 100);
+        for (const uint64_t start = cpc.microseconds(); cpc.microseconds() - start < 3 * 312 * 64;) {
+            cpc.run(1);
+            if (cpc.gateArray().interruptRequested())
+                cpc.irqAck();
+        }
+        CHECK_EQ(inOneFrame(), r2 >= 50 ? 2 : 1);
+    }
+    cpc.out(0xBC00, 2);
+    cpc.out(0xBD00, 46);
+
     // Back to the CPC's.
     m.write(0x6800, 0);
     const int back = nextInterrupt();

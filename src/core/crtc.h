@@ -91,7 +91,14 @@ public:
         splitDue_ = 2;
         late_ = true;
     }
-    uint8_t asicLine() const { return static_cast<uint8_t>(vcc_ << 3 | (vlc_ & 7)); }
+    // The line as the ASIC numbers it for its raster interrupt and its
+    // split: C9's low three bits under six bits of C4. A register of eight
+    // bits can therefore only name the first 256 lines of every 512: rows
+    // 32 to 63 never match, and a row of more than eight lines has each
+    // number several times. (Kevin Thacker's "pritest" on a real machine:
+    // one interrupt a frame whatever the line, not two for lines 1 to 55;
+    // two with 128 rows, four with rows of 32 lines.)
+    uint16_t asicLine() const { return static_cast<uint16_t>((vcc_ & 0x3F) << 3 | (vlc_ & 7)); }
     int frameLine() const { return asic() ? frameLine_ : vcc_ * (reg_[9] + 1) + vlc_; }
     uint8_t vtac() const { return vtac_; }  // vertical total adjust counter
     uint8_t hsc() const { return hsc_; }    // horizontal sync counter
