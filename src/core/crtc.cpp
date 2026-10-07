@@ -519,7 +519,7 @@ void Crtc::displayEnds(bool keepAddress)
         maRow_ = ma_;
     // The Plus's split screen: after this line the picture comes from
     // another address.
-    if (splitLine_ != 0 && asic() && asicLine() == splitLine_)
+    if (splitLine_ != 0 && asic() && asicLine() == splitLine_) [[unlikely]]
         maRow_ = splitAddress_;
 }
 

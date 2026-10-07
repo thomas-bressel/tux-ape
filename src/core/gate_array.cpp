@@ -226,6 +226,30 @@ void GateArray::acknowledgeInterrupt()
     interrupt_ = false;
 }
 
+// The Plus's raster interrupt, looked at every microsecond.
+void GateArray::rasterInterrupt(const Crtc& crtc, bool hsync)
+{
+    // The Plus's raster interrupt: asked for a microsecond after "HSYNC,
+    // on the line set" has become true. That is as the HSYNC of the
+    // line starts; but also as the line begins, if the previous line's
+    // HSYNC is still on, and the line's own HSYNC then asks a second
+    // time. For this the pulse counts from the moment the CRTC starts
+    // it to a microsecond after it has ended: one that ends with its
+    // line is still seen on the next, and one that starts on a line's
+    // last character belongs to that line. ("pritest", "PRI trigger
+    // bug": on a real machine, two interrupts a frame for every R2 from
+    // 64 minus the width up, 63 included.)
+    if (rasterDue_) {
+        rasterDue_ = false;
+        asic_->raiseRasterInterrupt();
+        interrupt_ = true;
+    }
+    const uint8_t line = asic_->rasterInterruptLine();
+    const bool match = (hsync || crtc.hsync()) && line != 0 && crtc.asicLine() == line;
+    rasterDue_ = match && !rasterMatch_;
+    rasterMatch_ = match;
+}
+
 void GateArray::sync(const Crtc& crtc, Monitor& monitor)
 {
     const bool asic = crtc.type() == CrtcType::AsicPlus || crtc.type() == CrtcType::PreAsic;
@@ -260,27 +284,8 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         }
     }
 
-    if (plus_) {
-        // The Plus's raster interrupt: asked for a microsecond after "HSYNC,
-        // on the line set" has become true. That is as the HSYNC of the
-        // line starts; but also as the line begins, if the previous line's
-        // HSYNC is still on, and the line's own HSYNC then asks a second
-        // time. For this the pulse counts from the moment the CRTC starts
-        // it to a microsecond after it has ended: one that ends with its
-        // line is still seen on the next, and one that starts on a line's
-        // last character belongs to that line. ("pritest", "PRI trigger
-        // bug": on a real machine, two interrupts a frame for every R2 from
-        // 64 minus the width up, 63 included.)
-        if (rasterDue_) {
-            rasterDue_ = false;
-            asic_->raiseRasterInterrupt();
-            interrupt_ = true;
-        }
-        const uint8_t line = asic_->rasterInterruptLine();
-        const bool match = (hsync || crtc.hsync()) && line != 0 && crtc.asicLine() == line;
-        rasterDue_ = match && !rasterMatch_;
-        rasterMatch_ = match;
-    }
+    if (plus_) [[unlikely]]
+        rasterInterrupt(crtc, hsync);
 
     if (hsync) {
         // Of the CRTC's HSYNC the Gate Array makes a pulse of its own, six

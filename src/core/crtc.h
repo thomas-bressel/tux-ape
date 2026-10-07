@@ -119,9 +119,6 @@ private:
     uint16_t ma_ = 0;
     uint16_t maRow_ = 0;  // refresh address at the start of the current row
     uint8_t splitLine_ = 0;
-    uint8_t splitDueLine_ = 0;     // written, and not yet seen by the chip
-    uint16_t splitDueAddress_ = 0;
-    uint8_t splitDue_ = 0;         // characters to go before it is
     uint16_t splitAddress_ = 0;
     int frameLine_ = 0;
     bool hsync_ = false;
@@ -137,9 +134,6 @@ private:
     // the next character on.
     enum class R6Write : uint8_t { None, ConflictOn, ConflictOff, Border };
     R6Write r6Due_ = R6Write::None;
-    // Something written is waiting to take effect: R6 above, or the
-    // ASIC's split below.
-    bool late_ = false;
     // DISPTMG before R8's skew, for the character before the one in
     // progress (bits 0 and 1: its two halves) and the one before that (bits
     // 2 and 3).
@@ -203,7 +197,7 @@ private:
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
     void displayEnds(bool keepAddress);
     void r6Written(R6Write effect);
-    void settleLate();
+    [[gnu::cold]] void settleLate();
     void endOfLine(bool oneCharacter);
     void startRow();
     void startFrame();
@@ -238,6 +232,14 @@ private:
     void endFrame0();
     void matchedR7();
     void decideAdjustment0();
+
+    // Something written is waiting to take effect: R6 on type 0, the
+    // split on the ASICs. (Kept after everything else: where the rest
+    // sits was measured, and moving it costs a few per cent.)
+    bool late_ = false;
+    uint8_t splitDue_ = 0;         // characters to go before the split written is seen
+    uint8_t splitDueLine_ = 0;
+    uint16_t splitDueAddress_ = 0;
 };
 
 }  // namespace tuxape

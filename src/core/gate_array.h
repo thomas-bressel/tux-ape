@@ -143,6 +143,7 @@ private:
 
     void drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split);
     void countHsync(Monitor& monitor);
+    void rasterInterrupt(const Crtc& crtc, bool hsync);
 };
 
 }  // namespace tuxape
