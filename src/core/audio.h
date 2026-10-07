@@ -7,9 +7,12 @@ namespace tuxape {
 
 // Turns the machine's sound into 16-bit stereo samples at the host's rate.
 //
-// The machine feeds it one value per PSG step (125 000 a second); each
-// output sample is the average of the steps that fall within it, which
-// keeps fast-changing sounds such as digitised speech clean.
+// The machine feeds it one value per PSG step (125 000 a second). What the
+// host's rate cannot carry is filtered out before the samples are taken: a
+// tone period of 0 or 1 is a square wave of 62.5 kHz, which nobody hears on
+// a CPC and which must not come back as a whistle at 18.4 kHz because the
+// sound card works at 44.1 kHz. (A plain average of the steps within each
+// sample lets a good part of it through.)
 //
 // Nothing is produced until a sample rate is set, so a machine nobody
 // listens to costs nothing.
@@ -34,39 +37,59 @@ public:
     {
         if (rate_ <= 0)
             return;
-        left_ += other;
-        right_ += other;
+        if (at_ == kBuffer)
+            filter();
         if (stereo_) {
-            left_ += a + b * 0.5f;
-            right_ += c + b * 0.5f;
+            left_[at_] = other + a + b * 0.5f;
+            right_[at_] = other + c + b * 0.5f;
         } else {
-            const float mono = (a + b + c) * 0.5f;
-            left_ += mono;
-            right_ += mono;
+            left_[at_] = right_[at_] = other + (a + b + c) * 0.5f;
         }
-        ++steps_;
-        phase_ += rate_;
-        if (phase_ >= kStepsPerSecond) {
-            phase_ -= kStepsPerSecond;
-            emitSample();
-        }
+        ++at_;
     }
 
     // Finished samples, left and right interleaved. The caller takes them
     // and clears the vector.
-    std::vector<int16_t>& samples() { return samples_; }
+    std::vector<int16_t>& samples()
+    {
+        if (at_ > filtered_)
+            filter();
+        return samples_;
+    }
 
 private:
+    // The filter: a windowed sinc, 64 steps long for 44.1 kHz and longer for
+    // lower rates, worked out for 32 positions of the sample between two
+    // steps (and for the next step, so that every position has a
+    // neighbour to be interpolated with).
+    //
+    // The steps are kept as they come and filtered a few hundred at a time,
+    // when the buffer is full or the samples are asked for: the filter's
+    // tables then stay in the processor's cache for the whole batch, which
+    // one sample at a time, with the rest of the machine at work in
+    // between, they do not.
+    static constexpr int kLanes = 16;  // the taps come in sixteens
+    static constexpr int kMaxTaps = 128;
+    static constexpr int kPositions = 32;
+    static constexpr int kBuffer = kMaxTaps + 512;
+
     double rate_ = 0;
+    double perRate_ = 0;  // 1 / rate_: a division for every sample would be felt
     double phase_ = 0;
+    double designedFor_ = 0;  // the rate the filter was worked out for
     bool stereo_ = true;
     int volume_ = 15;
-    float left_ = 0;
-    float right_ = 0;
-    int steps_ = 0;
+    int taps_ = 0;
+    int at_ = 0;        // where the next step goes
+    int filtered_ = 0;  // the steps before this one have had their samples taken
+    float left_[kBuffer] = {};
+    float right_[kBuffer] = {};
+    std::vector<float> kernel_;  // (kPositions + 1) rows of taps_
     std::vector<int16_t> samples_;
 
-    void emitSample();
+    void design();
+    void filter();
+    void emitSample(int end);
 };
 
 }  // namespace tuxape
