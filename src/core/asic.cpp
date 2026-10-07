@@ -49,7 +49,15 @@ void Asic::reset()
     palette_.fill(0);
     sprites_.fill(Sprite());
     spritesShown_ = false;
-    pri_ = splt_ = sscr_ = ivr_ = 0;
+    pri_ = splt_ = sscr_ = 0;
+    // The vector register starts with every bit set: the raster's
+    // interrupt then puts FE on the bus (what Kevin Thacker's "pritest"
+    // notes it saw on a real machine before any write to the register),
+    // and a program left in interrupt mode 0, as the Z80 is after a reset,
+    // runs a harmless CP n where a CPC would run RST &38. With 0 it ran
+    // LD B,n: Pro Tennis Tour then waited for the frame flyback on the
+    // wrong port, for ever.
+    ivr_ = 0xFF;
     ssa_ = 0;
     dcsr_ = 0;
     channels_.fill(Channel());
@@ -63,8 +71,8 @@ void Asic::reset()
 
 void Asic::raiseRasterInterrupt()
 {
-    dcsr_ |= 0x80;
-    showDcsr();
+    // Nothing shows in the status register yet: its bit 7 tells which
+    // interrupt the Z80 took last (see acknowledgeInterrupt).
 }
 
 void Asic::raiseChannelInterrupt(int channel)
@@ -139,11 +147,18 @@ uint8_t Asic::acknowledgeInterrupt(bool raster)
     // The raster's interrupt comes first, then the channels' from 0 to 2;
     // which one it is shows in bits 2 and 1 of the vector, bit 0 being
     // always 0.
+    //
+    // Bit 7 of the status register says whether the interrupt just taken
+    // was the raster's, and goes on saying so until the next one is taken:
+    // a handler reads it to know what it is there for (Copter 271 and No
+    // Exit do, and never drew a picture while the bit was dropped here),
+    // and Kevin Thacker's "pritest" expects &80 once the handler is back.
     uint8_t vector = ivr_ & 0xF8;
     if (raster) {
         vector |= 0x06;
-        dcsr_ &= 0x7F;
+        dcsr_ |= 0x80;
     } else if (dcsr_ & 0x70) {
+        dcsr_ &= 0x7F;
         const int channel = dcsr_ & 0x40 ? 0 : dcsr_ & 0x20 ? 1 : 2;
         vector |= static_cast<uint8_t>((2 - channel) << 1);
         // Taken, a channel's interrupt goes by itself. With bit 0 of the
@@ -160,8 +175,10 @@ uint8_t Asic::acknowledgeInterrupt(bool raster)
 
 void Asic::sequence(uint8_t value)
 {
-    // A byte that is not zero, then a zero, start the sequence.
-    if (value == 0 && previous_ != 0)
+    // A byte that is not zero, then a zero, start the sequence. More zeros
+    // after that one change nothing: Switchblade sends FF, 00, 00, FF, 77...
+    // (and, a slip in its loop, 238 bytes of its own code after the key).
+    if (value == 0 && (previous_ != 0 || sequenceAt_ == 1))
         sequenceAt_ = 0;
     previous_ = value;
     if (sequenceAt_ < 0)

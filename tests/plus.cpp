@@ -168,6 +168,14 @@ void testAsic()
     for (const uint8_t byte : {0xFF, 0x00, 0xFF, 0x77, 0x00, 0x51})
         cpc.out(0xBC00, byte);
     CHECK(asic.unlocked());
+    // More than one zero may start it: Switchblade sends two, and locks
+    // nothing by sending 238 bytes of its own code after the key.
+    lock(cpc);
+    CHECK(!asic.unlocked());
+    for (const uint8_t byte : {0xFF, 0x00, 0x00, 0xFF, 0x77, 0xB3, 0x51, 0xA8, 0xD4, 0x62, 0x39, 0x9C, 0x46, 0x2B, 0x15, 0x8A, 0xCD, 0xEE,
+                               0xCD, 0x4A, 0x1D, 0x21, 0xEC, 0x1F, 0x11, 0x22, 0x64, 0x01, 0x1E, 0x00, 0xED, 0xB0})
+        cpc.out(0xBC00, byte);
+    CHECK(asic.unlocked());
 
     // RMR2: the page of registers at &4000.
     cpc.out(0x7F00, 0xB8);
@@ -534,6 +542,13 @@ void testRasterInterrupt()
     cpc.irqAck();
     CHECK(second >= 0 && second != first);
 
+    // Until the vector register is written to, every bit of it is set: the
+    // raster's interrupt puts &FE on the bus. In interrupt mode 0, where a
+    // cartridge starts, that is a harmless CP n.
+    CHECK_EQ(cpc.asic().interruptVector(), 0xFF);
+    nextInterrupt();
+    CHECK_EQ(cpc.irqAck(), 0xFE);
+
     // With a line set, there is the one interrupt a frame, on that line,
     // as its HSYNC starts.
     m.write(0x6800, 77);
@@ -547,7 +562,9 @@ void testRasterInterrupt()
         // The vector: the register's upper bits, with 11 for the raster.
         CHECK_EQ(cpc.irqAck(), 0x56);
         CHECK(!cpc.gateArray().interruptRequested());
-        CHECK_EQ(cpc.memory().read(0x6C0F) & 0x80, 0x00);
+        // Bit 7 of the status goes on saying that the interrupt taken last
+        // was the raster's: a handler reads it to know why it was called.
+        CHECK_EQ(cpc.memory().read(0x6C0F) & 0x80, 0x80);
     }
     // Back to the CPC's.
     m.write(0x6800, 0);
