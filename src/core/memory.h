@@ -107,6 +107,8 @@ public:
     uint8_t selectedUpperRom() const { return upperSelected_; }
     uint8_t ramBank() const { return ramConfig_; }  // as written, e.g. 0xC4
     uint8_t rmr2() const { return rmr2_; }
+    // Whether the ASIC's page of registers is shown at &4000-&7FFF.
+    bool registersMapped() const { return registersMapped_; }
     int romSlotCount() const { return romSlotMask_ + 1; }
     // Whether ROM 7 of the cartridge is its page 3 (a Plus with a drive).
     bool cartridgeDiscRom() const { return discRom_; }

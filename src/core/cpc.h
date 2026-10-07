@@ -210,7 +210,21 @@ public:
         advance(1);
         waitForGateArray();
         advance(1);
-        const uint8_t v = memory_.read(addr);
+        uint8_t v = memory_.read(addr);
+        // Nothing answers in the unused parts of the ASIC's page of
+        // registers: what is read there is what the bus last carried, the
+        // last byte of the instruction that does the reading (Kevin
+        // Thacker's "asicfloat" on a real machine: &7E for LD A,(HL), the
+        // address's own high byte for LD A,(nn)).
+        if (memory_.registersMapped() && addr >= 0x5000 && addr < 0x8000) [[unlikely]] {
+            // What can be read back: the sprites' places, the palette, the
+            // analogue inputs and the sound channels' status. The raster
+            // registers at &6800 can only be written.
+            const bool used = (addr >= 0x6000 && addr < 0x6080) || (addr >= 0x6400 && addr < 0x6440)
+                              || (addr >= 0x6808 && addr < 0x6810) || (addr >= 0x6C00 && addr < 0x6C10);
+            if (!used)
+                v = memory_.read(static_cast<uint16_t>(cpu_.pc - 1));
+        }
         if (memoryWatched_) [[unlikely]]
             memoryAccess(addr, v, v, false);
         advance(1);

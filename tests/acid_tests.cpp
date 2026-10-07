@@ -81,9 +81,12 @@ const Program kPrograms[] = {
     // The Plus: its ASIC's lock, the cartridge and register page it maps,
     // and what its registers read back.
     {"asiclock", "plus/asic1.dsk", "LOCK", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 12000, 1, {}},
-    // One check of "RMR2 configs" reads a place of the register page with
-    // nothing behind it and wants what was left on the data bus.
-    {"asicrom", "plus/asic1.dsk", "ROM", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 12000, 3, {"RMR2 configs (bit 3,4)"}},
+    // (One check of "RMR2 configs" reads a place of the register page with
+    // nothing behind it and wants what was left on the data bus.)
+    {"asicrom", "plus/asic1.dsk", "ROM", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 12000, 3, {}},
+    // The places of the register page with nothing behind them, read with
+    // ten kinds of instruction each: what the bus last carried.
+    {"asicfloat", "plus/asic1.dsk", "FLOAT", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 300000, 58, {}},
     // "sprite ram mask" keeps 8K of results, which runs over the firmware's
     // keyboard workspace: the keys this runner presses to turn the pages
     // spoil a few of them.

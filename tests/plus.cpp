@@ -573,6 +573,29 @@ void testSplitMoment()
     }
 }
 
+// The parts of the register page with nothing behind them: a read there
+// gives what the bus last carried, the last byte the instruction fetched.
+void testFloatingBus()
+{
+    PlusMachine m;
+    Cpc& cpc = m.cpc;
+    cpc.memory().baseRam()[0x8000] = 0x7E;   // as if LD A,(HL) had just been fetched
+    cpc.memory().baseRam()[0x5123] = 0x99;   // the RAM under the page
+    cpc.cpu().pc = 0x8001;
+    for (const uint16_t address : {0x5123, 0x60A0, 0x6300, 0x6440, 0x67FF, 0x6800, 0x6805, 0x6810, 0x6BFF, 0x6C10, 0x7FFF})
+        CHECK_EQ(cpc.read(address), 0x7E);
+    cpc.memory().baseRam()[0x8000] = 0x50;   // the high byte of LD A,(&5000)
+    CHECK_EQ(cpc.read(0x5000), 0x50);
+    // What is there answers for itself.
+    m.write(0x6400, 0x5A);
+    CHECK_EQ(cpc.read(0x6400), 0x5A);
+    CHECK_EQ(cpc.read(0x6808), 0x3F);
+    CHECK_EQ(cpc.read(0x6C0F) & 0x0F, 0x00);
+    // With the page put away, the RAM is back.
+    cpc.out(0x7F00, 0xA0);
+    CHECK_EQ(cpc.read(0x5123), 0x99);
+}
+
 // The interrupt on a line of the program's choice, and the vector the ASIC
 // gives for it.
 void testRasterInterrupt()
@@ -853,6 +876,7 @@ int main()
     testSprites();
     testSplitAndScroll();
     testSplitMoment();
+    testFloatingBus();
     testRasterInterrupt();
     testSoundChannels();
     testSnapshot();
