@@ -493,8 +493,29 @@ int main(int argc, char* argv[])
                 cpc.stepInstruction();
         });
         // The firmware sets the colours again now and then, from its
-        // interrupt: it is kept from doing so meanwhile.
-        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.cpu().iff1 = cpc.cpu().iff2 = false; });
+        // interrupt, and turning interrupts off is not enough: its own
+        // code turns them back on. The machine is given three bytes of its
+        // own to run meanwhile, DI and a jump to itself, and finds its
+        // program again afterwards.
+        struct Parked {
+            uint16_t pc = 0;
+            bool iff1 = false, iff2 = false, halted = false;
+            uint8_t bytes[3] = {};
+        };
+        constexpr uint16_t kLoop = 0x8000;
+        const Parked parked = emulator.withMachine([&](tuxape::Cpc& cpc) {
+            auto& cpu = cpc.cpu();
+            Parked was{cpu.pc, cpu.iff1, cpu.iff2, cpu.halted, {}};
+            const uint8_t loop[3] = {0xF3, 0x18, 0xFE};
+            for (int n = 0; n < 3; ++n) {
+                was.bytes[n] = cpc.memory().readRam(static_cast<uint16_t>(kLoop + n));
+                cpc.memory().write(static_cast<uint16_t>(kLoop + n), loop[n]);
+            }
+            cpu.pc = kLoop;
+            cpu.halted = false;
+            cpu.iff1 = cpu.iff2 = false;
+            return was;
+        });
         const auto border = [&](int colour) {
             emulator.withMachine([colour](tuxape::Cpc& cpc) {
                 cpc.out(0x7F00, 0x10);
@@ -520,7 +541,15 @@ int main(int argc, char* argv[])
         CHECK(qGreen(part.pixel(4, 60)) > qRed(part.pixel(4, 60)));
         // Under the beam, the frame before.
         CHECK(part.pixel(4, line + 20) == red && part.pixel(4, 265) == red);
-        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.cpu().iff1 = cpc.cpu().iff2 = true; });
+        emulator.withMachine([&](tuxape::Cpc& cpc) {
+            auto& cpu = cpc.cpu();
+            for (int n = 0; n < 3; ++n)
+                cpc.memory().write(static_cast<uint16_t>(kLoop + n), parked.bytes[n]);
+            cpu.pc = parked.pc;
+            cpu.halted = parked.halted;
+            cpu.iff1 = parked.iff1;
+            cpu.iff2 = parked.iff2;
+        });
         emulator.setPaused(false);
     }
     return checkSummary("gui_tools");
