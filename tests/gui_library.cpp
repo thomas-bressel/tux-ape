@@ -1299,12 +1299,55 @@ int main(int argc, char* argv[])
             CHECK(!view->isChecked() && !size->isVisible());
         }
 
-        // A program filed elsewhere, or another form of it, keeps the
-        // picture of its title and year.
+        // A program filed elsewhere, or released otherwise, keeps the
+        // picture of its title: within what it is on, and for the very
+        // same year. A disc's picture is not a snapshot's, a tape's or a
+        // cartridge's, nor that of the game of another year.
         const QString snapshot = shelf + "/Gryzor (1987).sna";
         CHECK(QFile::copy(sorcery, snapshot));
         CHECK(libraryThumbnailName(entryOf(snapshot)) == "Gryzor (1987) (Snapshot)");
-        CHECK(libraryThumbnail(entryOf(snapshot)) == shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Disc) [Crack].png");
+        CHECK(libraryThumbnail(entryOf(snapshot)).isEmpty());
+        {
+            const QString crack = shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Disc) [Crack].png";
+            const QString original = shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Disc) [Original].png";
+            const QString onTape = shelf + "/thumbnails/Gryzor (1987) (Run and Gun) (Tape).png";
+            CHECK(QFile::exists(crack) && QFile::exists(original) && QFile::exists(onTape));
+            // Another release of the disc, filed elsewhere: a disc's.
+            LibraryEntry other = entryOf(snapshot);
+            other.kind = LibraryEntry::Disc;
+            other.release = "Hack";
+            other.subcategory = "Action";
+            CHECK(libraryThumbnailName(other) == "Gryzor (1987) (Action) (Disc) [Hack]");
+            CHECK(libraryThumbnail(other) == crack);
+            // The tape's is the tape's own, and a cartridge has none.
+            other.kind = LibraryEntry::Tape;
+            CHECK(libraryThumbnail(other) == onTape);
+            other.kind = LibraryEntry::Cartridge;
+            CHECK(libraryThumbnail(other).isEmpty());
+            // With the tape's picture gone, the tape does not take the disc's.
+            CHECK(QFile::rename(onTape, onTape + ".kept"));
+            other.kind = LibraryEntry::Tape;
+            CHECK(libraryThumbnail(other).isEmpty());
+            CHECK(libraryThumbnail(entryOf(disc)) == original);
+            CHECK(QFile::rename(onTape + ".kept", onTape));
+            // The year has to be the same, on the same medium too.
+            other.kind = LibraryEntry::Disc;
+            other.year = "1989";
+            CHECK(libraryThumbnail(other).isEmpty());
+            other.year.clear();
+            CHECK(libraryThumbnail(other).isEmpty());
+            // A picture named by hand, which says nothing of what it is on,
+            // stands for them all, of that year.
+            const QString byHand = shelf + "/thumbnails/Gryzor (1989).png";
+            CHECK(QFile::copy(cover, byHand));
+            other.year = "1989";
+            CHECK(libraryThumbnail(other) == byHand);
+            other.kind = LibraryEntry::Cartridge;
+            CHECK(libraryThumbnail(other) == byHand);
+            other.year = "1987";
+            CHECK(libraryThumbnail(other).isEmpty());
+            CHECK(QFile::remove(byHand));
+        }
         LibraryEntry sequel = entryOf(snapshot);
         sequel.title = "Gryzor 2";
         CHECK(libraryThumbnail(sequel).isEmpty());

@@ -99,9 +99,12 @@ QString libraryDisplayPath(const LibraryEntry& entry);
 QString libraryThumbnailName(const LibraryEntry& entry);  // without the folder and the suffix
 QString libraryThumbnailFolder(const LibraryEntry& entry);
 // The program's picture: the file of that name; failing that one of the
-// same title, year and side, so that a program keeps its picture when it
-// is filed elsewhere; failing that one of the same title and year that
-// names no side. Empty if it has none.
+// same title, the very same year, the same kind of medium (disc, tape,
+// cartridge...) and the same side, so that a program keeps its picture
+// when it is filed elsewhere or released otherwise; failing that one of
+// those that names no side. A disc's picture is never lent to a tape or a
+// cartridge of that title, nor to the game of another year. Empty if it
+// has none.
 QString libraryThumbnail(const LibraryEntry& entry);
 // Gives the program a picture: a copy of the file, under the program's
 // name, in place of the one it had. What went wrong, or nothing.

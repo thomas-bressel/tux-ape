@@ -203,12 +203,25 @@ QStringList picturesIn(const QString& folder)
 // The pictures of a thumbnails folder, to find a program's among them.
 struct Pictures {
     QHash<QString, QString> named;  // by their names without the suffix, in lower case
-    QHash<QString, QString> alike;  // by title, year and side
+    QHash<QString, QString> alike;  // by title, year, what the program is on, and side
 };
 
-QString likeness(const QString& title, const QString& year, const QString& side)
+QString likeness(const QString& title, const QString& year, const QString& medium, const QString& side)
 {
-    return asFileName(title).replace('_', ' ').simplified().toLower() + '|' + year + '|' + side.toLower();
+    return asFileName(title).replace('_', ' ').simplified().toLower() + '|' + year + '|' + medium.toLower() + '|'
+           + side.toLower();
+}
+
+// What a picture's name says its program is on, "Disc", "Tape"..., as
+// libraryThumbnailName() writes it; nothing if it does not say.
+QString mediumOf(const LibraryEntry& said)
+{
+    for (const QString& note : said.details.split(", "))
+        for (const LibraryEntry::Kind kind : {LibraryEntry::Disc, LibraryEntry::Snapshot, LibraryEntry::Tape,
+                                              LibraryEntry::Cartridge, LibraryEntry::Session})
+            if (note.compare(QLatin1String(kindName(kind)), Qt::CaseInsensitive) == 0)
+                return QLatin1String(kindName(kind));
+    return {};
 }
 
 Pictures picturesOf(const QString& folder)
@@ -221,7 +234,7 @@ Pictures picturesOf(const QString& folder)
         // What the picture's name says of its program, read as a
         // program's name is.
         const LibraryEntry said = libraryEntry(file);
-        const QString like = likeness(said.title, said.year, said.side);
+        const QString like = likeness(said.title, said.year, mediumOf(said), said.side);
         if (!pictures.alike.contains(like))
             pictures.alike.insert(like, file);
     }
@@ -229,15 +242,22 @@ Pictures picturesOf(const QString& folder)
 }
 
 // A program's picture among those of its thumbnails folder: its own;
-// failing that, one of the same title, year and side; failing that, one of
-// the same title and year that names no side, which stands for them all.
+// failing that, one of the same title, of the very same year, on the same
+// kind of medium and of the same side; failing that, one of them that
+// names no side, which stands for all the sides. A disc's picture is not a
+// tape's, nor a cartridge's, nor that of the game of another year. Only a
+// picture whose name says nothing of what it is on, which the user must
+// have named by hand, stands for them all.
 QString pictureOf(const LibraryEntry& entry, const Pictures& pictures)
 {
     if (const auto own = pictures.named.constFind(libraryThumbnailName(entry).toLower()); own != pictures.named.constEnd())
         return *own;
-    for (const QString& side : entry.side.isEmpty() ? QStringList{QString()} : QStringList{entry.side, QString()})
-        if (const auto like = pictures.alike.constFind(likeness(entry.title, entry.year, side)); like != pictures.alike.constEnd())
-            return *like;
+    const QStringList sides = entry.side.isEmpty() ? QStringList{QString()} : QStringList{entry.side, QString()};
+    for (const QString& medium : {QString(QLatin1String(kindName(entry.kind))), QString()})
+        for (const QString& side : sides)
+            if (const auto like = pictures.alike.constFind(likeness(entry.title, entry.year, medium, side));
+                like != pictures.alike.constEnd())
+                return *like;
     return {};
 }
 
