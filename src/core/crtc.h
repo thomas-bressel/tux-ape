@@ -174,7 +174,9 @@ private:
     // for as long as a status lasts that the start of a frame sets and the
     // end of a row takes down.
     bool lastLine1_ = false;       // C4 and C9 were at the frame's end as the last character began
+    bool overran1_ = false;        // ... and the line has gone on past that character
     bool fromR12_ = true;          // each line starts at R12/R13
+    bool parityInTest_ = false;    // after a write to R5 at the wrong moment: the lines' parity counts in the row-end test
 
     // ---- CRTC 2 (MC6845) -------------------------------------------------
     // This chip too decides ahead that a line is the frame's last, but when
@@ -214,6 +216,7 @@ private:
     [[gnu::cold]] void settleLate();
     void endOfLine1(bool oneCharacter);
     bool rowEnds1() const;
+    bool keepsAddress1() const;
     void nextRow1();
     void newFrame1();
     void startRow();

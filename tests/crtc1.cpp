@@ -470,6 +470,151 @@ void interlaceOnOff()
     }
 }
 
+// The "rupture for dummies" (11.6, 13.7.1.2): R5 brought from 0 to another
+// value during a line's last character makes every line from there start
+// at R12/R13, as on a frame's first row, until a row ends on lines of odd
+// parity. The parity turning over with each frame, that is the end of the
+// row on one frame and never on the next (what the Shaker's "CRTC 1
+// identifier", "RFD R5 other tests" and "RFD round 2" show on a real chip).
+void ruptureForDummies()
+{
+    for (const bool odd : {true, false}) {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(12, 0x30);
+        rig.set(13, 0x00);
+        toFrame(rig, odd);
+        rig.seek(5, 2, 63);
+        rig.set(5, 1);
+        rig.nextLine();
+        rig.set(5, 0);
+        // The rest of the row, at R12/R13 as it is at each line's start.
+        CHECK_EQ(rig.crtc.ma(), 0x3000);
+        rig.set(13, 0x10);
+        CHECK_EQ(lineAddress(rig, 5, 7), 0x3010);
+        if (odd) {
+            // The row ends, the address it reached is kept, and the rows
+            // that follow are rows like any other again.
+            CHECK_EQ(lineAddress(rig, 6, 0), 0x3010 + 40);
+            CHECK_EQ(lineAddress(rig, 7, 0), 0x3010 + 80);
+        } else {
+            CHECK_EQ(lineAddress(rig, 6, 0), 0x3010);
+            CHECK_EQ(lineAddress(rig, 20, 5), 0x3010);
+            CHECK_EQ(lineAddress(rig, 38, 7), 0x3010);
+        }
+        // The next frame is an ordinary one.
+        CHECK_EQ(lineAddress(rig, 0, 0), 0x3010);
+        CHECK_EQ(lineAddress(rig, 1, 0), 0x3010 + 40);
+        CHECK_EQ(lineAddress(rig, 2, 0), 0x3010 + 80);
+    }
+    // Not from another character of the line, nor from a value that was
+    // not 0.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(12, 0x30);
+        toFrame(rig, false);
+        rig.seek(5, 2, 62);
+        rig.set(5, 1);
+        rig.set(5, 0);
+        CHECK_EQ(lineAddress(rig, 5, 3), 0x3000 + 5 * 40);
+        rig.set(5, 2);
+        rig.seek(6, 2, 63);
+        rig.set(5, 1);
+        CHECK_EQ(lineAddress(rig, 6, 3), 0x3000 + 6 * 40);
+    }
+    // On a row's last line it calls the thing off instead.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(12, 0x30);
+        toFrame(rig, false);
+        rig.seek(5, 2, 63);
+        rig.set(5, 1);
+        rig.nextLine();
+        rig.set(5, 0);
+        CHECK_EQ(lineAddress(rig, 9, 0), 0x3000);
+        rig.seek(9, 7, 63);
+        rig.set(5, 1);
+        rig.nextLine();
+        rig.set(5, 0);
+        // Nothing has been kept since row 4 ended; from here rows are
+        // rows like any other again.
+        CHECK_EQ(rig.crtc.ma(), 0x3000 + 5 * 40);
+        CHECK_EQ(lineAddress(rig, 11, 0), 0x3000 + 6 * 40);
+    }
+    // Pinning the parity by switching "interlace sync & video" on and off
+    // on an even line makes it even: done before, every frame has its
+    // lines at R12/R13 to the end; done after the row has ended, none.
+    for (const bool before : {true, false}) {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(12, 0x30);
+        for (int frame = 0; frame < 3; ++frame) {
+            rig.seek(0, 0, 20);
+            if (before) {
+                rig.set(8, 3);
+                rig.to(24);
+                rig.set(8, 0);
+            }
+            rig.seek(5, 2, 63);
+            rig.set(5, 1);
+            rig.nextLine();
+            rig.set(5, 0);
+            if (!before) {
+                rig.seek(6, 0, 20);
+                rig.set(8, 3);
+                rig.to(24);
+                rig.set(8, 0);
+            }
+            if (frame > 0) {
+                CHECK_EQ(lineAddress(rig, 6, 4), before ? 0x3000 : 0x3000 + 40);
+                CHECK_EQ(lineAddress(rig, 30, 0), before ? 0x3000 : 0x3000 + 25 * 40);
+            }
+        }
+    }
+    // The other way in (13.7.1.2): the frame's end is noted as the last
+    // character of its last line begins; R0 raised on that character keeps
+    // the line going, and R9 or R4 moved away before it ends means that no
+    // frame ends there. The address logic has been told one did.
+    for (const bool odd : {true, false}) {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(12, 0x30);
+        toFrame(rig, odd);
+        rig.set(4, 7);
+        rig.seek(7, 7, 63);
+        rig.set(0, 127);
+        rig.to(88);
+        rig.set(4, 37);
+        rig.to(102);
+        rig.set(9, 14);
+        rig.nextLine();
+        rig.set(0, 63);
+        // The row goes on to line 14, its lines at R12/R13.
+        CHECK_EQ(rig.crtc.vcc(), 7);
+        CHECK_EQ(rig.crtc.vlc(), 8);
+        CHECK_EQ(rig.crtc.ma(), 0x3000);
+        CHECK_EQ(lineAddress(rig, 7, 14), 0x3000);
+        rig.seek(8, 0, 12);
+        rig.set(9, 7);
+        CHECK_EQ(lineAddress(rig, 8, 4), odd ? 0x3000 + 40 : 0x3000);
+        CHECK_EQ(lineAddress(rig, 20, 0), odd ? 0x3000 + 13 * 40 : 0x3000);
+    }
+    // With R4 alone moved away the row ends with that line: on an odd
+    // frame that is the end of it at once, and nothing shows.
+    for (const bool odd : {true, false}) {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(12, 0x30);
+        toFrame(rig, odd);
+        rig.set(4, 7);
+        rig.seek(7, 7, 63);
+        rig.set(0, 127);
+        rig.to(102);
+        rig.set(4, 38);
+        rig.nextLine();
+        rig.set(0, 63);
+        CHECK_EQ(rig.crtc.vcc(), 8);
+        CHECK_EQ(rig.crtc.ma(), odd ? 0x3000 + 8 * 40 : 0x3000);
+        CHECK_EQ(lineAddress(rig, 20, 0), odd ? 0x3000 + 20 * 40 : 0x3000);
+    }
+}
+
 }  // namespace
 
 int main()
@@ -477,6 +622,7 @@ int main()
     videoPointer();
     interlace();
     interlaceOnOff();
+    ruptureForDummies();
     earlyWriteToR0();
     linesOfR5();
     addressInLinesOfR5();

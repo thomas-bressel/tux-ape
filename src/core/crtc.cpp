@@ -34,8 +34,9 @@ void Crtc::reset()
     lastLineOpen_ = previousLast_ = hsyncJudged_ = false;
     ghostVsync_ = false;
     r9AtStart_ = 0;
-    lastLine1_ = false;
+    lastLine1_ = overran1_ = false;
     fromR12_ = true;
+    parityInTest_ = false;
     r8Due_ = 0;
     parityFrame_ = parityR6_ = parityC9_ = false;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
@@ -64,8 +65,21 @@ void Crtc::write(uint8_t value, bool early)
     case 0:
         // R0 brought to the character in progress makes it the line's
         // last: type 1 takes its note of the frame's end there.
-        if (type_ == CrtcType::UM6845R && hcc_ == reg_[0] && old != reg_[0])
-            lastLine1_ = vcc_ == reg_[4] && rowEnds1();
+        if (type_ == CrtcType::UM6845R && hcc_ == reg_[0] && old != reg_[0] && vcc_ == reg_[4] && rowEnds1())
+            lastLine1_ = true;
+        break;
+    case 5:
+        // Type 1's "rupture for dummies" (11.6): R5 brought from 0 to
+        // something else during a line's last character upsets the logic
+        // that has just looked for the frame's end. On a line that is not
+        // its row's last, every line from there starts at R12/R13 as on a
+        // frame's first row, and the parity of the lines has its say in
+        // the test that ends this; on a row's last line it is called off
+        // instead.
+        if (type_ == CrtcType::UM6845R && old == 0 && reg_[5] != 0 && hcc_ == reg_[0]) {
+            fromR12_ = !rowEnds1();
+            parityInTest_ = fromR12_;
+        }
         break;
     case 8:
         // Type 1, "interlace sync & video" coming on or going off: bit 0 of
@@ -359,9 +373,13 @@ void Crtc::tick()
     // C0 met R1 ends, not as it begins: R1 moved away during that very
     // character, and nothing is kept (17.4.2, Shaker "R1 stories": R1
     // raised above R0 on C0 = R1, on a real chip).
-    if (type1 && hcc_ == reg_[1] && rowEnds1())
+    if (type1 && hcc_ == reg_[1] && keepsAddress1())
         maRow_ = ma_;
     const bool newLine = hcc_ == reg_[0];
+    // Type 1: the frame's end was noted as this character began, and R0
+    // has been moved away since: the line goes on (13.7.1.2).
+    if (type1 && lastLine1_ && !newLine)
+        overran1_ = true;
     if (newLine) {
         // A first line that ends with R6 still 0 leaves the border for the
         // rest of the frame, as one whose C0 meets R1 does. With R0 = 0
@@ -386,8 +404,8 @@ void Crtc::tick()
     }
     // Type 1 notes, as a line's last character begins, whether the frame
     // ends with it (11.2.4).
-    if (type1 && hcc_ == reg_[0])
-        lastLine1_ = vcc_ == reg_[4] && rowEnds1();
+    if (type1 && hcc_ == reg_[0] && vcc_ == reg_[4] && rowEnds1())
+        lastLine1_ = true;
 
     if (type0) {
         // R7 was made equal to C4 on the character before this one, the
@@ -626,11 +644,27 @@ void Crtc::endOfLine1(bool oneCharacter)
     const bool rowEnds = rowEnds1();
     const bool lastRow = vcc_ == reg_[4];
     const uint8_t nextLine = static_cast<uint8_t>((vlc_ + (video ? 2 : 1)) & 0x1F);
+    const bool noted = lastLine1_;
+    const bool overran = overran1_;
+    lastLine1_ = overran1_ = false;
+    // The frame's end was noted, R0 was raised on that very character so
+    // that the line went on, and R4 or R9 has since been moved away: no
+    // frame ends here, but the address logic has been told one did. From
+    // the next line on every line starts at R12/R13, with the parity of
+    // the lines in the row-end test, as after a write to R5 at the wrong
+    // moment (13.7.1.2; Shaker "RFD round 2").
+    if (noted && overran && reg_[5] == 0 && !(rowEnds && lastRow)) {
+        fromR12_ = true;
+        parityInTest_ = true;
+    }
     // Each line starts at R12/R13 until a row ends; not the frame's last
     // row, so that with R4 = 0 the first row of the lines of R5 does too
     // (11.2.4, 17.4.2; Shaker "UPD OFF ADD LINE" on a real chip).
-    if (rowEnds && !lastRow)
-        fromR12_ = false;
+    // (Once the test has been met, the lines' parity has no more say in
+    // it: in "RFD round 2" the parity is made even right after, and the
+    // rows that follow are not repeated on a real chip.)
+    if (keepsAddress1() && !lastRow)
+        fromR12_ = parityInTest_ = false;
     // An even frame gets one line more with an interlace mode set, counted
     // as if R5 were one more (11.2.3, 19.6.2).
     const uint8_t lines = static_cast<uint8_t>((reg_[5] + (interlace() && !parityFrame_ ? 1 : 0)) & 0x1F);
@@ -659,7 +693,7 @@ void Crtc::endOfLine1(bool oneCharacter)
         }
         return;
     }
-    if (lastLine1_ && anyLines) {
+    if (noted && anyLines) {
         // The first of the lines of R5: counted by R4 and R9 as they are
         // now.
         inAdjust_ = true;
@@ -692,6 +726,22 @@ bool Crtc::rowEnds1() const
     return ((vlc_ + (~reg_[9] & 1)) & 0x1E) == (reg_[9] & 0x1E);
 }
 
+// The test type 1 makes when C0 meets R1, to keep the address for the next
+// row, and at the end of the line, to stop starting its lines at R12/R13:
+// is this the row's last line? After a "rupture for dummies" the parity of
+// the lines has its say as well, and on even lines the test is never met:
+// nothing is kept and every line starts at R12/R13, one frame in two since
+// the parity turns over with each frame, or every frame once the parity
+// has been pinned by switching "interlace sync & video" on and off (11.6.1,
+// 11.6.2; Shaker "RFD round 2", where R9 is 14 when the row ends: it is
+// not the parity of R9 that counts).
+bool Crtc::keepsAddress1() const
+{
+    if (!rowEnds1())
+        return false;
+    return !parityInTest_ || interlaceVideo() || parityC9_;
+}
+
 // A new row on type 1. In "interlace sync & video" its first line has the
 // parity of the lines, which turns over with each row when R9 is even: rows
 // of even lines and rows of odd lines then follow one another (19.5.3).
@@ -713,6 +763,7 @@ void Crtc::newFrame1()
 {
     parityFrame_ = !parityFrame_;
     parityC9_ = parityFrame_;
+    parityInTest_ = false;
     vlc_ = interlaceVideo() ? parityC9_ : 0;
     vcc_ = 0;
     vDisp_ = true;
