@@ -168,7 +168,10 @@ bool testFrames()
         return true;
     Cpc other;
     CHECK(setupStockMachine(other, CpcModel::Cpc6128, defaultRomDir(), &error));
+    CHECK_EQ(other.gateArray().interruptDelay(), GateArray::kInterruptDelay);
     CHECK(beginWinApeSession(other, *session, &error));
+    // WinAPE's way with interrupts while its session plays.
+    CHECK_EQ(other.gateArray().interruptDelay(), 0);
     WinApeSessionPlayer player;
     player.start(*session);
     int frames = 0;
@@ -180,6 +183,8 @@ bool testFrames()
     }
     CHECK(pDown);
     CHECK_EQ(frames, 57);
+    endWinApeSession(other);
+    CHECK_EQ(other.gateArray().interruptDelay(), GateArray::kInterruptDelay);
     // "p" was typed and RETURN pressed: BASIC answers "Syntax error".
     bool found = false;
     for (int address = 0xC000; address < 0x10000 && !found; ++address)

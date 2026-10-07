@@ -57,8 +57,12 @@ struct WinApeSession {
 
 // Loads the session's snapshot, the keyboard let go. The ROMs and the
 // discs are the caller's to put in first. False if the snapshot cannot be
-// loaded.
+// loaded. The machine is also given WinAPE's way with interrupts, raised
+// as an HSYNC ends and not a microsecond later: the recording's own marks
+// are followed a little better so. endWinApeSession() gives it back its
+// own once the session is over or stopped.
 bool beginWinApeSession(Cpc& cpc, const WinApeSession& session, std::string* error = nullptr);
+void endWinApeSession(Cpc& cpc);
 
 // Runs the machine for one of WinAPE's frames. They end where the CRTC's
 // VSYNC begins, with the instruction in progress there: every snapshot of

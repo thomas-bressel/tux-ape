@@ -393,6 +393,7 @@ void Emulator::startSessionRecording(bool fromColdReset)
         std::memset(pcDown_, 0, sizeof pcDown_);
         sessionPlayer_.stop();
         winApePlayer_.stop();
+        tuxape::endWinApeSession(cpc);
         playingSession_ = false;
         sessionRecorder_.start(std::move(session.snapshot));
         recordingSession_ = true;
@@ -423,6 +424,7 @@ bool Emulator::playSession(const tuxape::Session& session, QString* error)
         std::memset(pcDown_, 0, sizeof pcDown_);
         autoType_.cancel();
         winApePlayer_.stop();
+        tuxape::endWinApeSession(cpc);
         sessionPlayer_.start(session);
         playingSession_ = true;
         return true;
@@ -464,6 +466,7 @@ void Emulator::stopPlayback()
             return;
         sessionPlayer_.stop();
         winApePlayer_.stop();
+        tuxape::endWinApeSession(cpc);
         playingSession_ = false;
         cpc.keyboard().releaseAll();
     });
@@ -1040,6 +1043,7 @@ void Emulator::threadMain()
             // The keyboard is the recording's.
         } else if (playingSession_ && !sessionPlayer_.active()) {
             // That recording has just ended.
+            tuxape::endWinApeSession(cpc_);
             playingSession_ = false;
             playbackOver = true;
         } else if (sessionPlayer_.active()) {

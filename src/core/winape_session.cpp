@@ -139,7 +139,14 @@ bool beginWinApeSession(Cpc& cpc, const WinApeSession& session, std::string* err
     const bool loaded = loadSnapshot(cpc, session.snapshot, error);
     cpc.keyboard().releaseAll();
     cpc.alignClocks();
+    if (loaded)
+        cpc.gateArray().setInterruptDelay(0);
     return loaded;
+}
+
+void endWinApeSession(Cpc& cpc)
+{
+    cpc.gateArray().setInterruptDelay(GateArray::kInterruptDelay);
 }
 
 void runWinApeFrame(Cpc& cpc)
