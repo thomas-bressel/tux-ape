@@ -645,6 +645,93 @@ void r7OnTheLastCharacter()
     }
 }
 
+// R0 at 1 and a line that was ending on character 1, the last line of a
+// row, when R0 is raised there: the line goes on, but C4 steps at once, on
+// character 2, C9 staying where it is (13.7.2; Shaker "Bug OVF C4" on a
+// real chip, whose text says "OVF C4 on C0vs=2 when R0 upd (val>1) on
+// C0vs=1 when R0=1").
+void r0RaisedFromOne()
+{
+    // Not on the frame's last line: the step is one too many and nothing
+    // more; the row ends as rows do (13.7.2.1).
+    {
+        Rig rig;
+        rig.seek(6, 4, 56);
+        rig.set(0, 59);
+        rig.to(0);
+        rig.set(0, 1);
+        rig.to(1);
+        rig.to(0);
+        CHECK(rig.crtc.vcc() == 6 && rig.crtc.vlc() == 6);
+        rig.to(1);
+        rig.to(0);
+        CHECK(rig.crtc.vcc() == 6 && rig.crtc.vlc() == 7);
+        rig.to(1);
+        rig.set(0, 63);
+        CHECK(rig.crtc.vcc() == 6);
+        rig.crtc.tick();
+        CHECK(rig.crtc.hcc() == 2 && rig.crtc.vcc() == 7 && rig.crtc.vlc() == 7);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 8 && rig.crtc.vlc() == 0);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 8 && rig.crtc.vlc() == 1);
+    }
+    // On the frame's last line the chip is left adding lines: C9 runs on
+    // to 31, R5 being 0, with C4 one past R4, before the frame ends
+    // (13.7.2.2). R6 at that C4 brings the border from character 2 on.
+    {
+        Rig rig;
+        rig.seek(38, 4, 56);
+        rig.set(4, 0);
+        // C4 goes all the way round first; the frame after that one.
+        rig.seek(0, 4, 56);
+        rig.seek(0, 4, 56);
+        rig.set(6, 1);
+        rig.set(0, 59);
+        rig.to(0);
+        rig.set(0, 1);
+        rig.to(1);
+        rig.to(0);
+        rig.to(1);
+        rig.to(0);
+        CHECK(rig.crtc.vcc() == 0 && rig.crtc.vlc() == 7);
+        CHECK(rig.crtc.displayEnable());
+        rig.to(1);
+        rig.set(0, 63);
+        rig.crtc.tick();
+        CHECK(rig.crtc.hcc() == 2 && rig.crtc.vcc() == 1 && rig.crtc.vlc() == 7);
+        CHECK(!rig.crtc.displayEnable());
+        for (int line = 8; line <= 31; ++line) {
+            rig.nextLine();
+            CHECK_EQ(rig.crtc.vcc(), 1);
+            CHECK_EQ(rig.crtc.vlc(), line);
+        }
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 0 && rig.crtc.vlc() == 0);
+        rig.to(5);
+        CHECK(rig.crtc.displayEnable());
+    }
+    // Raised on character 0 instead, nothing of the kind: the way to
+    // lengthen such a line without C4 moving (13.7.2.2, last words).
+    {
+        Rig rig;
+        rig.seek(6, 4, 56);
+        rig.set(0, 59);
+        rig.to(0);
+        rig.set(0, 1);
+        rig.to(1);
+        rig.to(0);
+        rig.to(1);
+        rig.to(0);
+        CHECK(rig.crtc.vcc() == 6 && rig.crtc.vlc() == 7);
+        rig.set(0, 63);
+        rig.to(5);
+        CHECK(rig.crtc.vcc() == 6 && rig.crtc.vlc() == 7);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 7 && rig.crtc.vlc() == 0);
+    }
+}
+
 int main()
 {
     displaySkew();
@@ -663,5 +750,6 @@ int main()
     r1WrittenOnItsCharacter();
     hsyncsAreNotJoined();
     r7OnTheLastCharacter();
+    r0RaisedFromOne();
     return checkSummary("crtc0");
 }

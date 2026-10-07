@@ -191,6 +191,7 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     vsyncAllowed_ = hcc_ >= 2;
     c4CountArmed_ = c9AtR9();
     c9MatchAtEnd_ = false;
+    endSeenOnOne_ = false;
     r7Match_ = vcc_ == reg_[7];
     vsyncFresh_ = vsyncDue_ = false;
     if (type_ == CrtcType::MC6845) {
@@ -319,6 +320,19 @@ void Crtc::tick()
                 vsyncFresh_ = hcc_ != 0;
             }
         }
+        if (hcc_ == 2 && endSeenOnOne_ && c9MatchAtEnd_) {
+            // R0 was 1 and the line was ending on character 1, on the last
+            // line of a row, when R0 was raised: the line goes on, but the
+            // C4 step it had armed is taken here, C9 and C0 staying as they
+            // are (13.7.2). On a frame's last line that leaves the chip
+            // adding lines: C9 runs on, up to 31 with R5 = 0, before the
+            // frame ends (13.7.2.2; Shaker "Bug OVF C4" on a real chip).
+            c9MatchAtEnd_ = false;
+            vcc_ = (vcc_ + 1) & 0x7F;
+            rowChanged0();
+        }
+        if (hcc_ == 1)
+            endSeenOnOne_ = reg_[0] == 1;
         switch (hcc_) {
         case 1:
             // From here C9 may count at the end of the line. The last-line
@@ -860,6 +874,7 @@ void Crtc::lineStart0()
     // (and the VSYNC line count with it) stays as it is.
     const bool managed = c9Enabled_;
     c9Enabled_ = false;
+    endSeenOnOne_ = false;
     const bool c4Step = c9MatchAtEnd_;
     c9MatchAtEnd_ = false;
 

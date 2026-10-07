@@ -135,6 +135,7 @@ private:
     bool c9Enabled_ = false;       // the line reached character 1: C9 may count
     bool c4CountArmed_ = false;    // C9 equalled R9 on character 0
     bool c9MatchAtEnd_ = false;    // C9 equalled R9 during the last character
+    bool endSeenOnOne_ = false;     // R0 was 1 as character 1 began: the line was to end there
     bool vsyncAllowed_ = false;    // the line reached character 2
     bool r7Match_ = false;         // C4 = R7 has been noted: no VSYNC from it again
     bool vsyncFresh_ = false;      // VSYNC began mid-line: its line count restarts
