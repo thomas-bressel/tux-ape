@@ -224,6 +224,25 @@ void adjustmentLines()
     CHECK(!rig.crtc.inVerticalAdjust());
 }
 
+// R1 brought to the character in progress ends the display there as on
+// the other chips, but comes too late for the address the next row starts
+// from: that was settled with the old R1 (17.4.3; Shaker "R1 stories",
+// R1 = 63 on C0 = 63, on a real chip: the same line of text all the way
+// down).
+void r1WrittenOnItsCharacter()
+{
+    Rig rig(CrtcType::MC6845);
+    rig.set(1, 64);
+    rig.seek(5, 7, 63);
+    const uint16_t reached = rig.crtc.ma();
+    rig.set(1, 63);
+    CHECK(!rig.crtc.displayEnable());
+    rig.set(1, 64);
+    rig.nextLine();
+    CHECK(rig.crtc.ma() != reached);
+    CHECK_EQ(rig.crtc.ma(), 0);
+}
+
 }  // namespace
 
 int main()
@@ -234,5 +253,6 @@ int main()
     hsyncOverLineStart();
     ghostVsync();
     adjustmentLines();
+    r1WrittenOnItsCharacter();
     return checkSummary("crtc2");
 }

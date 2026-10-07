@@ -44,6 +44,16 @@ void Crtc::write(uint8_t value, bool early)
     reg_[selected_] = value & kWriteMask[selected_];
 
     switch (selected_) {
+    case 1:
+        // R1 is looked at all along the character too: brought to the one
+        // in progress, it ends the line's display there, and on a row's
+        // last line the address reached is kept for the next row (17.3).
+        // Hence R1 = 0 still counts when written on character 0 (17.5.1).
+        // The ASICs have made up their mind by then (17.5.2), and type 2
+        // has already kept, or not, the address for the next row (17.4.3).
+        if (!asic() && hcc_ == reg_[1] && old != reg_[1])
+            displayEnds(type_ != CrtcType::MC6845);
+        break;
     case 2:
         // R2 set to the character in progress starts the HSYNC there and
         // then ("R2.JIT", Compendium 14.7): the comparison is not only made
@@ -365,30 +375,23 @@ void Crtc::tick()
         ma_ = (ma_ + 1) & 0x3FFF;
     }
 
-    if (hcc_ == reg_[1]) {
-        hDisp_ = false;
-        // R6 still 0 where the first line's display ends: the border stays
-        // (18.3.2).
-        if (r6Conflict_) {
-            r6Conflict_ = false;
-            vDisp_ = false;
-        }
-        // The address reached at the end of a row's last line becomes the
-        // start of the next row. On the ASICs the lines added after the
-        // last row keep its address (11.2.6).
-        if (c9AtR9() && !(asic() && (inAdjust_ || interlaceLine_)))
-            maRow_ = ma_;
-    }
+    if (hcc_ == reg_[1])
+        displayEnds(true);
 
+    // On type 0 the character an HSYNC ends on cannot start the next one:
+    // two pulses are never joined (15.3.1; with R0 = 0, R2 = 0 and R3 = 1
+    // there is one every second character, 15.3.2).
+    bool hsyncEnded = false;
     if (hsync_) {
         hsc_ = (hsc_ + 1) & 0x0F;
         if (hsc_ == (reg_[3] & 0x0F)) {
             hsync_ = false;
+            hsyncEnded = type0;
             if (type_ == CrtcType::MC6845)
                 hsyncEnds2();
         }
     }
-    if (hcc_ == reg_[2] && !hsync_) {
+    if (hcc_ == reg_[2] && !hsync_ && !hsyncEnded) {
         // A width of 0 means no HSYNC at all on types 0 and 1, and 16
         // characters on the others.
         const bool none = (reg_[3] & 0x0F) == 0
@@ -403,6 +406,23 @@ void Crtc::tick()
     // HSYNC lies on the first character.
     if (newLine && type_ == CrtcType::MC6845)
         lineStart2();
+}
+
+// C0 has met R1: the border from here to the end of the line.
+void Crtc::displayEnds(bool keepAddress)
+{
+    hDisp_ = false;
+    // R6 still 0 where the first line's display ends: the border stays
+    // (18.3.2).
+    if (r6Conflict_) {
+        r6Conflict_ = false;
+        vDisp_ = false;
+    }
+    // The address reached at the end of a row's last line becomes the
+    // start of the next row. On the ASICs the lines added after the
+    // last row keep its address (11.2.6).
+    if (keepAddress && c9AtR9() && !(asic() && (inAdjust_ || interlaceLine_)))
+        maRow_ = ma_;
 }
 
 void Crtc::endOfLine(bool oneCharacter)

@@ -172,6 +172,7 @@ private:
     bool parityC9_ = false;        // types 3 and 4: the lines shown are the odd ones
 
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
+    void displayEnds(bool keepAddress);
     void endOfLine(bool oneCharacter);
     void startRow();
     void startFrame();

@@ -6,6 +6,7 @@
 // The chip is driven directly here: a write made after the tick that brings
 // character N is a write "during character N".
 
+#include <initializer_list>
 #include <string>
 
 #include "check.h"
@@ -519,6 +520,93 @@ void displaySkew()
     }
 }
 
+// R1 brought to the character in progress ends the line's display there
+// (17.3): R1 = 0 written during character 0 still gives a line of border,
+// written during character 1 it comes too late (17.5.1, Shaker "R1
+// stories", third story, on a real chip). The ASICs have already made up
+// their mind (17.5.2).
+void r1WrittenOnItsCharacter()
+{
+    for (const int c0 : {62, 63, 0, 1}) {
+        Rig rig;
+        rig.seek(5, 2, c0);
+        rig.set(1, 0);
+        rig.seek(5, c0 >= 62 ? 3 : 2, 4);
+        CHECK_EQ(rig.crtc.displayEnable(), c0 == 1);
+        rig.set(1, 40);
+        rig.to(20);
+        CHECK_EQ(rig.crtc.displayEnable(), c0 == 1);
+        rig.nextLine();
+        rig.to(4);
+        CHECK(rig.crtc.displayEnable());
+    }
+    {
+        Rig rig;
+        rig.seek(5, 2, 10);
+        rig.set(1, 10);
+        CHECK(!rig.crtc.displayEnable());
+    }
+    {
+        Rig rig(CrtcType::AsicPlus);
+        rig.seek(5, 2, 0);
+        rig.set(1, 0);
+        rig.to(4);
+        CHECK(rig.crtc.displayEnable());
+    }
+}
+
+// Two HSYNCs are never joined on type 0: the character one ends on cannot
+// start the next (15.3.1; Shaker "R2 update during HSYNC", R2 = #15 written
+// during a pulse of 10 begun at #0B, on a real chip). With lines of one
+// character there is a pulse every second character (15.3.2).
+void hsyncsAreNotJoined()
+{
+    {
+        Rig rig;
+        rig.set(2, 11);
+        rig.set(3, 10);
+        rig.seek(5, 2, 14);
+        rig.set(2, 21);
+        rig.to(20);
+        CHECK(rig.crtc.hsync());
+        rig.to(21);
+        CHECK(!rig.crtc.hsync());
+        rig.to(30);
+        CHECK(!rig.crtc.hsync());
+    }
+    // One character further and there is room for a second pulse.
+    {
+        Rig rig;
+        rig.set(2, 11);
+        rig.set(3, 10);
+        rig.seek(5, 2, 14);
+        rig.set(2, 22);
+        rig.to(21);
+        CHECK(!rig.crtc.hsync());
+        rig.to(22);
+        CHECK(rig.crtc.hsync());
+        rig.to(31);
+        CHECK(rig.crtc.hsync());
+        rig.to(32);
+        CHECK(!rig.crtc.hsync());
+    }
+    {
+        Rig rig;
+        rig.set(3, 1);
+        rig.set(2, 0);
+        rig.seek(5, 2, 0);
+        rig.set(0, 0);
+        int pulses = 0;
+        bool before = rig.crtc.hsync();
+        for (int i = 0; i < 100; ++i) {
+            rig.crtc.tick();
+            pulses += rig.crtc.hsync() && !before;
+            before = rig.crtc.hsync();
+        }
+        CHECK_EQ(pulses, 50);
+    }
+}
+
 int main()
 {
     displaySkew();
@@ -534,5 +622,7 @@ int main()
     hsyncCutByR3();
     hsyncStartedByR2();
     oneCharacterLines();
+    r1WrittenOnItsCharacter();
+    hsyncsAreNotJoined();
     return checkSummary("crtc0");
 }
