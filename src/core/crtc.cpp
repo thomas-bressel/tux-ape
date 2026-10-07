@@ -24,6 +24,8 @@ void Crtc::reset()
     hDisp_ = vDisp_ = false;
     r6Conflict_ = false;
     r6Due_ = R6Write::None;
+    splitDue_ = 0;
+    late_ = false;
     dispHistory_ = 0;
     inAdjust_ = false;
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
@@ -128,10 +130,12 @@ void Crtc::write(uint8_t value, bool early)
             // next one (Shaker AP, "R6 stories", the patchworks of R6 = 0/8
             // and of R6 = 9/25: photographs of both chips, five characters
             // shown on type 0 and four on type 2 for a write on the fifth).
-            if (type_ == CrtcType::HD6845S)
+            if (type_ == CrtcType::HD6845S) {
                 r6Due_ = effect;
-            else
+                late_ = true;
+            } else {
                 r6Written(effect);
+            }
         }
         break;
     case 7:
@@ -189,6 +193,12 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     vsync_ = vsync;
     hsyncCut_ = previousHsyncCut_ = HsyncCut::None;
     r6Due_ = R6Write::None;
+    if (splitDue_ != 0) {
+        splitLine_ = splitDueLine_;
+        splitAddress_ = splitDueAddress_;
+        splitDue_ = 0;
+    }
+    late_ = false;
     // What a snapshot does not hold is set to what an undisturbed frame
     // would have at this place.
     hDisp_ = hcc_ < reg_[1];
@@ -305,10 +315,8 @@ void Crtc::tick()
     previousHsyncCut_ = hsyncCut_;
     hsyncCut_ = HsyncCut::None;
     dispHistory_ = static_cast<uint8_t>((dispHistory_ << 2 | dispNow()) & 0x0F);
-    if (r6Due_ != R6Write::None) [[unlikely]] {
-        r6Written(r6Due_);
-        r6Due_ = R6Write::None;
-    }
+    if (late_) [[unlikely]]
+        settleLate();
 
     const bool type0 = type_ == CrtcType::HD6845S;
     const bool newLine = hcc_ == reg_[0];
@@ -430,10 +438,6 @@ void Crtc::tick()
         // it only moves when C0 meets R1 on a row's last line, so a frame
         // that never does shows R12/R13 on its first row and whatever was
         // kept last on all the others (17.4.2, Shaker "R1 stories").
-        // The Plus's split screen: from this line on the picture comes
-        // from another address.
-        if (splitLine_ != 0 && asic() && asicLine() == splitLine_)
-            maRow_ = splitAddress_;
         ma_ = type_ == CrtcType::UM6845R && vcc_ == 0 ? startAddress() : maRow_;
     } else {
         ma_ = (ma_ + 1) & 0x3FFF;
@@ -472,6 +476,21 @@ void Crtc::tick()
         lineStart2();
 }
 
+// What was written a moment ago and only counts from this character on:
+// R6 on type 0, the split on the ASICs.
+void Crtc::settleLate()
+{
+    if (r6Due_ != R6Write::None) {
+        r6Written(r6Due_);
+        r6Due_ = R6Write::None;
+    }
+    if (splitDue_ != 0 && --splitDue_ == 0) {
+        splitLine_ = splitDueLine_;
+        splitAddress_ = splitDueAddress_;
+    }
+    late_ = splitDue_ != 0;
+}
+
 // What a write to R6 does to the picture, on types 0 and 2.
 void Crtc::r6Written(R6Write effect)
 {
@@ -498,6 +517,10 @@ void Crtc::displayEnds(bool keepAddress)
     // last row keep its address (11.2.6).
     if (keepAddress && c9AtR9() && !(asic() && (inAdjust_ || interlaceLine_)))
         maRow_ = ma_;
+    // The Plus's split screen: after this line the picture comes from
+    // another address.
+    if (splitLine_ != 0 && asic() && asicLine() == splitLine_)
+        maRow_ = splitAddress_;
 }
 
 void Crtc::endOfLine(bool oneCharacter)
@@ -756,6 +779,9 @@ void Crtc::endFrameAsic()
 
 void Crtc::newFrameAsic()
 {
+    // A split on the frame's last line: the new frame starts from its
+    // address, not from R12/R13.
+    const bool split = splitLine_ != 0 && asicLine() == splitLine_;
     inAdjust_ = interlaceLine_ = false;
     vcc_ = 0;
     frameLine_ = 0;
@@ -766,7 +792,7 @@ void Crtc::newFrameAsic()
     parityC9_ = parityFrame_;
     vlc_ = interlaceVideo() ? parityC9_ : 0;
     vDisp_ = true;
-    maRow_ = startAddress();
+    maRow_ = split ? splitAddress_ : startAddress();
     rowStartAsic(before);
 }
 

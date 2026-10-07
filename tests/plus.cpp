@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "check.h"
+#include "crtc_rig.h"
 #include "core/cartridge.h"
 #include "core/cpc.h"
 #include "core/snapshot.h"
@@ -490,14 +491,23 @@ void testSplitAndScroll()
     CHECK_EQ(white.width, 8);
     CHECK_EQ(white.height, 8);
 
-    // From line 100 on the picture comes from &4000.
+    // After line 100 the picture comes from &4000.
     m.write(0x6801, 100);
     m.write(0x6802, 0x10);
     m.write(0x6803, 0x00);
     const uint32_t* frame = m.picture();
-    CHECK_EQ(frame[(screen.y + 99) * Monitor::kWidth + screen.x + 100], kBlue);
-    CHECK_EQ(frame[(screen.y + 100) * Monitor::kWidth + screen.x + 100], kWhite);
+    CHECK_EQ(frame[(screen.y + 100) * Monitor::kWidth + screen.x + 100], kBlue);
+    CHECK_EQ(frame[(screen.y + 101) * Monitor::kWidth + screen.x + 100], kWhite);
     CHECK_EQ(frame[(screen.y + 199) * Monitor::kWidth + screen.x + 100], kWhite);
+    // Scrolled to the right, that white picture still ends where the
+    // display does: what is pushed past the edge is lost.
+    m.write(0x6804, 0x0B);
+    frame = m.picture();
+    CHECK_EQ(frame[(screen.y + 150) * Monitor::kWidth + screen.x + screen.width - 1], kWhite);
+    CHECK(frame[(screen.y + 150) * Monitor::kWidth + screen.x + screen.width] != kWhite);
+    CHECK_EQ(frame[(screen.y + 150) * Monitor::kWidth + screen.x + screen.width],
+             frame[(screen.y + 150) * Monitor::kWidth + screen.x + screen.width + 40]);
+    m.write(0x6804, 0);
     m.write(0x6801, 0);
 
     // The scroll: five pixels to the right, then three lines up.
@@ -517,6 +527,50 @@ void testSplitAndScroll()
     m.write(0x6804, 0x80);
     CHECK_EQ(m.find(kWhite).width, 0);
     CHECK_EQ(m.find(kBlue).x, screen.x + 16);
+}
+
+// When the ASIC looks at the split line: as that line's display ends, for
+// the line that follows, and as a frame's last line ends; what is written
+// counts a microsecond later. The figures are those of Kevin Thacker's
+// "splittrig" programs on a real machine: the split shows when the line is
+// set at the latest 2 characters before C0 = R1 (or before the frame's end).
+void testSplitMoment()
+{
+    for (const int c0 : {37, 38, 39}) {
+        Rig rig(CrtcType::AsicPlus);
+        rig.seek(12, 3, c0);                 // line 99
+        rig.crtc.setSplit(99, 0x1800);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma() == 0x1800, c0 <= 38);
+        // Too late for this line, and the line is gone: no split this frame.
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma() == 0x1800, c0 <= 38);
+    }
+    // Set for nine microseconds only, as the test programs do.
+    {
+        Rig rig(CrtcType::AsicPlus);
+        rig.seek(12, 3, 30);
+        rig.crtc.setSplit(99, 0x1800);
+        rig.to(39);
+        rig.crtc.setSplit(0, 0x1800);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 0x1800);
+    }
+    // On the last line of a frame the new frame starts from the split's
+    // address instead of R12/R13, if the line is still set as it ends.
+    for (const int c0 : {40, 61, 62, 63}) {
+        Rig rig(CrtcType::AsicPlus);
+        rig.set(4, 18);
+        rig.seek(18, 7, c0);                 // line 151
+        rig.crtc.setSplit(151, 0x1800);
+        if (c0 == 40) {
+            rig.to(50);                      // seen as the display ended, gone by the end of the line
+            rig.crtc.setSplit(0, 0x1800);
+        }
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 0 && rig.crtc.vlc() == 0);
+        CHECK_EQ(rig.crtc.ma() == 0x1800, c0 == 61 || c0 == 62);
+    }
 }
 
 // The interrupt on a line of the program's choice, and the vector the ASIC
@@ -757,6 +811,7 @@ int main()
     testPpi();
     testSprites();
     testSplitAndScroll();
+    testSplitMoment();
     testRasterInterrupt();
     testSoundChannels();
     testSnapshot();

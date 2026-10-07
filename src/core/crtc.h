@@ -73,14 +73,23 @@ public:
     uint8_t vcc() const { return vcc_; }    // vertical character counter
     uint8_t vlc() const { return vlc_; }    // vertical line counter
 
-    // The Plus ASIC's additions. The split: when the line that starts is
-    // number `line` (C4 in bits 7-3, C9 in bits 2-0; 0 for no split), the
-    // picture goes on from `address`. And the number of the line since the
-    // frame began, which is where its sprites are counted from.
+    // The Plus ASIC's additions. The split: the picture goes on from
+    // `address` after line number `line` (C4 in bits 7-3, C9 in bits 2-0; 0
+    // for no split). The ASIC looks at the two as that line's display ends
+    // (C0 = R1), where it gets the next line's address ready, and again as
+    // a frame's last line ends, in place of R12/R13. A value written to
+    // its registers only counts a microsecond later, as with the CRTC
+    // registers it holds (Compendium 4.4.3). Kevin Thacker's "splittrig"
+    // programs hold the split line for nine microseconds at a chosen
+    // moment: on a real machine the split shows for delays &36B to &373 on
+    // an ordinary line and &352 to &35A on a frame's last line, and so it
+    // does here. (Taken as the line began, it showed 39 microseconds early.)
     void setSplit(uint8_t line, uint16_t address)
     {
-        splitLine_ = line;
-        splitAddress_ = address & 0x3FFF;
+        splitDueLine_ = line;
+        splitDueAddress_ = address & 0x3FFF;
+        splitDue_ = 2;
+        late_ = true;
     }
     uint8_t asicLine() const { return static_cast<uint8_t>(vcc_ << 3 | (vlc_ & 7)); }
     int frameLine() const { return asic() ? frameLine_ : vcc_ * (reg_[9] + 1) + vlc_; }
@@ -103,6 +112,9 @@ private:
     uint16_t ma_ = 0;
     uint16_t maRow_ = 0;  // refresh address at the start of the current row
     uint8_t splitLine_ = 0;
+    uint8_t splitDueLine_ = 0;     // written, and not yet seen by the chip
+    uint16_t splitDueAddress_ = 0;
+    uint8_t splitDue_ = 0;         // characters to go before it is
     uint16_t splitAddress_ = 0;
     int frameLine_ = 0;
     bool hsync_ = false;
@@ -118,6 +130,9 @@ private:
     // the next character on.
     enum class R6Write : uint8_t { None, ConflictOn, ConflictOff, Border };
     R6Write r6Due_ = R6Write::None;
+    // Something written is waiting to take effect: R6 above, or the
+    // ASIC's split below.
+    bool late_ = false;
     // DISPTMG before R8's skew, for the character before the one in
     // progress (bits 0 and 1: its two halves) and the one before that (bits
     // 2 and 3).
@@ -181,6 +196,7 @@ private:
     uint16_t startAddress() const { return static_cast<uint16_t>((reg_[12] << 8 | reg_[13]) & 0x3FFF); }
     void displayEnds(bool keepAddress);
     void r6Written(R6Write effect);
+    void settleLate();
     void endOfLine(bool oneCharacter);
     void startRow();
     void startFrame();

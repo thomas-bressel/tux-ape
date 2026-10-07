@@ -450,10 +450,14 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
 // soft scroll, then the sprites on top of it.
 void GateArray::drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split)
 {
+    // What the memory holds, shown or not: the scroll delays that, and the
+    // border is laid over the result where the CRTC says so. The picture
+    // therefore still ends where the display does, its last pixels lost,
+    // and begins with the end of whatever was read before the line.
     uint8_t pens[16];
     for (int i = 0; i < 8; ++i) {
-        pens[i] = fetchedDisplay_[0] ? left[i] : static_cast<uint8_t>(kBorder);
-        pens[i + 8] = fetchedDisplay_[1] ? right[i] : static_cast<uint8_t>(kBorder);
+        pens[i] = left[i];
+        pens[i + 8] = right[i];
     }
     const uint8_t scroll = asic_->scroll();
     const int shift = scroll & 0x0F;
@@ -461,7 +465,8 @@ void GateArray::drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* righ
     // hide where the scrolled picture comes in.
     const bool masked = (scroll & 0x80) && fetchedFirst_;
     for (int i = 0; i < 16; ++i) {
-        const uint8_t pen = masked ? static_cast<uint8_t>(kBorder) : i < shift ? pensBefore_[16 - shift + i] : pens[i - shift];
+        const bool shown = fetchedDisplay_[i >> 3] && !masked;
+        const uint8_t pen = !shown ? static_cast<uint8_t>(kBorder) : i < shift ? pensBefore_[16 - shift + i] : pens[i - shift];
         out[i] = (i < split ? rgbBefore_ : rgb_)[pen];
     }
     std::memcpy(pensBefore_, pens, sizeof pens);
