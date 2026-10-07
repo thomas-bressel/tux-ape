@@ -73,6 +73,28 @@ void Cpc::run(uint32_t microseconds)
     syncSound();
 }
 
+void Cpc::runToVsync(uint32_t longest)
+{
+    runUntil_ = clk_ + static_cast<uint64_t>(longest) * 4;
+    stopRun_ = false;
+    bool before = crtc_.vsync();
+    while (clk_ < runUntil_) {
+        if (watchedCount_ != 0 && watched_[cpu_.pc] && execHook_ && !cpu_.interruptDue())
+            execHook_(cpu_.pc);
+        if (stopRun_)
+            break;
+        turboLeft_ = 4;
+        cpu_.step();
+        const bool now = crtc_.vsync();
+        if ((now && !before) || stopRun_)
+            break;
+        before = now;
+    }
+    runUntil_ = clk_;
+    stopRun_ = false;
+    syncSound();
+}
+
 void Cpc::alignClocks()
 {
     syncSound();

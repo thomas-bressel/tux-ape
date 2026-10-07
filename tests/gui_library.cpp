@@ -37,6 +37,7 @@
 #include "core/cpc.h"
 #include "core/disc.h"
 #include "core/setup.h"
+#include "core/snapshot.h"
 #include "discmanager.h"
 #include "emulator.h"
 #include "librarydialog.h"
@@ -713,7 +714,8 @@ int main(int argc, char* argv[])
 
     // Recorded sessions: the files of the "SNR" folder have a tab of their
     // own, "Let's Play", and a double click plays one back. Those WinAPE
-    // recorded are listed too, and cannot be played: that is said.
+    // recorded are played too, with the disc they name found in the
+    // Library, however its name is spelt there.
     {
         const QString played = folder.filePath("played");
         QDir().mkpath(played + "/SNR");
@@ -722,9 +724,27 @@ int main(int argc, char* argv[])
         window.startSessionRecording(session, false);
         CHECK(window.stopSessionRecording());
         {
+            // As WinAPE lays one out: its snapshot under its own words, the
+            // ROMs, the discs, a version, and the keys to the file's end.
+            const std::vector<uint8_t> snapshot = emulator.withMachine([](tuxape::Cpc& cpc) { return tuxape::saveSnapshot(cpc); });
+            QByteArray file(reinterpret_cast<const char*>(snapshot.data()), static_cast<qsizetype>(snapshot.size()));
+            file.replace(0, 8, "RW - SNR");
+            const auto chunk = [&](const char* id, const QByteArray& data, bool toTheEnd = false) {
+                const quint32 length = toTheEnd ? 0xFFFFFFFFu : static_cast<quint32>(data.size());
+                file += QByteArray(id, 4);
+                for (int n = 0; n < 4; ++n)
+                    file += static_cast<char>(length >> (8 * n));
+                file += data;
+            };
+            chunk("ROMS", QByteArray("A\0OS6128\0BASIC1-1\0\0\0\0\0\0\0AMSDOS\0\0\0\0\0\0\0\0\0", 39));
+            chunk("DSCA", "GRYZOR!.DSK");
+            chunk("DSCB", QByteArray());
+            chunk("SNRV", QByteArray(1, '\1'));
+            // After a second the space bar, for a tenth of one; then 200 frames.
+            chunk("SNR ", QByteArray(78, '\0') + QByteArray("\x32\x01\x2F\x05\x7F\xC8", 6), true);
             QFile winApe(played + "/SNR/1943 (UK) (1988) (WinApe 2.0 Alpha 18) [SESSION].snr");
             CHECK(winApe.open(QIODevice::WriteOnly));
-            winApe.write(QByteArray("RW - SNR") + QByteArray(0x200, '\0'));
+            winApe.write(file);
         }
         CHECK(QFile::copy(gryzor, played + "/Games/Gryzor.dsk"));
         const QList<LibraryEntry> entries = scanLibrary({played});
@@ -762,9 +782,27 @@ int main(int argc, char* argv[])
         play("Gryzor", &said);
         CHECK(emulator.playingSession() && said.isEmpty());
         emulator.stopPlayback();
+        window.discs()->remove(0);
         play("1943", &said);
+        CHECK(emulator.playingSession() && said.isEmpty());
+        CHECK_EQ(emulator.playbackPosition().second, 255u);
+        CHECK(window.discs()->info(0).present && window.discs()->info(0).path.endsWith("/Games/Gryzor.dsk"));
+        emulator.stopPlayback();
         CHECK(!emulator.playingSession());
-        CHECK(said.contains("recorded by WinAPE"));
+        // Without its disc it is played all the same, and that is said; one
+        // that stops short is not played.
+        CHECK(QFile::remove(played + "/Games/Gryzor.dsk"));
+        play("1943", &said);
+        CHECK(emulator.playingSession() && said.contains("GRYZOR!.DSK") && said.contains("could not be found"));
+        emulator.stopPlayback();
+        {
+            QFile winApe(played + "/SNR/1943 (UK) (1988) (WinApe 2.0 Alpha 18) [SESSION].snr");
+            CHECK(winApe.open(QIODevice::ReadWrite) && winApe.resize(winApe.size() - 4));
+        }
+        said.clear();
+        play("1943", &said);
+        CHECK(!emulator.playingSession() && said.contains("damaged"));
+        CHECK(QFile::copy(gryzor, played + "/Games/Gryzor.dsk"));
 
         // The window comes back sorted as it was left.
         const auto withLibrary = [&](const std::function<void(LibraryDialog*)>& act) {

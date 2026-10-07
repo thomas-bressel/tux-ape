@@ -26,6 +26,7 @@
 #include "core/cpc.h"
 #include "core/recording.h"
 #include "core/session.h"
+#include "core/winape_session.h"
 #include "core/keymap.h"
 #include "core/setup.h"
 
@@ -199,6 +200,10 @@ public:
     // (playbackFinished() is then sent) or is stopped. False, with a
     // message, if its snapshot cannot be loaded.
     bool playSession(const tuxape::Session& session, QString* error = nullptr);
+    // The same for a session recorded by WinAPE. The machine, with its
+    // ROMs and the discs the session names, is the caller's to set up
+    // first; the frames are then run as WinAPE runs them.
+    bool playWinApeSession(const tuxape::WinApeSession& session, QString* error = nullptr);
     void stopPlayback();
     bool playingSession() const { return playingSession_; }
     // Frames played so far and frames in all, for a clock.
@@ -384,6 +389,7 @@ private:
 
     tuxape::SessionRecorder sessionRecorder_;
     tuxape::SessionPlayer sessionPlayer_;
+    tuxape::WinApeSessionPlayer winApePlayer_;
     std::atomic<bool> recordingSession_{false};
     std::atomic<bool> playingSession_{false};
 

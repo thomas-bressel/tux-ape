@@ -43,6 +43,10 @@ public:
     // may run over; the excess is taken off the next call.
     void run(uint32_t microseconds);
     void runFrame() { run(kFrameMicroseconds); }
+    // Runs to where the CRTC's VSYNC begins, the instruction in progress
+    // there being finished, or for `longest` microseconds if none comes.
+    // Breakpoints stop it as they stop run().
+    void runToVsync(uint32_t longest);
 
     // Brings the machine's clocks into step with one another and forgets
     // any time owed, so that what it does from here depends on its state

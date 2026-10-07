@@ -392,6 +392,7 @@ void Emulator::startSessionRecording(bool fromColdReset)
         std::memset(keyHolds_, 0, sizeof keyHolds_);
         std::memset(pcDown_, 0, sizeof pcDown_);
         sessionPlayer_.stop();
+        winApePlayer_.stop();
         playingSession_ = false;
         sessionRecorder_.start(std::move(session.snapshot));
         recordingSession_ = true;
@@ -421,7 +422,33 @@ bool Emulator::playSession(const tuxape::Session& session, QString* error)
         std::memset(keyHolds_, 0, sizeof keyHolds_);
         std::memset(pcDown_, 0, sizeof pcDown_);
         autoType_.cancel();
+        winApePlayer_.stop();
         sessionPlayer_.start(session);
+        playingSession_ = true;
+        return true;
+    });
+    if (loaded)
+        setPaused(false);
+    return loaded;
+}
+
+bool Emulator::playWinApeSession(const tuxape::WinApeSession& session, QString* error)
+{
+    const bool loaded = withMachine([&](Cpc& cpc) {
+        std::string message;
+        if (!tuxape::beginWinApeSession(cpc, session, &message)) {
+            if (error)
+                *error = QString::fromStdString(message);
+            return false;
+        }
+        if (sessionRecorder_.active())
+            sessionRecorder_.finish();
+        recordingSession_ = false;
+        sessionPlayer_.stop();
+        std::memset(keyHolds_, 0, sizeof keyHolds_);
+        std::memset(pcDown_, 0, sizeof pcDown_);
+        autoType_.cancel();
+        winApePlayer_.start(session);
         playingSession_ = true;
         return true;
     });
@@ -433,9 +460,10 @@ bool Emulator::playSession(const tuxape::Session& session, QString* error)
 void Emulator::stopPlayback()
 {
     withMachine([&](Cpc& cpc) {
-        if (!sessionPlayer_.active())
+        if (!sessionPlayer_.active() && !winApePlayer_.active())
             return;
         sessionPlayer_.stop();
+        winApePlayer_.stop();
         playingSession_ = false;
         cpc.keyboard().releaseAll();
     });
@@ -443,7 +471,10 @@ void Emulator::stopPlayback()
 
 std::pair<uint32_t, uint32_t> Emulator::playbackPosition()
 {
-    return withMachine([&](Cpc&) { return std::make_pair(sessionPlayer_.position(), sessionPlayer_.frames()); });
+    return withMachine([&](Cpc&) {
+        return winApePlayer_.active() ? std::make_pair(winApePlayer_.position(), winApePlayer_.frames())
+                                      : std::make_pair(sessionPlayer_.position(), sessionPlayer_.frames());
+    });
 }
 
 // ---- debugging -------------------------------------------------------------------
@@ -1002,7 +1033,16 @@ void Emulator::threadMain()
             continue;
         }
         bool playbackOver = false;
-        if (sessionPlayer_.active()) {
+        // One of WinAPE's sessions is played by its frames, which end
+        // where the CRTC's VSYNC begins.
+        const bool winApeFrame = winApePlayer_.active() && winApePlayer_.frame(cpc_.keyboard());
+        if (winApeFrame) {
+            // The keyboard is the recording's.
+        } else if (playingSession_ && !sessionPlayer_.active()) {
+            // That recording has just ended.
+            playingSession_ = false;
+            playbackOver = true;
+        } else if (sessionPlayer_.active()) {
             // The keyboard is the recording's.
             if (!sessionPlayer_.frame(cpc_.keyboard())) {
                 playingSession_ = false;
@@ -1020,7 +1060,10 @@ void Emulator::threadMain()
             autoType_.frame();
             sessionRecorder_.frame(cpc_.keyboard());
         }
-        cpc_.runFrame();
+        if (winApeFrame)
+            tuxape::runWinApeFrame(cpc_);
+        else
+            cpc_.runFrame();
         ym_.frame(cpc_.psg());
         if (avi_.active()) {
             avi_.addFrame(cpc_.monitor().frame(), cpc_.audio().samples());

@@ -8,6 +8,7 @@
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QDir>
+#include <QDirIterator>
 #include <QDragEnterEvent>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -48,6 +49,7 @@
 #include "core/session.h"
 #include "core/setup.h"
 #include "core/snapshot.h"
+#include "core/winape_session.h"
 
 namespace {
 
@@ -976,20 +978,151 @@ bool MainWindow::stopSessionRecording()
 bool MainWindow::playSessionFile(const QString& path)
 {
     const auto data = tuxape::readFile(path.toStdString());
-    return playSessionData(data ? std::span<const uint8_t>(*data) : std::span<const uint8_t>(), QDir::toNativeSeparators(path));
+    return playSessionData(data ? std::span<const uint8_t>(*data) : std::span<const uint8_t>(), QDir::toNativeSeparators(path),
+                           QFileInfo(path).absolutePath());
 }
 
-bool MainWindow::playSessionData(std::span<const uint8_t> data, const QString& name)
+namespace {
+
+// A file by the name another program knew it by, among the user's own:
+// beside the session first, then anywhere in the Library's folders. Case
+// does not count, nor, failing that, punctuation, which collections spell
+// in more ways than one ("Dragon's Lair", "Dragons Lair").
+QString findNamedFile(const std::string& named, const QStringList& folders)
 {
-    const auto session = tuxape::Session::parse(data);
-    // WinAPE's own recordings start with these words; TuxAPE's are not
-    // made the same way, and it cannot follow WinAPE's.
-    const bool winApe = data.size() >= 8 && std::memcmp(data.data(), "RW - SNR", 8) == 0;
-    QString error = winApe ? tr("it is a session recorded by WinAPE, which TuxAPE cannot play back")
-                           : tr("it is not a session recorded by TuxAPE");
-    const bool playing = session && emulator_->playSession(*session, &error);
+    // WinAPE sometimes kept the whole path, as Windows writes it.
+    QString name = QString::fromLatin1(named.c_str());
+    name = name.mid(qMax(name.lastIndexOf('\\'), name.lastIndexOf('/')) + 1);
+    if (name.isEmpty())
+        return {};
+    const auto plain = [](const QString& text) {
+        QString out;
+        for (const QChar c : text)
+            if (c.isLetterOrNumber())
+                out += c.toLower();
+        return out;
+    };
+    const QString wanted = plain(name);
+    QString close;
+    for (const QString& folder : folders) {
+        if (folder.isEmpty())
+            continue;
+        QDirIterator files(folder, QDir::Files, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+        while (files.hasNext()) {
+            files.next();
+            if (files.fileName().compare(name, Qt::CaseInsensitive) == 0)
+                return files.filePath();
+            if (close.isEmpty() && plain(files.fileName()) == wanted)
+                close = files.filePath();
+        }
+    }
+    return close;
+}
+
+}  // namespace
+
+// A session recorded by WinAPE. The machine it was recorded on is put
+// together from the names it holds, as far as they can be found; its
+// discs are looked for by their names. What cannot be found is said, and
+// the session played all the same: many never read their disc again.
+bool MainWindow::playWinApeSession(const tuxape::WinApeSession& session, const QString& name, const QString& folder)
+{
+    using tuxape::CpcModel;
+    using tuxape::SnapshotMachine;
+    QStringList folders{folder};
+    folders += libraryFoldersOrDefault(settings_.libraryFolders);
+    QStringList missing;
+
+    const SnapshotMachine machine = session.machine.machine;
+    const bool plus = !session.cartridge.empty() || machine == SnapshotMachine::Plus6128
+                      || machine == SnapshotMachine::Plus464 || machine == SnapshotMachine::Gx4000;
+    const CpcModel model = plus ? (machine == SnapshotMachine::Plus464 ? CpcModel::Plus464 : CpcModel::Plus6128)
+                           : machine == SnapshotMachine::Cpc464 ? CpcModel::Cpc464
+                           : machine == SnapshotMachine::Cpc664 ? CpcModel::Cpc664
+                                                                : CpcModel::Cpc6128;
+    tuxape::MachineConfig config = tuxape::stockMachine(model);
+    const auto known = [](const std::string& rom) { return !tuxape::findRom(rom, tuxape::defaultRomDir()).empty(); };
+    if (plus) {
+        // The cartridge is the machine's firmware.
+        QString cartridge;
+        if (!session.cartridge.empty()) {
+            if (known(session.cartridge))
+                cartridge = QString::fromStdString(tuxape::findRom(session.cartridge, tuxape::defaultRomDir()).string());
+            else
+                cartridge = findNamedFile(session.cartridge, folders);
+            if (cartridge.isEmpty())
+                missing << tr("the cartridge %1").arg(QString::fromLatin1(session.cartridge.c_str()));
+        }
+        if (!cartridge.isEmpty())
+            config.cartridge = QDir::toNativeSeparators(cartridge).toStdString();
+    } else {
+        // Its ROMs, where they are to be had; the machine's usual ones
+        // otherwise.
+        if (known(session.lowerRom))
+            config.lowerRom = session.lowerRom;
+        else if (!session.lowerRom.empty())
+            missing << tr("the ROM %1").arg(QString::fromLatin1(session.lowerRom.c_str()));
+        for (size_t slot = 0; slot < config.upperRoms.size(); ++slot) {
+            const std::string& rom = session.upperRoms[slot];
+            if (rom.empty() || known(rom))
+                config.upperRoms[slot] = rom;
+            else
+                missing << tr("the ROM %1").arg(QString::fromLatin1(rom.c_str()));
+        }
+    }
+
+    // The discs.
+    QString discs[2];
+    const std::string* named[2] = {&session.discA, &session.discB};
+    for (int drive = 0; drive < 2; ++drive) {
+        if (named[drive]->empty())
+            continue;
+        discs[drive] = findNamedFile(*named[drive], folders);
+        if (discs[drive].isEmpty())
+            missing << tr("the disc %1").arg(QString::fromLatin1(named[drive]->c_str()));
+    }
+    for (int drive = 0; drive < 2; ++drive)
+        if (!discs[drive].isEmpty() && !saveBeforeLeaving(drive))
+            return false;
+    if (!missing.isEmpty())
+        report(tr("%1 was recorded with:\n\n%2\n\nwhich could not be found. It is played without, and may go wrong where "
+                  "they are needed.")
+                   .arg(name, missing.join("\n")));
+
+    // Always from a cold start: what the snapshot does not hold is then
+    // the same each time.
+    emulator_->setupMachine(config, true);
+    for (int drive = 0; drive < 2; ++drive) {
+        if (discs[drive].isEmpty())
+            continue;
+        const QString error = discs_->insert(drive, discs[drive]);
+        if (!error.isEmpty())
+            report(error);
+    }
+    QString error;
+    const bool playing = emulator_->playWinApeSession(session, &error);
     if (!playing)
         report(tr("Cannot play %1:\n%2.").arg(name, error));
+    return playing;
+}
+
+bool MainWindow::playSessionData(std::span<const uint8_t> data, const QString& name, const QString& folder)
+{
+    bool playing = false;
+    if (tuxape::WinApeSession::isOne(data)) {
+        // One of WinAPE's own recordings.
+        const auto session = tuxape::WinApeSession::parse(data);
+        if (session)
+            playing = playWinApeSession(*session, name, folder);
+        else
+            report(tr("Cannot play %1:\n%2.").arg(name, tr("the recording is damaged")));
+    } else {
+        const auto session = tuxape::Session::parse(data);
+        QString error = tr("it is not a recorded session");
+        playing = session && emulator_->playSession(*session, &error);
+        if (!playing)
+            report(tr("Cannot play %1:\n%2.").arg(name, error));
+    }
     playSessionAction_->setChecked(playing);
     recordSessionAction_->setChecked(emulator_->recordingSession());
     updateDebugActions();

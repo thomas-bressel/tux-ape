@@ -89,6 +89,11 @@ target_link_libraries(session PRIVATE tuxape_core)
 add_test(NAME session COMMAND session)
 set_tests_properties(session PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(winape_session winape_session.cpp)
+target_link_libraries(winape_session PRIVATE tuxape_core)
+add_test(NAME winape_session COMMAND winape_session)
+set_tests_properties(winape_session PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(recording recording.cpp)
 target_link_libraries(recording PRIVATE tuxape_core)
 add_test(NAME recording COMMAND recording)

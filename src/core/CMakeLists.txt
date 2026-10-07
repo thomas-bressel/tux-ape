@@ -26,6 +26,7 @@ add_library(tuxape_core STATIC
     snapshot.cpp
     tape.cpp
     version.cpp
+    winape_session.cpp
     zip.cpp
 )
 

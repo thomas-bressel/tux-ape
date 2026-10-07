@@ -10,6 +10,9 @@
 #include "settings.h"
 
 class DiscManager;
+namespace tuxape {
+struct WinApeSession;
+}
 class Emulator;
 class QAction;
 class QFrame;
@@ -69,7 +72,10 @@ public:
     void startSessionRecording(const QString& path, bool fromColdReset);
     bool stopSessionRecording();
     bool playSessionFile(const QString& path);
-    bool playSessionData(std::span<const uint8_t> data, const QString& name);
+    // `folder`, when the session comes from a file: where it is, for the
+    // discs a session of WinAPE's names to be looked for beside it first.
+    bool playSessionData(std::span<const uint8_t> data, const QString& name, const QString& folder = QString());
+    bool playWinApeSession(const tuxape::WinApeSession& session, const QString& name, const QString& folder);
     // Plugs a cartridge (a CPR file) in. The machine becomes a Plus if it
     // was not one, and starts afresh, as one does when its cartridge is
     // changed.
