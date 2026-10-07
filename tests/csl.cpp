@@ -128,6 +128,48 @@ void testScript()
     fs::remove_all(dir);
 }
 
+// A program may answer a key with its code at once, while the script's key
+// command is still holding the key down (the Shaker's module E does): the
+// wait that follows the keys has to see that code.
+void testAnswerDuringKeys()
+{
+    Cpc cpc;
+    if (!setupStockMachine(cpc, CpcModel::Cpc6128, defaultRomDir(), nullptr))
+        return;
+    cpc.run(3000000);
+    while (!cpc.cpu().iff1)
+        cpc.stepInstruction();
+    const uint8_t program[] = {
+        0xCD, 0x06, 0xBB,        // call KM WAIT CHAR
+        0xED, 0x00, 0xED, 0x00,  // code 0000
+        0x18, 0xF7,              // and again
+    };
+    uint16_t addr = 0x8000;
+    for (uint8_t byte : program)
+        cpc.memory().write(addr++, byte);
+    cpc.cpu().pc = 0x8000;
+
+    const fs::path dir = fs::temp_directory_path() / "tuxape_csl_ssm_test";
+    fs::create_directories(dir);
+    write(dir / "keys.csl",
+          "csl_version 1.0\n"
+          "key_delay 70000 70000 400000\n"
+          "key_output ' '\n"
+          "wait_ssm0000\n"
+          "key_output ' '\n"
+          "wait_ssm0000\n");
+    CslRunner runner(cpc);
+    runner.setEventTimeout(5);
+    const uint64_t before = cpc.microseconds();
+    const bool ok = runner.run(dir / "keys.csl");
+    if (!ok)
+        std::printf("script error: %s\n", runner.error().c_str());
+    CHECK(ok);
+    // Neither wait ran on to its time limit.
+    CHECK(cpc.microseconds() - before < 2000000);
+    fs::remove_all(dir);
+}
+
 }  // namespace
 
 // A script saves the machine, lets it move on and brings it back.
@@ -175,6 +217,7 @@ void testSnapshots()
 int main()
 {
     testSsmCodes();
+    testAnswerDuringKeys();
     testScript();
     testSnapshots();
     return checkSummary("csl");

@@ -407,6 +407,7 @@ bool CslRunner::insertDisc(int drive, const std::string& name)
 // pressed together, and \(KOF) to chain the next key without a pause.
 bool CslRunner::typeKeys(std::string_view text)
 {
+    ssmCountAtKeys_ = ssmCount_;
     Keyboard& keyboard = cpc_.keyboard();
     size_t i = 0;
 
@@ -478,11 +479,22 @@ bool CslRunner::typeKeys(std::string_view text)
 
 bool CslRunner::waitForSsm(int code)
 {
-    const uint64_t seen = ssmCount_;
+    // Since the keys that came before this wait, if the program has
+    // already answered them; from now on otherwise.
+    const auto sent = [&] {
+        for (const auto& [count, which] : recentSsm_)
+            if (count > ssmCountAtKeys_ && which == code) {
+                ssmCountAtKeys_ = count;
+                return true;
+            }
+        return false;
+    };
     const uint64_t limit = cpc_.microseconds() + static_cast<uint64_t>(eventTimeout_) * 1000000;
     for (;;) {
+        if (sent())
+            return true;
         cpc_.run(1000);
-        if (ssmCount_ != seen && lastSsm_ == code)
+        if (sent())
             return true;
         if (cpc_.microseconds() > limit) {
             char text[64];
@@ -496,6 +508,9 @@ void CslRunner::onSsm(uint16_t code)
 {
     lastSsm_ = code;
     ++ssmCount_;
+    recentSsm_.emplace_back(ssmCount_, code);
+    if (recentSsm_.size() > 32)
+        recentSsm_.erase(recentSsm_.begin());
     if (code == 0xFFFE) {
         takeScreenshot(screenshotName_);
     } else if (code == 0xFFFF) {

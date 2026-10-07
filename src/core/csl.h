@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core/keyboard.h"
@@ -82,6 +83,11 @@ private:
     // Last SSM code seen and how many have been seen in all.
     uint16_t lastSsm_ = 0;
     uint64_t ssmCount_ = 0;
+    // A program may answer a key with its code before the keys' own
+    // command has finished: a wait that follows counts the codes sent
+    // since those keys began.
+    uint64_t ssmCountAtKeys_ = 0;
+    std::vector<std::pair<uint64_t, uint16_t>> recentSsm_;  // the last few codes, each with its count
 
     bool fail(const std::string& message);
     bool execute(const std::string& command, const std::vector<std::string>& args);
