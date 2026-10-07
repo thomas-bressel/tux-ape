@@ -198,14 +198,21 @@ void Crtc::write(uint8_t value, bool early)
                     vsyncFresh_ = true;
                 }
             }
-        } else if (type_ == CrtcType::UM6845R && old != reg_[7] && vcc_ == reg_[7] && !vsync_ && interlace()
-                   && !parityFrame_) {
-            // Type 1, an even frame with an interlace mode set: the VSYNC
-            // this write calls for waits for the middle of a line like any
-            // other (19.7.2; Shaker "VSYNC IVM story", R7 = 0 written on
-            // the frame's second line: 96 microseconds from the frame's
-            // start on a real chip, not 80).
-            midVsync_ = true;
+        } else if (type_ == CrtcType::UM6845R) {
+            // Type 1: R7 made equal to the current row starts a VSYNC
+            // straight away, unless one is in progress (16.3, 16.4.2). On
+            // an even frame with an interlace mode set it waits for the
+            // middle of a line like any other (19.7.2; Shaker "VSYNC IVM
+            // story", R7 = 0 written on the frame's second line: 96
+            // microseconds from the frame's start on a real chip, not 80).
+            const bool match = vcc_ == reg_[7];
+            if (match && old != reg_[7] && !vsync_) {
+                if (interlace() && !parityFrame_)
+                    midVsync_ = true;
+                else
+                    startVsync();
+            }
+            r7Match_ = match;
         } else if (!asic() && old != reg_[7] && vcc_ == reg_[7] && !vsync_) {
             // Making R7 equal to the current row starts a VSYNC straight
             // away. Not on the ASICs, which only look at R7 as a row
@@ -781,10 +788,22 @@ void Crtc::startRow()
         else
             vDisp_ = false;
     }
-    if (vcc_ == reg_[7] && !vsync_ && type_ == CrtcType::UM6845R && interlace() && !parityFrame_) {
-        // Type 1, an even frame with an interlace mode set: the VSYNC
-        // waits for the middle of the line (19.7.2).
-        midVsync_ = true;
+    if (type_ == CrtcType::UM6845R) {
+        // Type 1 does not start a VSYNC twice from the same meeting of C4
+        // and R7: with R4 = R7 = 0, C4 never leaves R7 and there is one
+        // VSYNC, not one after the other without end (16.3; Shaker "VSYNC
+        // torture": 16 lines on a real chip, where types 3 and 4 never
+        // come out of it).
+        const bool match = vcc_ == reg_[7];
+        const bool fresh = match && !r7Match_ && !vsync_;
+        r7Match_ = match;
+        if (fresh && interlace() && !parityFrame_) {
+            // An even frame with an interlace mode set: the VSYNC waits
+            // for the middle of the line (19.7.2).
+            midVsync_ = true;
+        } else if (fresh) {
+            startVsync();
+        }
     } else if (vcc_ == reg_[7] && !vsync_) {
         startVsync();
         // Type 2: an HSYNC that reaches the line's last character hides

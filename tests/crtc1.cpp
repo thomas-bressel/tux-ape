@@ -615,11 +615,64 @@ void ruptureForDummies()
     }
 }
 
+// A VSYNC starts when C4 meets R7, and not again while they stay together
+// (16.3; Shaker "VSYNC torture" on a real chip: with R4 = R7 = 0 a VSYNC of
+// 16 lines and no other, where the chips in the ASICs never come out of
+// it).
+void vsyncOnce()
+{
+    Rig rig(CrtcType::UM6845R);
+    rig.seek(31, 0, 10);
+    CHECK(rig.crtc.vsync());
+    rig.seek(33, 0, 10);
+    CHECK(!rig.crtc.vsync());
+    // Frames of a single row, with R7 on it.
+    rig.seek(0, 0, 10);
+    rig.set(4, 0);
+    rig.set(7, 0);
+    CHECK(rig.crtc.vsync());
+    int lines = 0;
+    while (rig.crtc.vsync() && lines < 100) {
+        rig.nextLine();
+        ++lines;
+    }
+    CHECK_EQ(lines, 16);
+    CHECK(!rig.vsyncWithin(100));
+    // C4 leaving R7 and coming back is a new meeting: with two rows a
+    // frame, the VSYNC that ends as C4 comes back to 0 starts again at
+    // once.
+    rig.set(4, 1);
+    rig.seek(1, 0, 10);
+    rig.seek(0, 0, 10);
+    CHECK(rig.crtc.vsync());
+    bool gap = false;
+    for (int line = 0; line < 100; ++line) {
+        rig.nextLine();
+        gap = gap || !rig.crtc.vsync();
+    }
+    CHECK(!gap);
+    // R7 taken away and brought back is one too, once the VSYNC is over;
+    // during a VSYNC it is not looked at.
+    rig.set(4, 38);
+    rig.set(7, 30);
+    rig.seek(10, 0, 10);
+    CHECK(!rig.crtc.vsync());
+    rig.set(7, 10);
+    CHECK(rig.crtc.vsync());
+    rig.set(7, 30);
+    rig.set(7, 10);
+    rig.seek(12, 0, 10);
+    CHECK(!rig.crtc.vsync());
+    rig.set(7, 12);
+    CHECK(rig.crtc.vsync());
+}
+
 }  // namespace
 
 int main()
 {
     videoPointer();
+    vsyncOnce();
     interlace();
     interlaceOnOff();
     ruptureForDummies();
