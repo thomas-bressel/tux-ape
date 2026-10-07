@@ -138,6 +138,7 @@ private:
     bool vsyncAllowed_ = false;    // the line reached character 2
     bool r7Match_ = false;         // C4 = R7 has been noted: no VSYNC from it again
     bool vsyncFresh_ = false;      // VSYNC began mid-line: its line count restarts
+    bool vsyncDue_ = false;        // R7 met C4 on a line's last character: settled on the next
 
     // ---- CRTC 2 (MC6845) -------------------------------------------------
     // This chip too decides ahead that a line is the frame's last, but when

@@ -607,6 +607,44 @@ void hsyncsAreNotJoined()
     }
 }
 
+// R7 made equal to C4 on a line's last character: the VSYNC waits for the
+// next character and only comes if C4 is still R7 there. On a row's last
+// line the write is therefore too late (Shaker "OUTI story", R7 last
+// chance, on a real chip), on any other it gives a VSYNC (Shaker "VSYNC
+// conditions", fourth screen).
+void r7OnTheLastCharacter()
+{
+    {
+        Rig rig;
+        rig.set(7, 127);
+        rig.seek(10, 7, 63);
+        rig.set(7, 10);
+        CHECK(!rig.crtc.vsync());
+        rig.crtc.tick();
+        CHECK_EQ(rig.crtc.vcc(), 11);
+        CHECK(!rig.crtc.vsync());
+        CHECK(!rig.vsyncWithin(2));
+    }
+    {
+        Rig rig;
+        rig.set(7, 127);
+        rig.seek(10, 3, 63);
+        rig.set(7, 10);
+        CHECK(!rig.crtc.vsync());
+        rig.crtc.tick();
+        CHECK_EQ(rig.crtc.vcc(), 10);
+        CHECK(rig.crtc.vsync());
+    }
+    // One character sooner it comes at once, as anywhere else on the line.
+    {
+        Rig rig;
+        rig.set(7, 127);
+        rig.seek(10, 7, 62);
+        rig.set(7, 10);
+        CHECK(rig.crtc.vsync());
+    }
+}
+
 int main()
 {
     displaySkew();
@@ -624,5 +662,6 @@ int main()
     oneCharacterLines();
     r1WrittenOnItsCharacter();
     hsyncsAreNotJoined();
+    r7OnTheLastCharacter();
     return checkSummary("crtc0");
 }

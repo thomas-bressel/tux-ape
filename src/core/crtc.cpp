@@ -27,7 +27,7 @@ void Crtc::reset()
     inAdjust_ = false;
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
     c9Enabled_ = c4CountArmed_ = c9MatchAtEnd_ = false;
-    vsyncAllowed_ = r7Match_ = vsyncFresh_ = false;
+    vsyncAllowed_ = r7Match_ = vsyncFresh_ = vsyncDue_ = false;
     lastLineOpen_ = previousLast_ = hsyncJudged_ = false;
     ghostVsync_ = false;
     r9AtStart_ = 0;
@@ -131,10 +131,16 @@ void Crtc::write(uint8_t value, bool early)
             // the match is noted and that VSYNC is lost (16.4.1.1). The
             // note is only dropped at the start of a line, so taking R7
             // away and back within one line brings nothing; and during a
-            // VSYNC the register is not looked at (16.3).
+            // VSYNC the register is not looked at (16.3). On the line's
+            // last character the VSYNC waits for the next one, and only
+            // comes if C4 is still R7 there: on a row's last line the write
+            // is too late (Shaker "OUTI story", R7 last chance, against
+            // "VSYNC conditions", fourth screen, both on a real chip).
             if (!vsync_ && vcc_ == reg_[7] && !r7Match_) {
                 r7Match_ = true;
-                if (hcc_ >= 2) {
+                if (hcc_ >= 2 && hcc_ == reg_[0]) {
+                    vsyncDue_ = true;
+                } else if (hcc_ >= 2) {
                     startVsync();
                     vsyncFresh_ = true;
                 }
@@ -186,7 +192,7 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     c4CountArmed_ = c9AtR9();
     c9MatchAtEnd_ = false;
     r7Match_ = vcc_ == reg_[7];
-    vsyncFresh_ = false;
+    vsyncFresh_ = vsyncDue_ = false;
     if (type_ == CrtcType::MC6845) {
         lastLine_ = vcc_ == reg_[4] && vlc_ == reg_[9];
         lastLineOpen_ = vcc_ != 0 || vlc_ != 0;
@@ -304,6 +310,15 @@ void Crtc::tick()
     }
 
     if (type0) {
+        // R7 was made equal to C4 on the character before this one, the
+        // last of its line then.
+        if (vsyncDue_) {
+            vsyncDue_ = false;
+            if (!vsync_ && vcc_ == reg_[7]) {
+                startVsync();
+                vsyncFresh_ = hcc_ != 0;
+            }
+        }
         switch (hcc_) {
         case 1:
             // From here C9 may count at the end of the line. The last-line
