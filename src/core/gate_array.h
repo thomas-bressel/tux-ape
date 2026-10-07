@@ -73,6 +73,18 @@ public:
     uint8_t selectedPen() const { return pen_; }            // 0-15, or 16 for the border
     uint8_t ink(int pen) const { return ink_[pen]; }        // hardware colour number, 0-31
     uint8_t interruptCounter() const { return r52_; }       // R52
+    // How long after the end of an HSYNC the interrupt counter moves on,
+    // in microseconds. One: a program is interrupted a microsecond after
+    // an HSYNC has ended, not as it ends (Compendium 27.6.1, 27.6.2: with
+    // R3 = 14 the code is interrupted 15 microseconds after C0 = R2 on
+    // types 0, 1 and 2). The Shaker's tests that count from an interrupt
+    // agree on a real CRTC 0 ("OUTI story", "R52 inc in HSYNC").
+    // WinAPE's own model of the machine has none: a session recorded there
+    // keeps in step better when played back the same way (see
+    // core/winape_session.h).
+    static constexpr int kInterruptDelay = 1;
+    void setInterruptDelay(int microseconds) { interruptDelay_ = microseconds < 0 ? 0 : microseconds > 31 ? 31 : microseconds; }
+    int interruptDelay() const { return interruptDelay_; }
     uint8_t romAndMode() const { return rmr_ & 0x0F; }      // as last written to the register
 
     // Puts back a state taken from a snapshot. `pen` is 0-15 or 16 for the
@@ -113,6 +125,12 @@ private:
     uint8_t vsyncLines_ = 0;    // HSYNCs counted since VSYNC rose
     bool vsyncSequence_ = false;  // the Gate Array is timing a vertical sync
     bool vsyncBlack_ = false;
+    uint8_t blackLines_ = 0;    // HSYNCs since VSYNC rose, as the blanking counts them
+    // With a delay set: what the interrupt counter has still to hear of,
+    // bit n for what is due in n + 1 microseconds.
+    int interruptDelay_ = kInterruptDelay;
+    uint32_t countsDue_ = 0;
+    uint32_t vsyncDue_ = 0;
     bool interrupt_ = false;
     bool prevHsync_ = false;
     bool prevVsync_ = false;
@@ -122,6 +140,7 @@ private:
     bool lateBlanking_ = false;   // this HSYNC was started by an R2 write that came late
 
     void drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split);
+    void countHsync(Monitor& monitor);
 };
 
 }  // namespace tuxape

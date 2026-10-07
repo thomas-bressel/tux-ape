@@ -396,11 +396,11 @@ private:
             videoClk_ += 4;
             // ...and the CRTC moves on at once: what the CPU reads during
             // the new microsecond (VSYNC through the PPI, say) is current,
-            // and an interrupt raised by the end of an HSYNC can be taken
-            // by an instruction that finishes at that very moment. Two
-            // sets of measurements on real machines pin this down: the
-            // Shaker's video memory test (A1) and the acid test of the
-            // interrupt position against HSYNC width.
+            // and an interrupt the Gate Array raises there can be taken by
+            // an instruction that finishes at that very moment. The
+            // Shaker's video memory test (A1) pins the first down; the
+            // interrupt itself comes a microsecond after the HSYNC has
+            // ended (see GateArray::setInterruptDelay).
             crtc_.tick();
             gateArray_.sync(crtc_, monitor_);
         }

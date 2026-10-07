@@ -244,8 +244,53 @@ void testModeChange()
 
 }  // namespace
 
+// A program is interrupted one microsecond after the HSYNC has ended, two
+// inside an ASIC: with R3 = 14, 8 and 1 that is 15, 9 and 2 microseconds
+// after the character C0 = R2 began on types 0, 1 and 2, and 16, 10 and 3
+// on types 3 and 4 (Compendium 27.6.2 and 27.6.5). Measured on a program
+// that waits in a HALT.
+void testInterruptPosition()
+{
+    for (const CrtcType type : {CrtcType::HD6845S, CrtcType::UM6845R, CrtcType::MC6845, CrtcType::AsicPlus, CrtcType::PreAsic}) {
+        const bool asic = type == CrtcType::AsicPlus || type == CrtcType::PreAsic;
+        for (const int width : {14, 8, 1}) {
+            Cpc cpc;
+            cpc.crtc().setType(type);
+            cpc.memory().setRomEnables(false, false);
+            const uint8_t crtc[] = {63, 40, 46, static_cast<uint8_t>(0x80 | width), 38, 0, 25, 30, 0, 7};
+            for (uint8_t r = 0; r < sizeof crtc; ++r) {
+                outPort(cpc, 0xBC00, r);
+                outPort(cpc, 0xBD00, crtc[r]);
+            }
+            outPort(cpc, 0x7F00, 0x8C);
+            // IM 1: EI: HALT: JR back to the HALT; the handler is EI: RET.
+            Memory& mem = cpc.memory();
+            const uint8_t program[] = {0xED, 0x56, 0xFB, 0x76, 0x18, 0xFD};
+            for (uint16_t i = 0; i < sizeof program; ++i)
+                mem.write(static_cast<uint16_t>(0x4000 + i), program[i]);
+            mem.write(0x0038, 0xFB);
+            mem.write(0x0039, 0xC9);
+            cpc.cpu().pc = 0x4000;
+            cpc.cpu().sp = 0x8000;
+            cpc.run(5 * Cpc::kFrameMicroseconds);
+            uint64_t atR2 = 0;
+            int after = -1;
+            for (int guard = 0; guard < 100000 && after < 0; ++guard) {
+                const uint64_t before = cpc.microseconds();
+                if (cpc.crtc().hcc() == 46)
+                    atR2 = before;
+                cpc.stepInstruction();
+                if (cpc.cpu().pc == 0x0038 && atR2 != 0)
+                    after = static_cast<int>(before - atR2);
+            }
+            CHECK_EQ(after, width + (asic ? 2 : 1));
+        }
+    }
+}
+
 int main()
 {
+    testInterruptPosition();
     testInkTiming(CrtcType::HD6845S, 8);
     testInkTiming(CrtcType::UM6845R, 8);
     testInkTiming(CrtcType::AsicPlus, 4);

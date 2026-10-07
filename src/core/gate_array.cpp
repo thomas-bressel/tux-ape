@@ -84,6 +84,8 @@ void GateArray::reset()
     hsyncAge_ = 0;
     vsyncLines_ = 0;
     vsyncSequence_ = vsyncBlack_ = false;
+    blackLines_ = 0;
+    countsDue_ = vsyncDue_ = 0;
     interrupt_ = false;
     prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
 }
@@ -234,12 +236,27 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
     delayedHsync_ = crtc.hsync();
     const bool vsync = crtc.vsync();
 
+    // What a delay has kept back, when its time has come.
+    if (vsyncDue_ & 1) {
+        vsyncLines_ = 0;
+        vsyncSequence_ = true;
+    }
+    if (countsDue_ & 1)
+        countHsync(monitor);
+    vsyncDue_ >>= 1;
+    countsDue_ >>= 1;
+
     if (vsync && !prevVsync_) {
         // From here the Gate Array times the vertical sync itself, counting
         // HSYNCs, whatever the CRTC's VSYNC does next.
-        vsyncLines_ = 0;
-        vsyncSequence_ = true;
         vsyncBlack_ = true;
+        blackLines_ = 0;
+        if (interruptDelay_ == 0) {
+            vsyncLines_ = 0;
+            vsyncSequence_ = true;
+        } else {
+            vsyncDue_ |= 1u << (interruptDelay_ - 1);
+        }
     }
 
     if (hsync) {
@@ -278,33 +295,44 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         hsyncAge_ = 0;
         // The end of every HSYNC, however short, advances the interrupt
         // counter.
-        // With a line set for the Plus's raster interrupt, the counter
-        // goes on counting but interrupts no more.
-        const bool ownInterrupts = !(plus_ && asic_->rasterInterruptLine() != 0);
-        if (++r52_ == 52) {
-            r52_ = 0;
-            if (ownInterrupts)
-                interrupt_ = true;
-        }
-        if (vsyncSequence_) {
-            ++vsyncLines_;
-            if (vsyncLines_ == 2) {
-                // The monitor's vertical sync starts here. The interrupt
-                // counter is brought into step with the frame, with an
-                // interrupt if the previous one is far enough away.
-                monitor.vsync();
-                if (r52_ >= 32 && ownInterrupts)
-                    interrupt_ = true;
-                r52_ = 0;
-            } else if (vsyncLines_ == 26) {
-                vsyncBlack_ = false;
-                vsyncSequence_ = false;
-            }
-        }
+        if (interruptDelay_ == 0)
+            countHsync(monitor);
+        else
+            countsDue_ |= 1u << (interruptDelay_ - 1);
+        // The black of the vertical sync is the picture's affair and ends
+        // with the 26th HSYNC itself.
+        if (vsyncBlack_ && ++blackLines_ == 26)
+            vsyncBlack_ = false;
     }
     prevHsync_ = hsync;
     prevVsync_ = vsync;
     hsync_ = hsync;
+}
+
+void GateArray::countHsync(Monitor& monitor)
+{
+    // With a line set for the Plus's raster interrupt, the counter goes on
+    // counting but interrupts no more.
+    const bool ownInterrupts = !(plus_ && asic_->rasterInterruptLine() != 0);
+    if (++r52_ == 52) {
+        r52_ = 0;
+        if (ownInterrupts)
+            interrupt_ = true;
+    }
+    if (vsyncSequence_) {
+        ++vsyncLines_;
+        if (vsyncLines_ == 2) {
+            // The monitor's vertical sync starts here. The interrupt
+            // counter is brought into step with the frame, with an
+            // interrupt if the previous one is far enough away.
+            monitor.vsync();
+            if (r52_ >= 32 && ownInterrupts)
+                interrupt_ = true;
+            r52_ = 0;
+        } else if (vsyncLines_ == 26) {
+            vsyncSequence_ = false;
+        }
+    }
 }
 
 void GateArray::hsyncStartedByWrite(const Crtc& crtc, bool late)

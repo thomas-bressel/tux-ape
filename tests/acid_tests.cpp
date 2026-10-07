@@ -58,7 +58,15 @@ const Program kPrograms[] = {
     {"cpu", "z80tests/cpu.dsk", "CPU", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 12000, 8, {}},
     {"inout", "z80tests/cpu.dsk", "INOUT", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 12000, 8, {}},
     {"itest", "z80tests/cpu.dsk", "ITEST", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 40000, 490, {}},
-    {"cpctest", "cpc/cpc.dsk", "CPCTEST", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 6000, 4, {}},
+    // "CPC int (HSYNC width)" counts from an interrupt to the last
+    // microsecond of the VSYNC, with no room to spare. Its author notes it
+    // passes on his CRTC 0 and reads 0 throughout on his CRTC 1 and 4.
+    // TuxAPE reads 0 on every type: it has the interrupt where the
+    // Compendium (27.6) and the Shaker's own counts from an interrupt
+    // ("OUTI story", "R52 inc in HSYNC", "VSYNC duration") put it on a
+    // real CRTC 0, a microsecond after the HSYNC has ended, and those
+    // cannot hold together with this test: the two machines differ.
+    {"cpctest", "cpc/cpc.dsk", "CPCTEST", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 6000, 4, {"CPC int (HSYNC width)"}},
     {"ppi", "ppi/ppi.dsk", "PPI", " ", CpcModel::Cpc6128, CrtcType::HD6845S, 40000, 23,
      {"mode 1: port A mode 1 (input), port B mode 0, port C bits output",
       "mode 1: port A mode 1 (output), port B mode 0, port C bits output",
@@ -84,11 +92,12 @@ const Program kPrograms[] = {
     {"asicppi", "plus/asic1.dsk", "PPI", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 40000, 21, {}},
     // The sound channels fed from memory. Still wrong: which interrupt
     // comes first when channel 1 asks for one, and channels that should
-    // run on lines whose HSYNC has no length. The last check ends by
+    // run on lines whose HSYNC has no length. (The last check ends by
     // writing &A0 to a locked ASIC, which puts the lower ROM over its own
     // results: whether it passes hangs on when the next interrupt comes.
+    // It does, with the interrupt where the Compendium has it.)
     {"dmatest", "plus/asic1.dsk", "DMATEST", " ", CpcModel::Plus6128, CrtcType::AsicPlus, 40000, 25,
-     {"dma int request test (dcsr bits)", "CRTC R0 length and dma", "dma under asic registers"}},
+     {"dma int request test (dcsr bits)", "CRTC R0 length and dma"}},
 };
 
 struct Verdict {
