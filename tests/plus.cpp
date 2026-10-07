@@ -96,10 +96,18 @@ void testCartridgePages()
     CHECK(cpc.plus());
     Memory& memory = cpc.memory();
 
-    // Page 0 is the lower ROM, page 1 the upper one, whatever ROM is asked
-    // for; ROM 7 is page 3 on a machine with a disc drive.
+    // Page 0 is the lower ROM. The upper one is not seen until one has been
+    // chosen: till then the top 16K is RAM, where No Exit finds its way
+    // back from a subroutine called before it has set its stack.
     CHECK_EQ(memory.read(0x0000), 0xC0);
+    CHECK(memory.upperRomEnabled());
+    memory.write(0xFFFD, 0x3D);
+    CHECK_EQ(memory.read(0xFFFD), 0x3D);
+    // Once chosen it is page 1, whatever ROM is asked for; ROM 7 is page 3
+    // on a machine with a disc drive.
+    cpc.out(0xDF00, 0);
     CHECK_EQ(memory.read(0xC000), 0xC1);
+    CHECK_EQ(memory.read(0xFFFD), 0xC1);
     cpc.out(0xDF00, 5);
     CHECK_EQ(memory.read(0xC000), 0xC1);
     cpc.out(0xDF00, 7);
@@ -129,6 +137,15 @@ void testCartridgePages()
     cpc.setCartridge(&cartridge, false);
     cpc.out(0xDF00, 7);
     CHECK_EQ(memory.read(0xC000), 0xC1);
+
+    // A reset hides the upper ROM again, until the next choice: Epyx World
+    // of Sports and Eerie Forest choose a page and read it at once, without
+    // a word to the Gate Array.
+    cpc.reset();
+    memory.write(0xFFFD, 0x3D);
+    CHECK_EQ(memory.read(0xFFFD), 0x3D);
+    cpc.out(0xDF00, 0x87);
+    CHECK_EQ(memory.read(0xC000), 0xC7);
 
     // Without a cartridge the machine is a CPC again.
     cpc.setCartridge(nullptr);

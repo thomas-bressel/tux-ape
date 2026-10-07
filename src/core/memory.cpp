@@ -157,6 +157,7 @@ void Memory::reset()
     multifacePaged_ = false;
     lowerEnabled_ = upperEnabled_ = true;
     upperSelected_ = 0;
+    upperChosen_ = false;
     rmr2_ = 0;
     ramConfig_ = 0xC0;
     ramPage_ = 0;
@@ -180,6 +181,7 @@ void Memory::setRomEnables(bool lower, bool upper)
 void Memory::selectUpperRom(uint8_t number)
 {
     upperSelected_ = number;
+    upperChosen_ = true;
     remap();
 }
 
@@ -213,6 +215,7 @@ void Memory::setMapping(const Mapping& mapping)
     lowerEnabled_ = mapping.lowerRom;
     upperEnabled_ = mapping.upperRom;
     upperSelected_ = mapping.upperSelected;
+    upperChosen_ = mapping.upperChosen;
     ramConfig_ = mapping.ramConfig;
     ramPage_ = mapping.ramPage < pageOffset_.size() ? mapping.ramPage : 0;
     rmr2_ = mapping.rmr2 & 0x1F;
@@ -249,7 +252,7 @@ void Memory::remapMachine()
             readMap_[1] = asic_->page();
             registersMapped_ = true;
         }
-        if (upperEnabled_) {
+        if (upperEnabled_ && upperChosen_) {
             const int slot = upperSelected_ & romSlotMask_;
             if (upperSelected_ <= romSlotMask_ && upperPresent_[slot])
                 readMap_[3] = &upperRom_[static_cast<size_t>(slot) * kBankSize];

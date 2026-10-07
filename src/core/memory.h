@@ -49,6 +49,13 @@ public:
     // drive (AMSDOS), or any page: ROM numbers 128 and up name it. A ROM
     // fitted on an expansion board still shows in its slot. No pages takes
     // the cartridge out.
+    //
+    // After a reset the upper ROM is not seen until one has been chosen
+    // (a write to &DFxx): the top 16K is RAM till then, though the Gate
+    // Array's bit says ROM. No Exit calls a subroutine before it has set
+    // its stack, and finds its way back from &FFFD; Epyx World of Sports
+    // and Eerie Forest choose a page and read it without ever having
+    // touched that bit.
     void setCartridge(std::span<const uint8_t> pages, bool discRom);
     bool hasCartridge() const { return !cartridge_.empty(); }
     void setRmr2(uint8_t value);
@@ -122,8 +129,9 @@ public:
         uint8_t upperSelected = 0;
         uint8_t ramConfig = 0xC0, ramPage = 0;
         uint8_t rmr2 = 0;
+        bool upperChosen = true;  // a cartridge's upper ROM, once one has been chosen
     };
-    Mapping mapping() const { return {lowerEnabled_, upperEnabled_, upperSelected_, ramConfig_, ramPage_, rmr2_}; }
+    Mapping mapping() const { return {lowerEnabled_, upperEnabled_, upperSelected_, ramConfig_, ramPage_, rmr2_, upperChosen_}; }
     void setMapping(const Mapping& mapping);
 
 private:
@@ -140,6 +148,7 @@ private:
     bool lowerEnabled_ = true;
     bool upperEnabled_ = true;
     uint8_t upperSelected_ = 0;
+    bool upperChosen_ = false;  // since the last reset (see setCartridge)
     uint8_t ramConfig_ = 0xC0;
     uint8_t ramPage_ = 0;
 
