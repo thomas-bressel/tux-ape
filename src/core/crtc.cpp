@@ -34,6 +34,8 @@ void Crtc::reset()
     lastLineOpen_ = previousLast_ = hsyncJudged_ = false;
     ghostVsync_ = false;
     r9AtStart_ = 0;
+    lastLine1_ = false;
+    fromR12_ = true;
     parityFrame_ = parityR6_ = parityC9_ = false;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
     c9Out_ = 0;
@@ -54,8 +56,15 @@ void Crtc::write(uint8_t value, bool early)
         // Hence R1 = 0 still counts when written on character 0 (17.5.1).
         // The ASICs have made up their mind by then (17.5.2), and type 2
         // has already kept, or not, the address for the next row (17.4.3).
+        // Type 1 keeps it as the character ends, if R1 is still there.
         if (!asic() && hcc_ == reg_[1] && old != reg_[1])
-            displayEnds(type_ != CrtcType::MC6845);
+            displayEnds(type_ == CrtcType::HD6845S);
+        break;
+    case 0:
+        // R0 brought to the character in progress makes it the line's
+        // last: type 1 takes its note of the frame's end there.
+        if (type_ == CrtcType::UM6845R && hcc_ == reg_[0] && old != reg_[0])
+            lastLine1_ = vcc_ == reg_[4] && vlc_ == reg_[9];
         break;
     case 2:
         // R2 set to the character in progress starts the HSYNC there and
@@ -209,6 +218,8 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     ma_ = static_cast<uint16_t>((maRow_ + hcc_) & 0x3FFF);
     inAdjust_ = false;
     vtac_ = 0;
+    lastLine1_ = hcc_ == reg_[0] && vcc_ == reg_[4] && vlc_ == reg_[9];
+    fromR12_ = vcc_ == 0;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
     latchC9();
     lastLine_ = onLastLine();
@@ -320,6 +331,13 @@ void Crtc::tick()
         settleLate();
 
     const bool type0 = type_ == CrtcType::HD6845S;
+    const bool type1 = type_ == CrtcType::UM6845R;
+    // Type 1 keeps the address for the next row as the character on which
+    // C0 met R1 ends, not as it begins: R1 moved away during that very
+    // character, and nothing is kept (17.4.2, Shaker "R1 stories": R1
+    // raised above R0 on C0 = R1, on a real chip).
+    if (type1 && hcc_ == reg_[1] && vlc_ == reg_[9])
+        maRow_ = ma_;
     const bool newLine = hcc_ == reg_[0];
     if (newLine) {
         // A first line that ends with R6 still 0 leaves the border for the
@@ -339,10 +357,14 @@ void Crtc::tick()
         else if (type_ == CrtcType::MC6845)
             endOfLine2();
         else
-            endOfLine(oneCharacter);
+            endOfLine1(oneCharacter);
     } else {
         ++hcc_;
     }
+    // Type 1 notes, as a line's last character begins, whether the frame
+    // ends with it (11.2.4).
+    if (type1 && hcc_ == reg_[0])
+        lastLine1_ = vcc_ == reg_[4] && vlc_ == reg_[9];
 
     if (type0) {
         // R7 was made equal to C4 on the character before this one, the
@@ -439,13 +461,13 @@ void Crtc::tick()
         // it only moves when C0 meets R1 on a row's last line, so a frame
         // that never does shows R12/R13 on its first row and whatever was
         // kept last on all the others (17.4.2, Shaker "R1 stories").
-        ma_ = type_ == CrtcType::UM6845R && vcc_ == 0 ? startAddress() : maRow_;
+        ma_ = type1 && fromR12_ ? startAddress() : maRow_;
     } else {
         ma_ = (ma_ + 1) & 0x3FFF;
     }
 
     if (hcc_ == reg_[1])
-        displayEnds(true);
+        displayEnds(!type1);
 
     // On type 0 the character an HSYNC ends on cannot start the next one:
     // two pulses are never joined (15.3.1; with R0 = 0, R2 = 0 and R3 = 1
@@ -530,47 +552,95 @@ void Crtc::displayEnds(bool keepAddress)
         maRow_ = splitAddress_;
 }
 
-void Crtc::endOfLine(bool oneCharacter)
+// ---- CRTC 1 ----------------------------------------------------------------
+
+// The end of a line on the UM6845R. It counts in the plainest way, by what
+// its registers hold as the line ends (Compendium 10.3.2, 12.3): C9 up to
+// R9, then C4 up to R4, then a new frame. The lines of R5 are another
+// matter (11.2.3, 11.2.4, 11.3.2). They follow a frame whose end was noted
+// as its last line's last character began, whatever R4 and R9 have become
+// during that character; C5 counts them while C9 and C4 go on counting,
+// C4 without a look at R4; and R5 brought to 0 meanwhile does not end
+// them: C5 goes round, ready to end the frame on any line where R5 is
+// given its number, while C4 is compared with R4 again, which ends the
+// frame the ordinary way.
+void Crtc::endOfLine1(bool oneCharacter)
 {
-    // The VSYNC lasts a number of lines. On the UM6845R a line of a single
+    // The VSYNC lasts 16 lines whatever R3 says. A line of a single
     // character (R0 = 0) does not count as one: C9 and C4 go on, but a VSYNC
     // begun there is still up when lines get longer again, where the MC6845
     // has long finished it (Shaker "VSYNC conditions", first screen, on real
     // chips of both kinds).
-    if (vsync_ && !(oneCharacter && type_ == CrtcType::UM6845R)) {
-        // Types 1 and 2 ignore the programmed width and always use 16 lines.
-        const bool fixed = type_ == CrtcType::UM6845R || type_ == CrtcType::MC6845;
-        const uint8_t width = fixed ? 0 : reg_[3] >> 4;
+    if (vsync_ && !oneCharacter) {
         vsc_ = (vsc_ + 1) & 0x0F;
-        if (vsc_ == width)
+        if (vsc_ == 0)
             vsync_ = false;
     }
 
+    const bool rowEnds = vlc_ == reg_[9];
+    const bool lastRow = vcc_ == reg_[4];
+    // Each line starts at R12/R13 until a row ends; not the frame's last
+    // row, so that with R4 = 0 the first row of the lines of R5 does too
+    // (11.2.4, 17.4.2; Shaker "UPD OFF ADD LINE" on a real chip).
+    if (rowEnds && !lastRow)
+        fromR12_ = false;
+
     if (inAdjust_) {
-        vtac_ = (vtac_ + 1) & 0x1F;
-        vlc_ = (vlc_ + 1) & 0x1F;
-        if (vtac_ == reg_[5])
-            startFrame();
-    } else if (vlc_ == reg_[9]) {
-        if (vcc_ == reg_[4]) {
-            if (reg_[5] != 0) {
-                // Extra scanlines after the last row to trim the frame length.
-                inAdjust_ = true;
-                vtac_ = 0;
-                vlc_ = 0;
-                vcc_ = (vcc_ + 1) & 0x7F;
-                startRow();
-            } else {
-                startFrame();
-            }
+        const uint8_t next = (vtac_ + 1) & 0x1F;
+        if (reg_[5] != 0 && next == reg_[5]) {
+            inAdjust_ = false;
+            newFrame1();
+            return;
+        }
+        vtac_ = next;
+        if (!rowEnds) {
+            vlc_ = (vlc_ + 1) & 0x1F;
+        } else if (reg_[5] == 0 && lastRow) {
+            // (That the lines of R5 are over with it is what the Shaker's
+            // module E needs: each of its measurements leaves R5 at 0 in
+            // the middle of them, and a real chip is found counting whole
+            // frames again a few frames later.)
+            inAdjust_ = false;
+            newFrame1();
         } else {
             vlc_ = 0;
             vcc_ = (vcc_ + 1) & 0x7F;
             startRow();
         }
-    } else {
-        vlc_ = (vlc_ + 1) & 0x1F;
+        return;
     }
+    if (lastLine1_ && reg_[5] != 0) {
+        // The first of the lines of R5: counted by R4 and R9 as they are
+        // now.
+        inAdjust_ = true;
+        vtac_ = 0;
+        if (rowEnds) {
+            vlc_ = 0;
+            vcc_ = (vcc_ + 1) & 0x7F;
+            startRow();
+        } else {
+            vlc_ = (vlc_ + 1) & 0x1F;
+        }
+        return;
+    }
+    if (!rowEnds) {
+        vlc_ = (vlc_ + 1) & 0x1F;
+    } else if (lastRow) {
+        newFrame1();
+    } else {
+        vlc_ = 0;
+        vcc_ = (vcc_ + 1) & 0x7F;
+        startRow();
+    }
+}
+
+void Crtc::newFrame1()
+{
+    vlc_ = 0;
+    vcc_ = 0;
+    vDisp_ = true;
+    fromR12_ = true;
+    startRow();
 }
 
 void Crtc::startRow()
@@ -600,8 +670,7 @@ void Crtc::startFrame()
     vlc_ = 0;
     vcc_ = 0;
     vDisp_ = true;
-    if (type_ != CrtcType::UM6845R)
-        maRow_ = startAddress();
+    maRow_ = startAddress();
     startRow();
 }
 

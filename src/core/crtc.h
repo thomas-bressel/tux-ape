@@ -166,6 +166,16 @@ private:
     bool vsyncFresh_ = false;      // VSYNC began mid-line: its line count restarts
     bool vsyncDue_ = false;        // R7 met C4 on a line's last character: settled on the next
 
+    // ---- CRTC 1 (UM6845R) ------------------------------------------------
+    // This chip counts by what its registers hold as each line ends, with
+    // two things of its own (Compendium 11.2.4, 17.4.2). As a line's last
+    // character begins it notes whether the frame ends there, and the
+    // lines of R5 follow from that note. And each line starts at R12/R13
+    // for as long as a status lasts that the start of a frame sets and the
+    // end of a row takes down.
+    bool lastLine1_ = false;       // C4 and C9 were at the frame's end as the last character began
+    bool fromR12_ = true;          // each line starts at R12/R13
+
     // ---- CRTC 2 (MC6845) -------------------------------------------------
     // This chip too decides ahead that a line is the frame's last, but when
     // it looks is another matter (Compendium 12.4.1, 15.6): as the line
@@ -202,7 +212,8 @@ private:
     void displayEnds(bool keepAddress);
     void r6Written(R6Write effect);
     [[gnu::cold]] void settleLate();
-    void endOfLine(bool oneCharacter);
+    void endOfLine1(bool oneCharacter);
+    void newFrame1();
     void startRow();
     void startFrame();
     void startVsync();

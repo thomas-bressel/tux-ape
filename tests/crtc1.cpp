@@ -71,6 +71,169 @@ void videoPointer()
     CHECK_EQ(lineAddress(rig, 25, 0), 0x3000 + 25 * 40);
     CHECK_EQ(lineAddress(rig, 0, 0), 0x3000);
     CHECK_EQ(lineAddress(rig, 1, 0), 0x3000 + 25 * 40);
+    // Raised on C0 = R1 itself, it has not: the chip keeps the address as
+    // that character ends, if R1 is still there ("R1 stories", second
+    // screen: 80 x 24 on a real chip, not 80 x 25).
+    rig.set(1, 40);
+    rig.seek(0, 0);
+    rig.seek(24, 7, 40);
+    rig.set(1, 127);
+    CHECK_EQ(lineAddress(rig, 25, 0), kept);
+    CHECK_EQ(lineAddress(rig, 1, 0), kept);
+}
+
+// Lines from here to the moment C4 next has the value given.
+int linesTo(Rig& rig, int c4)
+{
+    int ticks = 0;
+    while (rig.crtc.vcc() != c4 && ticks < 400000) {
+        rig.crtc.tick();
+        ++ticks;
+    }
+    return (ticks + 63) / 64;
+}
+
+// The lines of R5 (11.2.3, 11.2.4, 11.3.2). The figures are those of the
+// Shaker's module E, "R5 stories 2", which prints beside each what a real
+// chip gives; it counts in quarters of a line.
+void linesOfR5()
+{
+    // Plainly: 39 rows of 8 lines, then 20 lines more, during which C4
+    // and C9 go on counting.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(5, 20);
+        rig.seek(38, 7, 63);
+        CHECK_EQ(linesTo(rig, 39), 1);
+        CHECK(rig.crtc.inVerticalAdjust());
+        CHECK_EQ(linesTo(rig, 41), 16);
+        CHECK_EQ(linesTo(rig, 0), 4);
+        CHECK(!rig.crtc.inVerticalAdjust());
+    }
+    // The frame's end is noted as the last line's last character begins.
+    // R4 or R9 moved away before that put it off: the frame goes on to the
+    // new R4 (12 rows and the 20 lines), or the row on to the new R9 (5
+    // lines and the 20).
+    for (const int c0 : {61, 62}) {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(5, 20);
+        rig.seek(38, 7, c0);
+        rig.set(4, 50);
+        CHECK_EQ(linesTo(rig, 0), 1 + 12 * 8 + 20);
+        rig.set(4, 38);
+        rig.seek(38, 7, c0);
+        rig.set(9, 12);
+        CHECK_EQ(linesTo(rig, 39), 1 + 5);
+        CHECK_EQ(linesTo(rig, 0), 20);
+    }
+    // Moved during that last character, they are too late: the 20 lines
+    // follow at once, counted by the new values. C4 still reaches 39, on
+    // the next line with R4 changed, five lines on with R9 changed.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(5, 20);
+        rig.seek(38, 7, 63);
+        rig.set(4, 50);
+        CHECK_EQ(linesTo(rig, 39), 1);
+        CHECK_EQ(linesTo(rig, 0), 20);
+        rig.set(4, 38);
+        rig.seek(38, 7, 63);
+        rig.set(9, 12);
+        CHECK_EQ(linesTo(rig, 39), 1 + 5);
+        CHECK_EQ(linesTo(rig, 0), 15);
+    }
+    // R5 itself is looked at as the line ends: brought to 0 on the last
+    // character, there are no lines of R5.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(5, 20);
+        rig.seek(38, 7, 63);
+        rig.set(5, 0);
+        CHECK_EQ(linesTo(rig, 0), 1);
+        CHECK(!rig.crtc.inVerticalAdjust());
+    }
+    // Brought to 0 during its lines, it does not end them: C5 goes round,
+    // and the frame ends on the line where R5 is given its number...
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(5, 20);
+        rig.seek(39, 3, 10);  // C5 = 3
+        rig.set(5, 0);
+        rig.seek(42, 0, 10);  // 21 lines on: C5 = 24, C4 past 41
+        CHECK(rig.crtc.inVerticalAdjust());
+        rig.set(5, 27);       // the line of C5 = 26 is the last
+        CHECK_EQ(linesTo(rig, 0), 3);
+        CHECK(!rig.crtc.inVerticalAdjust());
+    }
+    // ...or, R5 staying at 0, when C4 meets R4 again after going all the
+    // way round.
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(5, 20);
+        rig.seek(39, 1, 10);
+        rig.set(5, 0);
+        CHECK_EQ(linesTo(rig, 0), 7 + (127 - 39) * 8);
+        CHECK(rig.crtc.inVerticalAdjust());
+        CHECK_EQ(linesTo(rig, 38), 38 * 8);
+        rig.seek(38, 7, 63);
+        CHECK_EQ(linesTo(rig, 0), 1);
+        CHECK(!rig.crtc.inVerticalAdjust());
+    }
+}
+
+// With R4 = 0 the row that follows the frame's only one is the first of
+// the lines of R5, and it too starts every line at R12/R13; the next ones
+// start at the address kept (11.2.4, 17.4.2; Shaker "UPD OFF ADD LINE" and
+// module E, "VMA update on spec adj", on a real chip).
+void addressInLinesOfR5()
+{
+    const auto frame = [](Rig& rig) {
+        rig.set(12, 0x30);
+        rig.set(13, 0x00);
+        rig.seek(0, 0, 10);
+        rig.set(4, 0);
+        rig.set(5, 16);
+    };
+    {
+        Rig rig(CrtcType::UM6845R);
+        frame(rig);
+        CHECK_EQ(lineAddress(rig, 0, 7), 0x3000);
+        CHECK_EQ(lineAddress(rig, 1, 0), 0x3000);
+        rig.set(13, 0xC8);
+        CHECK_EQ(lineAddress(rig, 1, 1), 0x30C8);
+        CHECK_EQ(lineAddress(rig, 1, 7), 0x30C8);
+        // The second row of those lines: what the first one left.
+        rig.set(13, 0x28);
+        CHECK_EQ(lineAddress(rig, 2, 0), 0x30C8 + 40);
+        CHECK_EQ(lineAddress(rig, 2, 7), 0x30C8 + 40);
+        CHECK_EQ(lineAddress(rig, 0, 0), 0x3028);
+    }
+    // R4 raised on the last character of the frame's last line: the lines
+    // of R5 follow all the same, but C4 = 1 is then a row like any other.
+    {
+        Rig rig(CrtcType::UM6845R);
+        frame(rig);
+        rig.seek(0, 7, 63);
+        rig.set(4, 1);
+        CHECK_EQ(lineAddress(rig, 1, 0), 0x3000 + 40);
+        CHECK(rig.crtc.inVerticalAdjust());
+        rig.set(13, 0xC8);
+        CHECK_EQ(lineAddress(rig, 1, 5), 0x3000 + 40);
+    }
+    // R9 raised there: the row goes on, with C4 = 0, and C4 = 1 still
+    // starts its lines at R12/R13.
+    {
+        Rig rig(CrtcType::UM6845R);
+        frame(rig);
+        rig.seek(0, 7, 63);
+        rig.set(9, 15);
+        CHECK_EQ(lineAddress(rig, 0, 8), 0x3000);
+        CHECK(rig.crtc.inVerticalAdjust());
+        rig.set(9, 7);
+        rig.seek(1, 0, 10);
+        rig.set(13, 0xC8);
+        CHECK_EQ(lineAddress(rig, 1, 1), 0x30C8);
+    }
 }
 
 // The VSYNC lasts 16 lines whatever R3 says. Lines of a single character
@@ -124,6 +287,8 @@ void vsyncAndShortLines()
 int main()
 {
     videoPointer();
+    linesOfR5();
+    addressInLinesOfR5();
     vsyncAndShortLines();
     return checkSummary("crtc1");
 }
