@@ -275,10 +275,21 @@ public:
         const bool early = (clk_ & 3) == 3;
         if (turbo_) [[unlikely]]
             turboLeft_ += 4;  // an output takes a second microsecond
+        // The UM6845R makes up its mind about C0 a little way into the
+        // character: an early write to R0 counts for the comparison that
+        // ends, or does not end, the line on the character it arrives on.
+        // R0 raised by an OUTI whose fifth microsecond falls just after
+        // the line's last character keeps the line going (Compendium 13.3,
+        // 13.6.2, 13.7.1.1; Shaker "OUTI story", two results that a real
+        // chip gives and no other type).
+        const bool sooner = early && crtc_.type() == CrtcType::UM6845R && (port & 0x4300) == 0x0100
+                            && crtc_.selected() == 0;
+        if (sooner) [[unlikely]]
+            crtcWrite(port, value, early);
         advance(2);
         const bool lateCrtc = crtc_.type() == CrtcType::AsicPlus || crtc_.type() == CrtcType::PreAsic;
         ioWrite(port, value);
-        if (!lateCrtc)
+        if (!lateCrtc && !sooner)
             crtcWrite(port, value, early);
         waitForGateArray();
         advance(1);

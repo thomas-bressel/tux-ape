@@ -6,6 +6,7 @@
 #include <initializer_list>
 
 #include "check.h"
+#include "core/cpc.h"
 #include "crtc_rig.h"
 
 namespace {
@@ -282,11 +283,55 @@ void vsyncAndShortLines()
     }
 }
 
+// An OUTI's write comes a quarter of a microsecond sooner than an OUT
+// (C),r's. Falling on the character after a line's last one, it is too late
+// on the other chips: the line has ended. This one makes up its mind about
+// C0 a little way into the character, and R0 raised there keeps the line
+// going (13.3, 13.6.2, 13.7.1.1; Shaker "OUTI story" on a real chip).
+void earlyWriteToR0()
+{
+    for (const CrtcType type : {CrtcType::UM6845R, CrtcType::HD6845S, CrtcType::MC6845}) {
+        Cpc cpc;
+        cpc.crtc().setType(type);
+        static const uint8_t screen[] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7};
+        for (int r = 0; r < 10; ++r) {
+            cpc.out(0xBC00, static_cast<uint8_t>(r));
+            cpc.out(0xBD00, screen[r]);
+        }
+        cpc.out(0xBC00, 0);
+        while (cpc.clock() & 3)
+            cpc.tick(1);
+        while (cpc.crtc().hcc() != 63)
+            cpc.tick(4);
+        cpc.tick(3);  // the I/O cycle begins a T-state before the next character
+        cpc.out(0xBD00, 127);
+        const int after = cpc.crtc().hcc();
+        if (type == CrtcType::UM6845R)
+            CHECK(after >= 64 && after <= 66);
+        else
+            CHECK(after <= 2);
+    }
+    // The same write a T-state later, as an OUT (C),r makes it: too late
+    // on this chip as well.
+    Cpc cpc;
+    cpc.crtc().setType(CrtcType::UM6845R);
+    cpc.out(0xBC00, 0);
+    cpc.out(0xBD00, 63);
+    while (cpc.clock() & 3)
+        cpc.tick(1);
+    while (cpc.crtc().hcc() != 63)
+        cpc.tick(4);
+    cpc.tick(4);
+    cpc.out(0xBD00, 127);
+    CHECK(cpc.crtc().hcc() <= 2);
+}
+
 }  // namespace
 
 int main()
 {
     videoPointer();
+    earlyWriteToR0();
     linesOfR5();
     addressInLinesOfR5();
     vsyncAndShortLines();
