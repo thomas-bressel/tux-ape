@@ -26,7 +26,7 @@ void Crtc::reset()
     dispHistory_ = 0;
     inAdjust_ = false;
     lastLine_ = adjust_ = adjustRunning_ = adjustUndecided_ = false;
-    c9Enabled_ = c4CountArmed_ = c9MatchAtEnd_ = false;
+    c9Enabled_ = c4CountArmed_ = c9MatchAtEnd_ = rowR4AtEnd_ = false;
     vsyncAllowed_ = r7Match_ = vsyncFresh_ = vsyncDue_ = false;
     lastLineOpen_ = previousLast_ = hsyncJudged_ = false;
     ghostVsync_ = false;
@@ -159,8 +159,13 @@ void Crtc::write(uint8_t value, bool early)
 
     // On the last character of a line the C4 step follows the registers to
     // the end: R9 brought to C9 there still counts.
-    if (type_ == CrtcType::HD6845S && hcc_ == reg_[0] && c9AtR9())
-        c9MatchAtEnd_ = true;
+    if (type_ == CrtcType::HD6845S && hcc_ == reg_[0]) {
+        if (c9AtR9())
+            c9MatchAtEnd_ = true;
+        // R0 brought to the character in progress makes it the last one.
+        if (selected_ == 0)
+            rowR4AtEnd_ = vcc_ == reg_[4];
+    }
 }
 
 void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, uint8_t vsc, bool hsync, bool vsync)
@@ -191,6 +196,7 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     vsyncAllowed_ = hcc_ >= 2;
     c4CountArmed_ = c9AtR9();
     c9MatchAtEnd_ = false;
+    rowR4AtEnd_ = vcc_ == reg_[4];
     endSeenOnOne_ = false;
     r7Match_ = vcc_ == reg_[7];
     vsyncFresh_ = vsyncDue_ = false;
@@ -356,6 +362,13 @@ void Crtc::tick()
                 } else {
                     adjustUndecided_ = true;
                 }
+            } else if (!adjust_ && onLastLine()) {
+                // And one that makes it is still in time: the frame ends
+                // with this line (12.2; Shaker E, "switch comparator", R9
+                // brought to C9 on character 1 of row R4, on a real chip).
+                lastLine_ = adjust_ = true;
+                adjustRunning_ = false;
+                adjustUndecided_ = true;
             }
             break;
         case 3:
@@ -365,8 +378,11 @@ void Crtc::tick()
         // The C4 step is decided on the last character and cannot be taken
         // back: not by R9 moving away during that character (10.3.1.2), nor
         // by R0 changing so that the line carries on.
-        if (hcc_ == reg_[0] && c9AtR9())
-            c9MatchAtEnd_ = true;
+        if (hcc_ == reg_[0]) {
+            if (c9AtR9())
+                c9MatchAtEnd_ = true;
+            rowR4AtEnd_ = vcc_ == reg_[4];
+        }
     }
     // The VSYNC of an even frame, held back to the middle of the line.
     if (midVsync_ && hcc_ == reg_[0] / 2) {
@@ -901,7 +917,7 @@ void Crtc::lineStart0()
         if (interlaceLine_) {
             newFrame0();
         } else if (adjust_) {
-            if (vcc_ != reg_[4]) {
+            if (!rowR4AtEnd_) {
                 // Adjustment lines: C9 runs on to R5 whatever R9 says, and
                 // reaching it ends the frame (11.2.2, 13.2.4). One that was
                 // only armed, by a last line of one or two characters, gives
@@ -914,13 +930,24 @@ void Crtc::lineStart0()
                     vlc_ = (vlc_ + 1) & 0x1F;
                 }
             } else {
-                // Still on row R4: C4 steps past it, once.
-                if (c4Step) {
-                    vcc_ = (vcc_ + 1) & 0x7F;
-                    rowChanged0();
+                // Still on row R4: C4 steps past it, once. From then on C9
+                // answers to R5, and at once: the adjustment that was
+                // settled on character 2 ends here if the C9 worked out for
+                // the next line is R5 (11.2.2). R5 set to 0 later in the
+                // line, or R9 moved away on character 1 and back with
+                // R5 = 0, leaves no line to add (Shaker E, "R5 cancelation
+                // on R5 upd" and "switch comparator", on a real chip).
+                const uint8_t c9 = c9Match ? 0 : (vlc_ + 1) & 0x1F;
+                if (c4Step && adjustRunning_ && c9 == reg_[5]) {
+                    endFrame0();
+                } else {
+                    if (c4Step) {
+                        vcc_ = (vcc_ + 1) & 0x7F;
+                        rowChanged0();
+                    }
+                    vlc_ = c9;
+                    lastLine_ = false;
                 }
-                vlc_ = c9Match ? 0 : (vlc_ + 1) & 0x1F;
-                lastLine_ = false;
             }
         } else if (lastLine_) {
             endFrame0();

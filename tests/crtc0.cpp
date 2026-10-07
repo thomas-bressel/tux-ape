@@ -732,6 +732,103 @@ void r0RaisedFromOne()
     }
 }
 
+void lastLineMadeOnCharacterOne()
+{
+    // C4 = R4 and C9 = R9 make the last line as long as C0 < 2: a write on
+    // character 1 is still in time, one on character 2 is not, and C4 then
+    // runs past R4 (12.2; Shaker C "last line upd limit" and Shaker E
+    // "switch comparator" 12 to 14, both giving a real chip's answers).
+    for (int c0 = 0; c0 <= 2; ++c0) {
+        Rig rig;
+        rig.seek(38, 6, c0);
+        rig.set(9, 6);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vcc(), c0 < 2 ? 0 : 39);
+        CHECK_EQ(rig.crtc.vlc(), 0);
+    }
+    for (int c0 = 0; c0 <= 2; ++c0) {
+        Rig rig;
+        rig.seek(20, 7, c0);
+        rig.set(4, 20);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vcc(), c0 < 2 ? 0 : 21);
+        CHECK_EQ(rig.crtc.vlc(), 0);
+    }
+}
+
+void adjustmentCalledOff()
+{
+    // The adjustment settled on character 2 of the last line ends as soon
+    // as the C9 worked out for the next line is R5 (11.2.2): R5 set to 0
+    // later in that line leaves no line to add (Shaker E, "R5 cancelation
+    // on R5 upd", a real chip's answers).
+    for (int c0 : {3, 61, 63}) {
+        Rig rig;
+        rig.set(5, 20);
+        rig.seek(38, 7, c0);
+        rig.set(5, 0);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vcc(), 0);
+        CHECK_EQ(rig.crtc.vlc(), 0);
+    }
+    // Lowered to 1, one line is added.
+    {
+        Rig rig;
+        rig.set(5, 20);
+        rig.seek(38, 7, 30);
+        rig.set(5, 1);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 39 && rig.crtc.vlc() == 0);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 0 && rig.crtc.vlc() == 0);
+    }
+    // The same goes for the adjustment that R9 starts when it leaves C9 on
+    // character 1 of the last line: put back before the line ends, with
+    // R5 = 0, the frame ends as if nothing had happened (Shaker E, "switch
+    // comparator" 4). Left away, C9 runs on.
+    {
+        Rig rig;
+        rig.seek(38, 7, 1);
+        rig.set(9, 6);
+        rig.to(60);
+        rig.set(9, 7);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 0 && rig.crtc.vlc() == 0);
+
+        rig.seek(38, 7, 1);
+        rig.set(9, 6);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 38 && rig.crtc.vlc() == 8);
+    }
+}
+
+void r4OnTheLastCharacter()
+{
+    // R4 taken away from C4 on the last line, the adjustment being settled:
+    // C9 is counted against R5 from where it is, 12 lines to go to 20 from
+    // 8. On the line's last character the write is too late for that: C4
+    // steps, C9 starts again from 0 and the 20 lines are all there (Shaker
+    // E, "R5 cancelation on R4 upd", a real chip's answers).
+    {
+        Rig rig;
+        rig.set(5, 20);
+        rig.seek(38, 7, 62);
+        rig.set(4, 50);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 38 && rig.crtc.vlc() == 8);
+        CHECK_EQ(rig.linesToFrameStart(), 12);
+    }
+    {
+        Rig rig;
+        rig.set(5, 20);
+        rig.seek(38, 7, 63);
+        rig.set(4, 50);
+        rig.nextLine();
+        CHECK(rig.crtc.vcc() == 39 && rig.crtc.vlc() == 0);
+        CHECK_EQ(rig.linesToFrameStart(), 20);
+    }
+}
+
 int main()
 {
     displaySkew();
@@ -751,5 +848,8 @@ int main()
     hsyncsAreNotJoined();
     r7OnTheLastCharacter();
     r0RaisedFromOne();
+    lastLineMadeOnCharacterOne();
+    adjustmentCalledOff();
+    r4OnTheLastCharacter();
     return checkSummary("crtc0");
 }
