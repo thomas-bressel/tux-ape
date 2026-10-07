@@ -263,6 +263,8 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
     inAdjust_ = false;
     vtac_ = 0;
     lastLine1_ = hcc_ == reg_[0] && vcc_ == reg_[4] && vlc_ == reg_[9];
+    overran1_ = parityInTest_ = false;
+    r8Due_ = 0;
     fromR12_ = vcc_ == 0;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
     latchC9();
