@@ -37,6 +37,7 @@
 #include <QTabBar>
 #include <QRegularExpression>
 #include <QSet>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -519,6 +520,12 @@ LibraryEntry libraryEntry(const QString& path)
             }
             if (side.match(text).hasMatch())
                 entry.side += (entry.side.isEmpty() ? "" : ", ") + text;
+            // "CPC+", "CPC CPC+", "6128+", "Plus", "GX 4000": the machine
+            // it was made for. It stays among the notes.
+            static const QRegularExpression forPlus("(^|\\s)(cpc ?\\+|(464|6128) ?(\\+|plus)|plus|gx ?4000)($|\\s)",
+                                                    QRegularExpression::CaseInsensitiveOption);
+            if (forPlus.match(text).hasMatch())
+                entry.plus = true;
             if (text.compare("AI", Qt::CaseInsensitive) == 0)
                 entry.ai = true;
             else if (const auto match = year.match(text); match.hasMatch() && entry.year.isEmpty())
@@ -528,6 +535,9 @@ LibraryEntry libraryEntry(const QString& path)
         }
         entry.details = details.join(", ");
     }
+    // A cartridge is the Plus's, whatever its name says.
+    if (entry.kind == LibraryEntry::Cartridge)
+        entry.plus = true;
     return entry;
 }
 
@@ -708,9 +718,41 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     buttons->addWidget(insertB_);
     buttons->addWidget(close);
 
+    // The filters: a button for each kind of program, with its picture,
+    // and one for each machine.
+    struct FilterButton {
+        const char* name;
+        QString text, hint;
+        QIcon icon;
+    };
+    const FilterButton filterButtons[5] = {
+        {"bDiscs", QString(), tr("Lists the discs"), makeIcon(IconId::Disc)},
+        {"bTapes", QString(), tr("Lists the tapes"), makeIcon(IconId::Tape)},
+        {"bCartridges", QString(), tr("Lists the cartridges"), makeIcon(IconId::Cartridge)},
+        {"bCpc", tr("CPC"), tr("Lists the programs for the CPC: those not marked for the Plus"), QIcon()},
+        {"bPlus", tr("CPC+"), tr("Lists the programs for the Plus: the cartridges, and what is marked CPC+"), QIcon()},
+    };
     auto* layout = new QVBoxLayout(this);
     auto* top = new QHBoxLayout;
     top->addWidget(search_, 1);
+    for (int n = 0; n < 5; ++n) {
+        auto* button = new QToolButton;
+        button->setObjectName(filterButtons[n].name);
+        button->setCheckable(true);
+        button->setToolTip(filterButtons[n].hint);
+        if (filterButtons[n].icon.isNull())
+            button->setText(filterButtons[n].text);
+        else
+            button->setIcon(filterButtons[n].icon);
+        button->setIconSize(QSize(20, 20));
+        button->setFocusPolicy(Qt::NoFocus);
+        connect(button, &QToolButton::toggled, this, [this] { filter(); });
+        filterButtons_[n] = button;
+        if (n == 3)
+            top->addSpacing(8);
+        top->addWidget(button);
+    }
+    top->addSpacing(8);
     top->addWidget(viewBox_);
     top->addWidget(sizeSlider_);
     layout->addLayout(top);
@@ -1062,6 +1104,7 @@ void LibraryDialog::filter()
 {
     const QStringList words = search_->text().split(' ', Qt::SkipEmptyParts);
     const QString tab = category();
+    const int wanted = filters();
     int shown = 0, filed = 0;
     QTreeWidgetItem* first = nullptr;
     for (int row = 0; row < list_->topLevelItemCount(); ++row) {
@@ -1073,6 +1116,16 @@ void LibraryDialog::filter()
             continue;
         }
         ++filed;
+        // Of the kinds and for the machine the buttons say.
+        const bool kind = !(wanted & (Discs | Tapes | Cartridges))
+                          || (entry.kind == LibraryEntry::Disc && (wanted & Discs))
+                          || (entry.kind == LibraryEntry::Tape && (wanted & Tapes))
+                          || (entry.kind == LibraryEntry::Cartridge && (wanted & Cartridges));
+        const int machines = wanted & (ForCpc | ForPlus);
+        if (!kind || (machines == ForCpc && entry.plus) || (machines == ForPlus && !entry.plus)) {
+            item->setHidden(true);
+            continue;
+        }
         const QString text = entry.title + ' ' + entry.subcategory + ' ' + entry.year + ' ' + entry.details + ' ' + entry.release
                              + ' ' + QFileInfo(entry.path).fileName()
                              + ' ' + entry.member;
@@ -1093,6 +1146,24 @@ void LibraryDialog::filter()
     filed_ = filed;
     fillGrid();
     updateButtons();
+}
+
+int LibraryDialog::filters() const
+{
+    int down = 0;
+    for (int n = 0; n < 5; ++n)
+        if (filterButtons_[n] && filterButtons_[n]->isChecked())
+            down |= 1 << n;
+    return down;
+}
+
+void LibraryDialog::setFilters(int filters)
+{
+    for (int n = 0; n < 5; ++n) {
+        const QSignalBlocker quiet(filterButtons_[n]);
+        filterButtons_[n]->setChecked(filters & 1 << n);
+    }
+    filter();
 }
 
 bool LibraryDialog::thumbnailView() const

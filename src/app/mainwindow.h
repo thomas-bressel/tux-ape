@@ -159,6 +159,7 @@ private:
     QString tapeFolder_;  // where the last tape image was opened
     QString cartridgeFolder_;
     QString librarySearch_;    // what the Library window was last searching for
+    int libraryFilters_ = 0;  // the Library's filter buttons that were down
     QString libraryCategory_;  // and the tab it was on
     int librarySortColumn_ = 0;  // and the order of its list
     Qt::SortOrder librarySortOrder_ = Qt::AscendingOrder;

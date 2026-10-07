@@ -1427,11 +1427,13 @@ void MainWindow::showLibrary()
     LibraryDialog dialog(folders, this);
     dialog.setCategory(libraryCategory_);
     dialog.setSearch(librarySearch_);
+    dialog.setFilters(libraryFilters_);
     dialog.setSort(librarySortColumn_, librarySortOrder_);
     dialog.setThumbnailSize(settings_.libraryThumbnailSize);
     dialog.setThumbnailView(settings_.libraryThumbnailView);
     const int closed = dialog.exec();
     librarySearch_ = dialog.search();
+    libraryFilters_ = dialog.filters();
     libraryCategory_ = dialog.category();
     librarySortColumn_ = dialog.sortColumn();
     librarySortOrder_ = dialog.sortOrder();

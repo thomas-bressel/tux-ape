@@ -712,6 +712,83 @@ int main(int argc, char* argv[])
     const int zippedMarker = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().read(0x8000); });
     CHECK_EQ(zippedMarker, 0x42);
 
+    // The filter buttons: by kind, each with its picture, and by machine.
+    // A program is for the Plus when its name says so, or when it is a
+    // cartridge; for the CPC otherwise.
+    {
+        CHECK(!libraryEntry("/g/Alpha (UK) (1987) [Original].dsk").plus);
+        CHECK(libraryEntry("/g/Beta (UK) (1990) [CPC+] [DEMO].dsk").plus);
+        CHECK(libraryEntry("/g/Gamma (F) (1996) [CPC CPC+] [DEMO].dsk").plus);
+        CHECK(libraryEntry("/g/Eta (UK) (128K) (2001) (Version 6128+) [DEMO].dsk").plus);
+        CHECK(libraryEntry("/g/Theta (UK) (1990) (GX 4000) [SESSION].snr").plus);
+        CHECK(libraryEntry("/g/Epsilon (UK) (1990) [Original].cpr").plus);
+        CHECK(!libraryEntry("/g/Sorcery+ (1985)(Amsoft).sna").plus);
+        CHECK(!libraryEntry("/g/Iota (UK) (1986) (CPC 6128) [Original].dsk").plus);
+
+        const QString sorted = folder.filePath("sorted");
+        QDir().mkpath(sorted);
+        for (const char* name : {"Alpha (UK) (1987) [Original].dsk", "Beta (UK) (1990) [CPC+] [DEMO].dsk",
+                                 "Gamma (F) (1996) [CPC CPC+] [DEMO].dsk", "Delta (UK) (1988) [Original] [TAPE].cdt",
+                                 "Epsilon (UK) (1990) [Original] [CARTOUCHE].cpr", "Zeta (1985).sna"}) {
+            QFile file(sorted + '/' + name);
+            CHECK(file.open(QIODevice::WriteOnly));
+        }
+        LibraryDialog dialog({sorted});
+        dialog.show();
+        using Titles = QStringList;
+        CHECK_EQ(dialog.filters(), 0);
+        CHECK(dialog.listedTitles() == (Titles{"Alpha", "Beta", "Delta", "Epsilon", "Gamma", "Zeta"}));
+        const char* const names[] = {"bDiscs", "bTapes", "bCartridges", "bCpc", "bPlus"};
+        QToolButton* buttons[5] = {};
+        for (int n = 0; n < 5; ++n) {
+            buttons[n] = dialog.findChild<QToolButton*>(names[n]);
+            CHECK(buttons[n] && buttons[n]->isCheckable() && !buttons[n]->isChecked() && !buttons[n]->toolTip().isEmpty());
+            if (!buttons[n])
+                return checkSummary("gui_library");
+        }
+        // The kinds have their picture, the machines their name.
+        CHECK(!buttons[0]->icon().isNull() && !buttons[1]->icon().isNull() && !buttons[2]->icon().isNull());
+        CHECK(buttons[3]->text() == "CPC" && buttons[4]->text() == "CPC+");
+
+        using Filter = LibraryDialog::Filter;
+        buttons[0]->click();
+        CHECK_EQ(dialog.filters(), int(Filter::Discs));
+        CHECK(dialog.listedTitles() == (Titles{"Alpha", "Beta", "Gamma"}));
+        auto* count = dialog.findChild<QLabel*>("lCount");
+        CHECK(count && count->text() == "3 of 6");
+        // Discs for the Plus, and discs that are not.
+        buttons[4]->click();
+        CHECK(dialog.listedTitles() == (Titles{"Beta", "Gamma"}));
+        buttons[4]->click();
+        buttons[3]->click();
+        CHECK_EQ(dialog.filters(), Filter::Discs | Filter::ForCpc);
+        CHECK(dialog.listedTitles() == Titles{"Alpha"});
+        if (!prefix.isEmpty()) {
+            QTest::qWait(50);
+            dialog.grab().save(prefix + "filters.png");
+        }
+        dialog.setFilters(Filter::Tapes);
+        CHECK(dialog.listedTitles() == Titles{"Delta"} && buttons[1]->isChecked() && !buttons[0]->isChecked());
+        dialog.setFilters(Filter::Cartridges);
+        CHECK(dialog.listedTitles() == Titles{"Epsilon"});
+        dialog.setFilters(Filter::Discs | Filter::Tapes);
+        CHECK(dialog.listedTitles() == (Titles{"Alpha", "Beta", "Delta", "Gamma"}));
+        // The machine alone: a cartridge is the Plus's.
+        dialog.setFilters(Filter::ForPlus);
+        CHECK(dialog.listedTitles() == (Titles{"Beta", "Epsilon", "Gamma"}));
+        dialog.setFilters(Filter::ForCpc);
+        CHECK(dialog.listedTitles() == (Titles{"Alpha", "Delta", "Zeta"}));
+        dialog.setFilters(Filter::ForCpc | Filter::ForPlus);
+        CHECK(dialog.listedTitles() == (Titles{"Alpha", "Beta", "Delta", "Epsilon", "Gamma", "Zeta"}));
+        // With the search.
+        dialog.setFilters(Filter::ForPlus);
+        dialog.setSearch("demo");
+        CHECK(dialog.listedTitles() == (Titles{"Beta", "Gamma"}));
+        dialog.setSearch(QString());
+        dialog.setFilters(0);
+        CHECK(dialog.listedTitles().size() == 6);
+    }
+
     // Recorded sessions: the files of the "SNR" folder have a tab of their
     // own, "Let's Play", and a double click plays one back. Those WinAPE
     // recorded are played too, with the disc they name found in the

@@ -19,6 +19,7 @@ class QPushButton;
 class QSlider;
 class QStackedWidget;
 class QTabBar;
+class QToolButton;
 class QTimer;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -41,6 +42,7 @@ struct LibraryEntry {
     QString subcategory;  // the folder under that ("Racing"...), or empty
     QString root;         // the library folder it was found in
     QString side;         // "Face A", "Disc 2"... if the name says which side or disc it is, or empty
+    bool plus = false;    // for the Plus: the name says so ("[CPC+]", "(GX4000)"...), or it is a cartridge
 };
 
 // The categories programs are filed under: the names of the folders a
@@ -140,6 +142,14 @@ public:
     // word of the search are listed.
     QString search() const;
     void setSearch(const QString& text);
+    // The buttons beside the search, to list some of the programs only.
+    // By kind: discs, tapes, cartridges, each with its picture; with none
+    // of them down every kind is listed. And by machine: the programs for
+    // the CPC, which are those not marked for the Plus, or those for the
+    // Plus; with neither down, or both, all of them.
+    enum Filter { Discs = 1, Tapes = 2, Cartridges = 4, ForCpc = 8, ForPlus = 16 };
+    int filters() const;
+    void setFilters(int filters);
     // The tabs: the categories that have a folder, in their own order,
     // then "Unsorted" if some programs are in none. With that one alone
     // there is no tab to show. The window opens on the first that has
@@ -210,6 +220,7 @@ public:
 private:
     QStringList folders_;
     QList<LibraryEntry> entries_;
+    QToolButton* filterButtons_[5] = {};
     int chosen_ = -1;
     int drive_ = 0;
 
