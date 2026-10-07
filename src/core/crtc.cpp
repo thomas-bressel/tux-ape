@@ -68,6 +68,7 @@ void Crtc::write(uint8_t value, bool early)
                 hsync_ = true;
                 hsc_ = 0;
                 hsyncJudged_ = false;
+                hsyncJoined_ = false;
             }
         }
         break;
@@ -450,11 +451,13 @@ void Crtc::tick()
     // two pulses are never joined (15.3.1; with R0 = 0, R2 = 0 and R3 = 1
     // there is one every second character, 15.3.2).
     bool hsyncEnded = false;
+    bool joined = false;
     if (hsync_) {
         hsc_ = (hsc_ + 1) & 0x0F;
         if (hsc_ == (reg_[3] & 0x0F)) {
             hsync_ = false;
             hsyncEnded = type0;
+            joined = true;
             if (type_ == CrtcType::MC6845)
                 hsyncEnds2();
         }
@@ -468,6 +471,10 @@ void Crtc::tick()
             hsync_ = true;
             hsc_ = 0;
             hsyncJudged_ = false;
+            // With R0 = 0 the counter never leaves R2 and there is nothing
+            // new about the pulse that follows (Kevin Thacker's "dmatest":
+            // the sound channels run once, then no more).
+            hsyncJoined_ = joined && reg_[0] != 0;
         }
     }
     // Type 2 takes its first look at the line once it knows whether an

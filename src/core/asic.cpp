@@ -17,6 +17,15 @@ namespace {
 constexpr uint8_t kKey[] = {0x00, 0xFF, 0x77, 0xB3, 0x51, 0xA8, 0xD4, 0x62, 0x39, 0x9C, 0x46, 0x2B, 0x15, 0x8A, 0xCD};
 constexpr int kLast = sizeof kKey - 1;
 
+// The sound channels' round, in microseconds: from the start of the HSYNC
+// (as the ASIC sees it) to the moment the channels that are on are picked
+// and to the first one's turn, and what a turn keeps the next channel
+// waiting.
+constexpr int kChoice = 2;
+constexpr int kFirstTurn = 4;
+constexpr int kSoundWrite = 9;
+constexpr int kOtherTurn = 1;
+
 // Addresses within the page.
 constexpr int kSprites = 0x0000;     // &4000: sixteen sprites of 256 pixels
 constexpr int kAttributes = 0x2000;  // &6000: eight bytes to a sprite
@@ -61,6 +70,7 @@ void Asic::reset()
     ssa_ = 0;
     dcsr_ = 0;
     channels_.fill(Channel());
+    serving_ = serveIn_ = 0;
     showDcsr();
     if (gateArray_)
         for (int index = 0; index < 32; ++index)
@@ -88,58 +98,101 @@ void Asic::raiseChannelInterrupt(int channel)
 //   2NNN  the instructions from here are to be gone through NNN times
 //   4xxx  bit 0: go back to the last 2NNN while its count lasts;
 //         bit 4: ask for an interrupt; bit 5: stop the channel
-void Asic::soundTick()
+bool Asic::soundTick()
 {
-    if (!readRam_)
-        return;
-    for (int number = 0; number < 3; ++number) {
-        if (!(dcsr_ & 1 << number))
-            continue;
-        Channel& channel = channels_[static_cast<size_t>(number)];
-        if (channel.pause > 0) {
-            if (channel.pauseLines > 0) {
-                --channel.pauseLines;
-            } else {
-                channel.pauseLines = channel.prescaler;
-                --channel.pause;
-            }
-            continue;
-        }
-        const uint16_t instruction =
-            static_cast<uint16_t>(readRam_(channel.address) | readRam_(static_cast<uint16_t>(channel.address + 1)) << 8);
-        channel.address = static_cast<uint16_t>(channel.address + 2);
-        if ((instruction & 0x7000) == 0) {
-            if (writeSound_)
-                writeSound_(instruction >> 8 & 0x0F, static_cast<uint8_t>(instruction));
-            continue;
-        }
-        if ((instruction & 0x1000) && (instruction & 0x0FFF) != 0) {
-            // The line of the instruction itself is the pause's first.
-            channel.pause = instruction & 0x0FFF;
-            channel.pauseLines = channel.prescaler;
-            if (channel.pauseLines > 0) {
-                --channel.pauseLines;
-            } else {
-                channel.pauseLines = channel.prescaler;
-                --channel.pause;
-            }
-        }
-        if (instruction & 0x2000) {
-            channel.repeats = instruction & 0x0FFF;
-            channel.loopStart = channel.address;
-        }
-        if (instruction & 0x4000) {
-            // The count is of times through, the first included.
-            if ((instruction & 0x01) && channel.repeats > 0 && --channel.repeats > 0)
-                channel.address = channel.loopStart;
-            if (instruction & 0x10)
-                raiseChannelInterrupt(number);
-            if (instruction & 0x20) {
-                dcsr_ &= static_cast<uint8_t>(~(1 << number));
-                showDcsr();
-            }
+    // A round still under way (lines shorter than it takes) is not started
+    // again: the HSYNC is missed.
+    if (serveIn_ == 0 && readRam_) {
+        serving_ = kNotChosen;
+        serveIn_ = kChoice;
+    }
+    return serveIn_ != 0;
+}
+
+// The channels that are on when the round is two microseconds old have
+// their turn one after the other, from 0 to 2, those that are off taking no
+// time. A channel turned on as the HSYNC starts is in time, and one turned
+// off after the choice still has its turn. A write to the sound chip keeps
+// the next channel waiting for the time the write takes. (Kevin Thacker's
+// "dmatiming" marks where a channel's interrupt comes: on a real machine
+// nine characters later behind one such write, eighteen behind two, one to
+// three behind anything else; its seventh set-up turns the channels on
+// during the HSYNC's first microsecond, and "dmatest" turns one off during
+// the third.)
+bool Asic::soundStep()
+{
+    if (serveIn_ == 0)
+        return false;  // a snapshot loaded in the middle of a round
+    if (--serveIn_ > 0)
+        return true;
+    if (serving_ == kNotChosen) {
+        serving_ = dcsr_ & 0x07;
+        if (serving_ != 0)
+            serveIn_ = kFirstTurn - kChoice;
+        return serveIn_ != 0;
+    }
+    while (serving_ != 0) {
+        const int number = serving_ & 1 ? 0 : serving_ & 2 ? 1 : 2;
+        serving_ &= static_cast<uint8_t>(~(1 << number));
+        const int taken = serve(number);
+        if (taken > 0 && serving_ != 0) {
+            serveIn_ = static_cast<uint8_t>(taken);
+            return true;
         }
     }
+    return false;
+}
+
+// One channel's turn; the microseconds it keeps the next one waiting.
+int Asic::serve(int number)
+{
+    Channel& channel = channels_[static_cast<size_t>(number)];
+    if (channel.pause > 0) {
+        if (channel.pauseLines > 0) {
+            --channel.pauseLines;
+        } else {
+            channel.pauseLines = channel.prescaler;
+            --channel.pause;
+        }
+        // (Whether a channel that is waiting keeps the next one waiting
+        // has not been measured on a real machine; here it does not.)
+        return 0;
+    }
+    const uint16_t instruction =
+        static_cast<uint16_t>(readRam_(channel.address) | readRam_(static_cast<uint16_t>(channel.address + 1)) << 8);
+    channel.address = static_cast<uint16_t>(channel.address + 2);
+    if ((instruction & 0x7000) == 0) {
+        if (writeSound_)
+            writeSound_(instruction >> 8 & 0x0F, static_cast<uint8_t>(instruction));
+        return kSoundWrite;
+    }
+    if ((instruction & 0x1000) && (instruction & 0x0FFF) != 0) {
+        // The line of the instruction itself is the pause's first.
+        channel.pause = instruction & 0x0FFF;
+        channel.pauseLines = channel.prescaler;
+        if (channel.pauseLines > 0) {
+            --channel.pauseLines;
+        } else {
+            channel.pauseLines = channel.prescaler;
+            --channel.pause;
+        }
+    }
+    if (instruction & 0x2000) {
+        channel.repeats = instruction & 0x0FFF;
+        channel.loopStart = channel.address;
+    }
+    if (instruction & 0x4000) {
+        // The count is of times through, the first included.
+        if ((instruction & 0x01) && channel.repeats > 0 && --channel.repeats > 0)
+            channel.address = channel.loopStart;
+        if (instruction & 0x10)
+            raiseChannelInterrupt(number);
+        if (instruction & 0x20) {
+            dcsr_ &= static_cast<uint8_t>(~(1 << number));
+            showDcsr();
+        }
+    }
+    return kOtherTurn;
 }
 
 uint8_t Asic::acknowledgeInterrupt(bool raster)
@@ -162,11 +215,10 @@ uint8_t Asic::acknowledgeInterrupt(bool raster)
         const int channel = dcsr_ & 0x40 ? 0 : dcsr_ & 0x20 ? 1 : 2;
         vector |= static_cast<uint8_t>((2 - channel) << 1);
         // Taken, a channel's interrupt goes by itself. With bit 0 of the
-        // vector register set it stays until its flag is written to;
-        // channel 2's still goes. (Amstrad's description has the bit the
-        // other way round, and says nothing of channel 2; this is what
-        // Kevin Thacker's "dmatest" finds on a real machine.)
-        if (!(ivr_ & 1) || channel == 2)
+        // vector register set it stays until its flag is written to.
+        // (Amstrad's description has the bit the other way round; this is
+        // what Kevin Thacker's "dmatest" finds on a real machine.)
+        if (!(ivr_ & 1))
             dcsr_ &= static_cast<uint8_t>(~(0x40 >> channel));
     }
     showDcsr();
@@ -308,6 +360,7 @@ void Asic::restore(std::span<const uint8_t> chunk)
     }
     dcsr_ = chunk[0x8DE];
     showDcsr();
+    serving_ = serveIn_ = 0;  // the file says nothing of a round under way
     rmr2_ = chunk[0x8F4] & 0x1F;
     unlocked_ = chunk[0x8F5] & 1;
     sequenceAt_ = -1;

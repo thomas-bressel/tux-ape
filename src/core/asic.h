@@ -96,8 +96,10 @@ public:
         writeSound_ = std::move(writeSound);
     }
     bool soundChannelsOn() const { return (dcsr_ & 0x07) != 0; }
-    // Called as each line's HSYNC starts.
-    void soundTick();
+    // Called as each line's HSYNC starts, and then every microsecond for
+    // as long as the channels' round lasts. Both say whether it does.
+    bool soundTick();
+    bool soundStep();
 
     // ---- Interrupts ----
     // The raster's interrupt, raised by the Gate Array on the line asked
@@ -144,6 +146,10 @@ public:
 
 private:
     std::array<Channel, 3> channels_ = {};
+    static constexpr uint8_t kNotChosen = 0x80;
+    uint8_t serving_ = 0;   // the channels still to have their turn on this line
+    uint8_t serveIn_ = 0;   // microseconds before the next step of the round; 0 outside one
+    int serve(int number);
     std::function<uint8_t(uint16_t)> readRam_;
     std::function<void(int, uint8_t)> writeSound_;
 

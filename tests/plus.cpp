@@ -3,6 +3,7 @@
 // outside, port by port, on a cartridge made up here: no ROM image is
 // needed. What real machines do is in Kevin Thacker's tests (acid_plus).
 
+#include <cstring>
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -701,14 +702,15 @@ void testSoundChannels()
             cpc.memory().baseRam()[at++] = static_cast<uint8_t>(instruction >> 8);
         }
     };
-    // To just after the start of the next HSYNC, or of the one after...
+    // To the start of the next HSYNC, or of the one after..., and past the
+    // channels' round, which takes a few microseconds from there.
     auto lines = [&](int count) {
         for (int i = 0; i < count; ++i) {
             while (cpc.crtc().hsync())
                 cpc.run(1);
             while (!cpc.crtc().hsync())
                 cpc.run(1);
-            cpc.run(3);
+            cpc.run(9);
         }
     };
     // The Gate Array's own interrupts are not what is looked at here.
@@ -787,6 +789,174 @@ void testSoundChannels()
     CHECK_EQ(cpc.psg().reg(2), 0x00);
     lines(1);
     CHECK_EQ(cpc.psg().reg(2), 0x03);
+}
+
+// The channels' round within the line. Where a channel's interrupt comes
+// is what Kevin Thacker's "dmatiming" marks on the screen, with what a real
+// machine shows for fourteen set-ups. The rules checked here give twelve of
+// them; the two others have two and three interrupts in one round, and come
+// three and four microseconds later on a real machine for a reason not
+// understood.
+void testSoundChannelTiming()
+{
+    PlusMachine m;
+    Cpc& cpc = m.cpc;
+    auto list = [&](uint16_t at, std::initializer_list<uint16_t> instructions) {
+        for (const uint16_t instruction : instructions) {
+            cpc.memory().baseRam()[at++] = static_cast<uint8_t>(instruction);
+            cpc.memory().baseRam()[at++] = static_cast<uint8_t>(instruction >> 8);
+        }
+    };
+    // The processor walks through NOPs, a microsecond each, with its
+    // interrupts off.
+    std::memset(cpc.memory().baseRam() + 0xA000, 0, 0x2000);
+    auto step = [&](int microseconds = 1) {
+        cpc.cpu().pc = 0xA000;
+        cpc.run(microseconds);
+    };
+    // To the first microsecond of the next HSYNC.
+    auto toHsync = [&] {
+        while (cpc.crtc().hsync())
+            step();
+        while (!cpc.crtc().hsync())
+            step();
+    };
+    auto status = [&] { return cpc.memory().read(0x6C0F) & 0x7F; };
+    // The three lists, and the channels given turned on well before the
+    // HSYNC; then the microseconds from its start to the first of the
+    // interrupts looked for (-1: none on that line).
+    const uint16_t kLists[3] = {0x8000, 0x8100, 0x8200};
+    auto point = [&] {
+        m.write(0x6C0F, 0x70);
+        for (int channel = 0; channel < 3; ++channel) {
+            m.write(static_cast<uint16_t>(0x6C00 + channel * 4), static_cast<uint8_t>(kLists[channel]));
+            m.write(static_cast<uint16_t>(0x6C01 + channel * 4), static_cast<uint8_t>(kLists[channel] >> 8));
+            m.write(static_cast<uint16_t>(0x6C02 + channel * 4), 0);
+        }
+    };
+    auto wait = [&](int flags) {
+        for (int after = 0; after < 50; ++after) {
+            if (status() & flags)
+                return after;
+            step();
+        }
+        return -1;
+    };
+    auto interruptAfter = [&](int channels, int flags) {
+        point();
+        toHsync();
+        step(20);
+        m.write(0x6C0F, static_cast<uint8_t>(channels));
+        toHsync();
+        return wait(flags);
+    };
+    const uint16_t kInterrupt = 0x4030;  // ask for an interrupt and stop
+    const uint16_t kWrite = 0x0855;      // a register of the sound chip
+    const uint16_t kNothing = 0x4000;
+    const uint16_t kStop = 0x4020;
+    m.write(0x6805, 0x01);  // interrupts stay until cleared
+
+    // A channel on its own: the same moment for the three of them.
+    list(kLists[0], {kInterrupt});
+    list(kLists[1], {kInterrupt});
+    list(kLists[2], {kInterrupt});
+    const int alone = interruptAfter(0x01, 0x40);
+    CHECK_EQ(alone, 5);
+    CHECK_EQ(interruptAfter(0x02, 0x20), alone);
+    CHECK_EQ(interruptAfter(0x04, 0x10), alone);
+    // Behind a write to the sound chip: nine microseconds later; behind
+    // two, eighteen.
+    list(kLists[0], {kWrite, kStop});
+    CHECK_EQ(interruptAfter(0x03, 0x20), alone + 9);
+    list(kLists[1], {kWrite, kStop});
+    CHECK_EQ(interruptAfter(0x06, 0x10), alone + 9);
+    CHECK_EQ(interruptAfter(0x07, 0x10), alone + 18);
+    // Behind anything else, one microsecond for each: a channel that
+    // stops, one that asks for an interrupt, one with nothing to do.
+    list(kLists[0], {kStop});
+    CHECK_EQ(interruptAfter(0x07, 0x10), alone + 10);
+    list(kLists[0], {kInterrupt});
+    CHECK_EQ(interruptAfter(0x07, 0x10), alone + 10);
+    list(kLists[0], {kNothing, kStop});
+    list(kLists[1], {kNothing, kStop});
+    CHECK_EQ(interruptAfter(0x06, 0x10), alone + 1);
+    CHECK_EQ(interruptAfter(0x07, 0x10), alone + 2);
+    list(kLists[1], {kInterrupt});
+    CHECK_EQ(interruptAfter(0x03, 0x20), alone + 1);
+
+    // Channel 2's interrupt stays until cleared like the others'...
+    list(kLists[2], {kInterrupt});
+    CHECK_EQ(interruptAfter(0x04, 0x10), alone);
+    if (cpc.gateArray().interruptRequested())
+        cpc.irqAck();
+    CHECK_EQ(cpc.irqAck(), 0x00);  // its vector
+    CHECK_EQ(status(), 0x10);
+    CHECK(cpc.irq());
+    m.write(0x6C0F, 0x10);
+    CHECK_EQ(status(), 0x00);
+    // ...and goes by itself with bit 0 of the vector register clear.
+    m.write(0x6805, 0x00);
+    CHECK_EQ(interruptAfter(0x04, 0x10), alone);
+    if (cpc.gateArray().interruptRequested())
+        cpc.irqAck();
+    cpc.irqAck();
+    CHECK_EQ(status(), 0x00);
+    m.write(0x6805, 0x01);
+
+    // The channels that are on are picked two microseconds into the round,
+    // not as it begins: one turned on during the HSYNC's first microseconds
+    // runs on that line ("dmatiming", seventh set-up), and one turned off
+    // just after the choice still has its turn ("dmatest", where a handler
+    // turns the channels off as the round starts and the interrupt comes
+    // all the same).
+    list(kLists[0], {kInterrupt});
+    for (int late = 0; late < 6; ++late) {
+        point();
+        toHsync();
+        step(late);
+        m.write(0x6C0F, 0x01);
+        const int after = wait(0x40);
+        CHECK_EQ(after, late < 3 ? alone - late : -1);
+    }
+    for (int late = 0; late < 6; ++late) {
+        point();
+        toHsync();
+        step(20);
+        m.write(0x6C0F, 0x01);
+        toHsync();
+        step(late);
+        m.write(0x6C0F, 0x00);
+        CHECK_EQ(wait(0x40), late < 3 ? -1 : alone - late);
+    }
+
+    // Lines of three characters with an HSYNC of fifteen: each HSYNC ends
+    // on the character where the next begins, and the pulse never drops,
+    // yet every one of them is a round ("dmatest", "CRTC R0 length and
+    // dma"). With R0 = 0 the counter never leaves R2: one round and no
+    // more.
+    auto crtc = [&](int reg, int value) {
+        cpc.out(0xBC00, static_cast<uint8_t>(reg));
+        cpc.out(0xBD00, static_cast<uint8_t>(value));
+    };
+    list(kLists[0], {0x0830, 0x0820, 0x0810, kStop});
+    for (const int r0 : {2, 4, 14, 0}) {
+        point();
+        cpc.psg().setRegister(8, 0);
+        crtc(0, 63);
+        crtc(2, 0);
+        crtc(3, 0x8F);
+        step(200);
+        crtc(0, r0);
+        step(600);  // the counter has to come round to 0 first
+        m.write(0x6C0F, 0x01);
+        step(600);
+        if (r0 != 0) {
+            CHECK_EQ(status(), 0x00);
+            CHECK_EQ(cpc.psg().reg(8), 0x10);
+        } else {
+            CHECK_EQ(status(), 0x01);
+        }
+    }
 }
 
 // A snapshot of a Plus holds what its ASIC held.
@@ -879,6 +1049,7 @@ int main()
     testFloatingBus();
     testRasterInterrupt();
     testSoundChannels();
+    testSoundChannelTiming();
     testSnapshot();
     return checkSummary("plus");
 }

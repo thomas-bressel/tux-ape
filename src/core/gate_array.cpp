@@ -88,7 +88,7 @@ void GateArray::reset()
     countsDue_ = vsyncDue_ = 0;
     interrupt_ = false;
     prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
-    rasterMatch_ = rasterDue_ = false;
+    rasterMatch_ = rasterDue_ = soundRound_ = false;
 }
 
 uint32_t GateArray::monitorColour(int hardwareColour, MonitorKind kind, bool linear, int brightness)
@@ -248,6 +248,10 @@ void GateArray::rasterInterrupt(const Crtc& crtc, bool hsync)
     const bool match = (hsync || crtc.hsync()) && line != 0 && crtc.asicLine() == line;
     rasterDue_ = match && !rasterMatch_;
     rasterMatch_ = match;
+
+    // The sound channels, while their round for this line lasts.
+    if (soundRound_) [[unlikely]]
+        soundRound_ = asic_->soundStep();
 }
 
 void GateArray::sync(const Crtc& crtc, Monitor& monitor)
@@ -294,9 +298,14 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         // screen mode takes effect: a mode asked for during the first six
         // microseconds of a long HSYNC is still in time (Compendium 9.3.2,
         // Shaker "Gate Array moderisation").
-        // Its sound channels take an instruction each on every line.
-        if (hsyncAge_ == 0 && plus_ && asic_->soundChannelsOn())
-            asic_->soundTick();
+        // Its sound channels take an instruction each on every line. An
+        // HSYNC that begins on the character where the one before ended
+        // starts a round like any other, though the pulse never dropped:
+        // with the width at 15, lines of 3, 5 and 15 characters still have
+        // their channels served (Kevin Thacker's "dmatest", "CRTC R0 length
+        // and dma").
+        if (plus_ && (hsyncAge_ == 0 || crtc.hsyncJoinedJustNow()))
+            soundRound_ = asic_->soundTick();
         if (hsyncAge_ == 2)
             monitor.hsync();
         if (hsyncAge_ == kHsyncPulse)

@@ -44,6 +44,10 @@ public:
 
     // Outputs.
     bool hsync() const { return hsync_; }
+    // The HSYNC in progress began, a character ago, on the very character
+    // where the one before it ended: the signal has not moved, but the
+    // ASIC's sound channels take it for a new one.
+    bool hsyncJoinedJustNow() const { return hsyncJoined_ && hsc_ == 1 && hsync_; }
     bool vsync() const { return vsync_ && !ghostVsync_; }
     // How a write to R3 cut the HSYNC short during the character in
     // progress, and during the one before it.
@@ -236,6 +240,7 @@ private:
     // Something written is waiting to take effect: R6 on type 0, the
     // split on the ASICs. (Kept after everything else: where the rest
     // sits was measured, and moving it costs a few per cent.)
+    bool hsyncJoined_ = false;     // the HSYNC in progress began as the one before ended
     bool late_ = false;
     uint8_t splitDue_ = 0;         // characters to go before the split written is seen
     uint8_t splitDueLine_ = 0;
