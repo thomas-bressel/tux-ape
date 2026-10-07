@@ -8,8 +8,11 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QGroupBox>
 #include <QLineEdit>
 #include <QPushButton>
 #include <QRadioButton>
@@ -17,13 +20,16 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QToolButton>
 
 #include "assemblerdialog.h"
+#include "breakpointsdialog.h"
 #include "check.h"
 #include "core/cpc.h"
 #include "core/setup.h"
 #include "debuggerdialog.h"
 #include "emulator.h"
+#include "graphicsdialog.h"
 #include "mainwindow.h"
 #include "settings.h"
 
@@ -279,6 +285,121 @@ int main(int argc, char* argv[])
             readView->setChecked(true);
         CHECK(!debugger->anyView());
         CHECK(shown(0x4000) == "4000 A4");
+    }
+
+    // WinAPE's Memory Selection: the ROM, RAM and Secondary ROM Mapping
+    // boxes. They show the machine's own mapping, greyed, while its memory
+    // is looked at as it reads or writes it, and are the user's with Any.
+    {
+        auto* romBox = debugger->findChild<QGroupBox*>("grpROM");
+        auto* ramBox = debugger->findChild<QGroupBox*>("grpRAM");
+        auto* secondaryBox = debugger->findChild<QGroupBox*>("grpSecondaryROM");
+        auto* lower = debugger->findChild<QCheckBox*>("ckLower");
+        auto* upper = debugger->findChild<QCheckBox*>("ckUpper");
+        auto* rom = debugger->findChild<QComboBox*>("cbROM");
+        auto* ram = debugger->findChild<QComboBox*>("cbRAM");
+        auto* base = debugger->findChild<QComboBox*>("cbROMAddress");
+        auto* bank = debugger->findChild<QComboBox*>("cbBankSelect");
+        CHECK(romBox && ramBox && secondaryBox && lower && upper && rom && ram && base && bank);
+        if (!(romBox && ramBox && secondaryBox && lower && upper && rom && ram && base && bank))
+            return checkSummary("gui_memtools");
+        CHECK(romBox->title() == "ROM" && ramBox->title() == "RAM" && secondaryBox->title() == "Secondary ROM Mapping");
+        CHECK(lower->text() == "Lower" && upper->text() == "Upper ROM:");
+
+        // The lists. A CPC6128's sixteen places: its BASIC and its AMSDOS.
+        const QStringList roms = debugger->upperRomChoices();
+        CHECK_EQ(roms.size(), 16);
+        CHECK(roms.value(0) == "00 - BASIC1-1" && roms.value(7) == "07 - AMSDOS");
+        CHECK(roms.value(1) == "01 - (Empty)" && roms.value(15) == "0F - (Empty)");
+        CHECK_EQ(ram->count(), 64);
+        CHECK(ram->itemText(0) == "C0" && ram->itemText(4) == "C4" && ram->itemText(63) == "FF");
+        CHECK_EQ(base->count(), 4);
+        CHECK(base->itemText(0) == "#0000 (Default)" && base->itemText(1) == "#4000" && base->itemText(2) == "#8000");
+        CHECK(base->itemText(3) == "#0000 (ASIC Enabled)");
+        CHECK_EQ(bank->count(), 8);
+        CHECK(bank->itemText(0) == "0" && bank->itemText(7) == "7");
+
+        // Read: the machine's mapping, not to be changed here.
+        CHECK(!romBox->isEnabled() && !ramBox->isEnabled() && !secondaryBox->isEnabled());
+        CHECK(!lower->isChecked() && !upper->isChecked());
+        CHECK(ram->currentText() == "C0");
+        emulator.withMachine([](tuxape::Cpc& cpc) {
+            cpc.out(0x7F00, 0x84);  // the upper ROM in, the lower one out
+            cpc.out(0xDF00, 7);
+            cpc.out(0x7F00, 0xC5);
+        });
+        debugger->refresh();
+        CHECK(!lower->isChecked() && upper->isChecked());
+        CHECK(rom->currentText() == "07 - AMSDOS");
+        CHECK(ram->currentText() == "C5");
+        CHECK(shown(0xC000) == "C000 77");
+        debugger->setMachineView(true);
+        CHECK(!romBox->isEnabled() && upper->isChecked());
+        CHECK(shown(0xC000) == "C000 AC");
+
+        // Any: the boxes start from what the machine has and are then the
+        // user's; a cartridge's mapping only with a cartridge.
+        auto* any = debugger->findChild<QRadioButton*>("rbAny");
+        CHECK(any != nullptr);
+        if (any)
+            any->setChecked(true);
+        CHECK(debugger->anyView());
+        CHECK(romBox->isEnabled() && ramBox->isEnabled() && !secondaryBox->isEnabled());
+        CHECK(!lower->isChecked() && upper->isChecked() && rom->currentText() == "07 - AMSDOS");
+        CHECK(shown(0xC000) == "C000 77");
+        rom->setCurrentIndex(0);
+        emit rom->activated(0);
+        CHECK(shown(0xC000) == "C000 22");
+        lower->setChecked(true);
+        CHECK(shown(0x0000) == "0000 11");
+        ram->setCurrentIndex(ram->findText("C4"));
+        emit ram->activated(ram->currentIndex());
+        CHECK(shown(0x4000) == "4000 5E");
+        // The machine goes on with its own, and the boxes keep the user's.
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.out(0x7F00, 0xC0); });
+        debugger->refresh();
+        CHECK(rom->currentText() == "00 - BASIC1-1" && ram->currentText() == "C4" && lower->isChecked());
+        const bool kept = emulator.withMachine([](tuxape::Cpc& cpc) {
+            return !cpc.memory().lowerRomEnabled() && cpc.memory().upperRomEnabled()
+                && cpc.memory().selectedUpperRom() == 7 && cpc.memory().ramBank() == 0xC0;
+        });
+        CHECK(kept);
+        debugger->setMachineView(false);
+        CHECK(!romBox->isEnabled() && rom->currentText() == "07 - AMSDOS" && ram->currentText() == "C0");
+        emulator.withMachine([](tuxape::Cpc& cpc) { cpc.out(0x7F00, 0x8C); });
+        debugger->refresh();
+    }
+
+    // The buttons, with WinAPE's hints; three of them are for windows that
+    // are not the debugger's own.
+    {
+        const char* const buttons[][2] = {{"bLoad", "Load Data"},          {"bSave", "Save Data"},
+                                          {"bGoto", "Go To Address"},      {"bFind", "Find"},
+                                          {"bBreakpoints", "Edit Breakpoints"}, {"bDataAreas", "Edit Data Areas"},
+                                          {"bTimers", "Show Timers"},      {"bGraphics", "Find Graphics"}};
+        for (const auto& [name, hint] : buttons) {
+            auto* button = debugger->findChild<QToolButton*>(name);
+            CHECK(button && button->toolTip() == hint && !button->icon().isNull());
+        }
+        CHECK(window.findChild<BreakpointsDialog*>() == nullptr);
+        if (auto* button = debugger->findChild<QToolButton*>("bBreakpoints"))
+            button->click();
+        auto* breakpoints = window.findChild<BreakpointsDialog*>();
+        CHECK(breakpoints && breakpoints->isVisible());
+        if (breakpoints)
+            breakpoints->close();
+        if (auto* button = debugger->findChild<QToolButton*>("bTimers"))
+            button->click();
+        auto* timers = window.findChild<TimersDialog*>();
+        CHECK(timers && timers->isVisible());
+        if (timers)
+            timers->close();
+        if (auto* button = debugger->findChild<QToolButton*>("bGraphics"))
+            button->click();
+        auto* graphics = window.findChild<GraphicsDialog*>();
+        CHECK(graphics && graphics->isVisible());
+        if (graphics)
+            graphics->close();
     }
 
     // The Find window, and the disassembly sent to a new tab of the assembler.

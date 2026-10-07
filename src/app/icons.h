@@ -21,6 +21,15 @@ enum class IconId {
     FullScreen,
     Help,
     Photo,
+    // The debugger's buttons.
+    LoadData,
+    SaveData,
+    GoTo,
+    Find,
+    Breakpoints,
+    DataAreas,
+    Timers,
+    Graphics,
 };
 
 QIcon makeIcon(IconId id);

@@ -7,6 +7,7 @@
 #include <QDialogButtonBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QGridLayout>
@@ -26,11 +27,14 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QTabWidget>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
 #include "emulator.h"
+#include "icons.h"
 
 #include "core/disasm.h"
 
@@ -520,11 +524,21 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     // The registers, in WinAPE's two columns.
     auto* registerGrid = new QGridLayout;
     registerGrid->setSpacing(2);
-    flags_ = new QLabel;
-    flags_->setObjectName("lFlags");
+    // The flags as WinAPE has them: a bit each, under its letter.
+    flags_ = new QLineEdit;
+    flags_->setObjectName("edFlags");
     flags_->setFont(fixedFont());
-    registerGrid->addWidget(new QLabel(tr("Flags")), 0, 0);
-    registerGrid->addWidget(flags_, 0, 1, 1, 3);
+    flags_->setMaxLength(8);
+    flags_->setAlignment(Qt::AlignRight);
+    auto* flagNames = new QLabel(QStringLiteral("SZ-H-VNC"));
+    flagNames->setObjectName("lFlagNames");
+    flagNames->setFont(fixedFont());
+    flagNames->setAlignment(Qt::AlignRight);
+    flagNames->setContentsMargins(0, 0, 5, 0);
+    registerGrid->addWidget(flagNames, 0, 1, 1, 3);
+    registerGrid->addWidget(new QLabel(tr("Flags")), 1, 0);
+    registerGrid->addWidget(flags_, 1, 1, 1, 3);
+    connect(flags_, &QLineEdit::editingFinished, this, [this] { registerEdited("Flags"); });
     const char* const names[] = {"AF", "AF'", "HL", "HL'", "DE", "DE'", "BC", "BC'", "IX", "SP", "IY", "I", "PC", "R"};
     for (int i = 0; i < 14; ++i) {
         auto* edit = new QLineEdit;
@@ -535,8 +549,8 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
         edit->setFixedWidth(fontMetrics().horizontalAdvance("00000") + 12);
         const QString name = names[i];
         connect(edit, &QLineEdit::editingFinished, this, [this, name] { registerEdited(name); });
-        registerGrid->addWidget(new QLabel(name), 1 + i / 2, (i % 2) * 2);
-        registerGrid->addWidget(edit, 1 + i / 2, (i % 2) * 2 + 1);
+        registerGrid->addWidget(new QLabel(name), 2 + i / 2, (i % 2) * 2);
+        registerGrid->addWidget(edit, 2 + i / 2, (i % 2) * 2 + 1);
         registers_.emplace_back(name, edit);
     }
     interruptMode_ = new QLineEdit;
@@ -545,9 +559,9 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     interruptMode_->setFixedWidth(24);
     interrupts_ = new QCheckBox(tr("Ints"));
     interrupts_->setObjectName("ckInts");
-    registerGrid->addWidget(new QLabel(tr("IM")), 8, 0);
-    registerGrid->addWidget(interruptMode_, 8, 1);
-    registerGrid->addWidget(interrupts_, 8, 2, 1, 2);
+    registerGrid->addWidget(new QLabel(tr("IM")), 9, 0);
+    registerGrid->addWidget(interruptMode_, 9, 1);
+    registerGrid->addWidget(interrupts_, 9, 2, 1, 2);
     connect(interruptMode_, &QLineEdit::editingFinished, this, [this] { registerEdited("IM"); });
     connect(interrupts_, &QCheckBox::clicked, this, [this] { registerEdited("Ints"); });
 
@@ -573,7 +587,9 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     right->addWidget(new QLabel(tr("Stack")));
     right->addWidget(stack_, 1);
 
-    // Which memory the panes show.
+    // Which memory the panes show: WinAPE's "Memory Selection". What the
+    // machine reads, what it writes to, or any mapping chosen in the three
+    // boxes beside, which otherwise show the machine's own.
     auto* memoryBox = new QGroupBox(tr("Memory"));
     readView_ = new QRadioButton(tr("Read"));
     readView_->setObjectName("rbRead");
@@ -582,45 +598,95 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     writeViewButton_->setObjectName("rbWrite");
     anyView_ = new QRadioButton(tr("Any"));
     anyView_->setObjectName("rbAny");
-    // With Any: which ROMs are in, and which bank of RAM.
-    anyBox_ = new QWidget;
-    auto* anyLayout = new QHBoxLayout(anyBox_);
-    anyLayout->setContentsMargins(0, 0, 0, 0);
-    anyLower_ = new QCheckBox(tr("Lower ROM"));
-    anyLower_->setObjectName("ckLowerRom");
-    anyUpper_ = new QCheckBox(tr("Upper ROM"));
-    anyUpper_->setObjectName("ckUpperRom");
-    anyUpperRom_ = new QLineEdit("0");
-    anyUpperRom_->setObjectName("edUpperRom");
-    anyUpperRom_->setMaxLength(2);
-    anyUpperRom_->setFixedWidth(32);
-    anyRamBank_ = new QLineEdit("C0");
-    anyRamBank_->setObjectName("edRamBank");
-    anyRamBank_->setMaxLength(2);
-    anyRamBank_->setFixedWidth(32);
-    anyLayout->addWidget(anyLower_);
-    anyLayout->addWidget(anyUpper_);
-    anyLayout->addWidget(anyUpperRom_);
-    anyLayout->addWidget(new QLabel(tr("RAM")));
-    anyLayout->addWidget(anyRamBank_);
-    anyBox_->setVisible(false);
-    auto* memoryLayout = new QHBoxLayout(memoryBox);
+    auto* memoryLayout = new QVBoxLayout(memoryBox);
+    memoryLayout->setSpacing(1);
     memoryLayout->addWidget(readView_);
     memoryLayout->addWidget(writeViewButton_);
     memoryLayout->addWidget(anyView_);
-    memoryLayout->addWidget(anyBox_);
+
+    romBox_ = new QGroupBox(tr("ROM"));
+    romBox_->setObjectName("grpROM");
+    anyLower_ = new QCheckBox(tr("Lower"));
+    anyLower_->setObjectName("ckLower");
+    anyUpper_ = new QCheckBox(tr("Upper ROM:"));
+    anyUpper_->setObjectName("ckUpper");
+    upperRom_ = new QComboBox;
+    upperRom_->setObjectName("cbROM");
+    upperRom_->setMaxVisibleItems(38);
+    upperRom_->setMinimumContentsLength(22);
+    upperRom_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    auto* romLayout = new QHBoxLayout(romBox_);
+    romLayout->addWidget(anyLower_);
+    romLayout->addWidget(anyUpper_);
+    romLayout->addWidget(upperRom_, 1);
+
+    ramBox_ = new QGroupBox(tr("RAM"));
+    ramBox_->setObjectName("grpRAM");
+    ramBank_ = new QComboBox;
+    ramBank_->setObjectName("cbRAM");
+    ramBank_->setMaxVisibleItems(30);
+    for (int bank = 0xC0; bank <= 0xFF; ++bank)
+        ramBank_->addItem(hex(static_cast<unsigned>(bank), 2), bank);
+    auto* ramLayout = new QHBoxLayout(ramBox_);
+    ramLayout->addWidget(new QLabel(tr("RAM Bank:")));
+    ramLayout->addWidget(ramBank_);
+
+    // The Plus's second mapping register.
+    secondaryBox_ = new QGroupBox(tr("Secondary ROM Mapping"));
+    secondaryBox_->setObjectName("grpSecondaryROM");
+    romBase_ = new QComboBox;
+    romBase_->setObjectName("cbROMAddress");
+    romBase_->addItems({tr("#0000 (Default)"), tr("#4000"), tr("#8000"), tr("#0000 (ASIC Enabled)")});
+    cartridgeBank_ = new QComboBox;
+    cartridgeBank_->setObjectName("cbBankSelect");
+    for (int bank = 0; bank < 8; ++bank)
+        cartridgeBank_->addItem(QString::number(bank));
+    auto* secondaryLayout = new QHBoxLayout(secondaryBox_);
+    secondaryLayout->addWidget(new QLabel(tr("Lower ROM Base/ASIC Enable:")));
+    secondaryLayout->addWidget(romBase_, 1);
+    secondaryLayout->addWidget(new QLabel(tr("Cartridge Bank:")));
+    secondaryLayout->addWidget(cartridgeBank_);
+    for (QGroupBox* box : {romBox_, ramBox_, secondaryBox_}) {
+        box->layout()->setContentsMargins(6, 2, 6, 4);
+        box->setEnabled(false);
+    }
+
     connect(writeViewButton_, &QRadioButton::toggled, this, [this](bool write) {
         writeView_ = write;
         refresh();
     });
-    connect(anyView_, &QRadioButton::toggled, this, [this](bool any) {
-        anyBox_->setVisible(any);
-        refresh();
-    });
+    connect(anyView_, &QRadioButton::toggled, this, &DebuggerDialog::refresh);
     connect(anyLower_, &QCheckBox::toggled, this, &DebuggerDialog::refresh);
     connect(anyUpper_, &QCheckBox::toggled, this, &DebuggerDialog::refresh);
-    connect(anyUpperRom_, &QLineEdit::editingFinished, this, &DebuggerDialog::refresh);
-    connect(anyRamBank_, &QLineEdit::editingFinished, this, &DebuggerDialog::refresh);
+    for (QComboBox* box : {upperRom_, ramBank_, romBase_, cartridgeBank_})
+        connect(box, &QComboBox::activated, this, &DebuggerDialog::refresh);
+
+    // The buttons, with WinAPE's names and hints.
+    const auto button = [this](IconId icon, const char* name, const QString& hint) {
+        auto* made = new QToolButton;
+        made->setObjectName(name);
+        made->setIcon(makeIcon(icon));
+        made->setToolTip(hint);
+        made->setAutoRaise(true);
+        made->setFocusPolicy(Qt::NoFocus);
+        return made;
+    };
+    auto* load = button(IconId::LoadData, "bLoad", tr("Load Data"));
+    auto* save = button(IconId::SaveData, "bSave", tr("Save Data"));
+    auto* goTo = button(IconId::GoTo, "bGoto", tr("Go To Address"));
+    auto* breakpoints = button(IconId::Breakpoints, "bBreakpoints", tr("Edit Breakpoints"));
+    auto* dataAreas = button(IconId::DataAreas, "bDataAreas", tr("Edit Data Areas"));
+    auto* timers = button(IconId::Timers, "bTimers", tr("Show Timers"));
+    auto* graphics = button(IconId::Graphics, "bGraphics", tr("Find Graphics"));
+    auto* search = button(IconId::Find, "bFind", tr("Find"));
+    connect(load, &QToolButton::clicked, this, &DebuggerDialog::askLoad);
+    connect(save, &QToolButton::clicked, this, &DebuggerDialog::askSave);
+    connect(goTo, &QToolButton::clicked, this, [this] { askGoTo(); });
+    connect(breakpoints, &QToolButton::clicked, this, &DebuggerDialog::breakpointsRequested);
+    connect(dataAreas, &QToolButton::clicked, this, &DebuggerDialog::showDataAreas);
+    connect(timers, &QToolButton::clicked, this, &DebuggerDialog::timersRequested);
+    connect(graphics, &QToolButton::clicked, this, &DebuggerDialog::graphicsRequested);
+    connect(search, &QToolButton::clicked, this, &DebuggerDialog::showFind);
 
     followPc_ = new QCheckBox(tr("Follow PC"));
     followPc_->setObjectName("ckFollowPC");
@@ -636,18 +702,32 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     breakInstructions_->setChecked(emulator_->breakInstructions());
     connect(breakpointsOn_, &QCheckBox::toggled, this, [this](bool on) { emulator_->setBreakpointsEnabled(on); });
     connect(breakInstructions_, &QCheckBox::toggled, this, [this](bool on) { emulator_->setBreakInstructions(on); });
-    auto* goTo = new QPushButton(tr("Goto"));
-    goTo->setObjectName("bGoto");
-    goTo->setAutoDefault(false);
-    goTo->setToolTip(tr("Goto (CTRL+G)"));
-    connect(goTo, &QPushButton::clicked, this, [this] { askGoTo(); });
 
-    auto* options = new QHBoxLayout;
-    options->addWidget(memoryBox);
+    // As in WinAPE: the selection of memory with the file buttons beside
+    // it, and under them the switches and the windows' buttons.
+    auto* selection = new QGridLayout;
+    selection->setSpacing(4);
+    selection->addWidget(memoryBox, 0, 0, 2, 1);
+    selection->addWidget(romBox_, 0, 1);
+    selection->addWidget(ramBox_, 0, 2);
+    selection->addWidget(secondaryBox_, 1, 1, 1, 2);
+    auto* files = new QVBoxLayout;
+    files->setSpacing(0);
+    for (QToolButton* made : {load, save, goTo})
+        files->addWidget(made);
+    files->addStretch(1);
+    selection->addLayout(files, 0, 3, 2, 1);
+    selection->setColumnStretch(1, 1);
+    auto* switches = new QHBoxLayout;
     for (QCheckBox* box : {followPc_, hideOnRun_, breakpointsOn_, breakInstructions_})
-        options->addWidget(box);
-    options->addStretch(1);
-    options->addWidget(goTo);
+        switches->addWidget(box);
+    for (QToolButton* made : {breakpoints, dataAreas, timers, graphics, search})
+        switches->addWidget(made);
+    switches->addStretch(1);
+    auto* options = new QVBoxLayout;
+    options->setSpacing(2);
+    options->addLayout(selection);
+    options->addLayout(switches);
 
     auto* panes = new QVBoxLayout;
     panes->addWidget(disassembly_, 2);
@@ -658,7 +738,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     auto* layout = new QVBoxLayout(this);
     layout->addLayout(top, 1);
     layout->addLayout(options);
-    resize(760, 520);
+    resize(800, 620);
 
     connect(disassembly_, &DisassemblyView::breakpointToggled, this, &DebuggerDialog::toggleBreakpoint);
     connect(dump_, &MemoryDumpView::byteEdited, this, [this](uint16_t address, uint8_t value) {
@@ -703,9 +783,17 @@ void DebuggerDialog::refresh()
         uint64_t time;
     };
     const bool write = writeView_;
+    Mapping machine;
+    Fitted fitted;
     const Cpu cpu = emulator_->withMachine([&](tuxape::Cpc& cpc) {
         tuxape::Memory& memory = cpc.memory();
+        fitted.count = memory.romSlotCount();
+        for (int slot = 0; slot < tuxape::Memory::kRomSlots; ++slot)
+            fitted.present[static_cast<size_t>(slot)] = slot < fitted.count && memory.hasUpperRom(slot);
+        fitted.cartridge = memory.hasCartridge();
+        fitted.discRom = memory.cartridgeDiscRom();
         const Mapping saved = applyView(memory);
+        machine = saved;
         for (int address = 0; address < 0x10000; ++address)
             memory_[static_cast<size_t>(address)] = write ? memory.readRam(static_cast<uint16_t>(address))
                                                           : memory.read(static_cast<uint16_t>(address));
@@ -716,16 +804,12 @@ void DebuggerDialog::refresh()
                    z80.de2,            z80.hl2,            z80.ix,             z80.iy,             z80.sp,  z80.pc,
                    z80.i,              z80.r,              z80.im,             z80.iff1,           cpc.instructionTime()};
     });
+    showMapping(machine, fitted);
     const uint16_t values[] = {cpu.af, cpu.af2, cpu.hl, cpu.hl2, cpu.de, cpu.de2, cpu.bc,
                                cpu.bc2, cpu.ix, cpu.sp, cpu.iy, cpu.i, cpu.pc, cpu.r};
     for (size_t i = 0; i < registers_.size(); ++i)
         registers_[i].second->setText(hex(values[i], registers_[i].second->maxLength()));
-    // A letter for each flag that is set.
-    QString flags = QStringLiteral("SZ-H-VNC");
-    for (int bit = 0; bit < 8; ++bit)
-        if (!(cpu.af & 0x80 >> bit))
-            flags[bit] = QLatin1Char('.');
-    flags_->setText(flags);
+    flags_->setText(QString("%1").arg(cpu.af & 0xFF, 8, 2, QLatin1Char('0')));
     interruptMode_->setText(QString::number(cpu.im));
     interrupts_->setChecked(cpu.interrupts);
     timer_->setText(QString::number(cpu.time - emulator_->cycleBase()));
@@ -754,6 +838,8 @@ QString DebuggerDialog::registerText(const QString& name) const
 {
     if (name == "IM")
         return interruptMode_->text();
+    if (name == "Flags")
+        return flags_->text();
     for (const auto& [known, edit] : registers_)
         if (known == name)
             return edit->text();
@@ -763,7 +849,8 @@ QString DebuggerDialog::registerText(const QString& name) const
 bool DebuggerDialog::setRegister(const QString& name, const QString& hexText)
 {
     bool ok = false;
-    const unsigned value = hexText.toUInt(&ok, 16);
+    // The flags are typed a bit at a time, the rest in hexadecimal.
+    const unsigned value = hexText.toUInt(&ok, name == "Flags" ? 2 : 16);
     if (!ok || !emulator_->isPaused())
         return false;
     const bool known = emulator_->withMachine([&](tuxape::Cpc& cpc) {
@@ -788,6 +875,7 @@ bool DebuggerDialog::setRegister(const QString& name, const QString& hexText)
         else if (name == "I") z80.i = static_cast<uint8_t>(value);
         else if (name == "R") z80.r = static_cast<uint8_t>(value);
         else if (name == "IM" && value <= 2) z80.im = static_cast<uint8_t>(value);
+        else if (name == "Flags" && value <= 0xFF) z80.reg[z80.F] = static_cast<uint8_t>(value);
         else return false;
         return true;
     });
@@ -803,7 +891,7 @@ void DebuggerDialog::registerEdited(const QString& name)
         refresh();
         return;
     }
-    QString text = name == "IM" ? interruptMode_->text() : QString();
+    QString text = name == "IM" ? interruptMode_->text() : name == "Flags" ? flags_->text() : QString();
     for (const auto& [known, edit] : registers_)
         if (known == name)
             text = edit->text();
@@ -892,16 +980,8 @@ void DebuggerDialog::dumpMenu(const QPoint& at)
     menu.addAction(tr("Goto"), Qt::CTRL | Qt::Key_G, this, &DebuggerDialog::askGoTo);
     menu.addAction(tr("Select Block"), this, &DebuggerDialog::showSelectBlock);
     menu.addSeparator();
-    menu.addAction(tr("Load"), this, [this] {
-        const QString path = QFileDialog::getOpenFileName(this, tr("Load"));
-        if (!path.isEmpty() && !loadAt(path))
-            QMessageBox::warning(this, windowTitle(), tr("Cannot read %1.").arg(path));
-    });
-    menu.addAction(tr("Save"), this, [this] {
-        const QString path = QFileDialog::getSaveFileName(this, tr("Save"));
-        if (!path.isEmpty() && !saveSelection(path))
-            QMessageBox::warning(this, windowTitle(), tr("Cannot write %1.").arg(path));
-    });
+    menu.addAction(tr("Load"), this, &DebuggerDialog::askLoad);
+    menu.addAction(tr("Save"), this, &DebuggerDialog::askSave);
     menu.addSeparator();
     menu.addAction(tr("Breakpoint on Read"), this, [this] { breakOnSelection(false); });
     menu.addAction(tr("Breakpoint on Write"), this, [this] { breakOnSelection(true); });
@@ -913,6 +993,22 @@ void DebuggerDialog::dumpMenu(const QPoint& at)
     menu.addAction(tr("Mark as Data"), this, [this] { markData(false); });
     menu.addAction(tr("Clear Data Area"), this, &DebuggerDialog::clearDataArea);
     menu.exec(dump_->viewport()->mapToGlobal(at));
+}
+
+void DebuggerDialog::askLoad()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load"), QString(),
+                                                      tr("Binary Files (*.bin);;All Files (*)"));
+    if (!path.isEmpty() && !loadAt(path))
+        QMessageBox::warning(this, windowTitle(), tr("Cannot read %1.").arg(path));
+}
+
+void DebuggerDialog::askSave()
+{
+    const QString path = QFileDialog::getSaveFileName(this, tr("Save"), QString(),
+                                                      tr("Binary Files (*.bin);;All Files (*)"));
+    if (!path.isEmpty() && !saveSelection(path))
+        QMessageBox::warning(this, windowTitle(), tr("Cannot write %1.").arg(path));
 }
 
 QByteArray DebuggerDialog::selectedBytes() const
@@ -938,38 +1034,115 @@ void DebuggerDialog::writeBytes(int start, const QByteArray& bytes)
 
 // With the Any view, memory is looked at, and written to, as the boxes
 // beside it say; the machine's own mapping is put back afterwards.
-template <class Memory>
-DebuggerDialog::Mapping DebuggerDialog::applyView(Memory& memory) const
+DebuggerDialog::Mapping DebuggerDialog::applyView(tuxape::Memory& memory) const
 {
-    const Mapping saved{memory.lowerRomEnabled(), memory.upperRomEnabled(), memory.selectedUpperRom(), memory.ramBank()};
+    const Mapping saved = memory.mapping();
     if (anyView_->isChecked()) {
-        bool ok = false;
-        const unsigned rom = anyUpperRom_->text().toUInt(&ok, 16);
-        const unsigned bank = anyRamBank_->text().toUInt(nullptr, 16);
-        memory.setRomEnables(anyLower_->isChecked(), anyUpper_->isChecked());
-        memory.selectUpperRom(static_cast<uint8_t>(ok ? rom : 0));
-        memory.selectRamBank(static_cast<uint8_t>(bank >= 0xC0 && bank <= 0xFF ? bank : 0xC0), 0x7F);
+        Mapping view = saved;
+        view.lowerRom = anyLower_->isChecked();
+        view.upperRom = anyUpper_->isChecked();
+        view.upperSelected = static_cast<uint8_t>(upperRom_->currentData().toUInt());
+        if (memory.hasCartridge())
+            view.rmr2 = static_cast<uint8_t>(romBase_->currentIndex() << 3 | cartridgeBank_->currentIndex());
+        memory.setMapping(view);
+        // The bank as a program would ask for it, which finds the page.
+        memory.selectRamBank(static_cast<uint8_t>(ramBank_->currentData().toUInt()), 0x7F);
     }
     return saved;
 }
 
-template <class Memory>
-void DebuggerDialog::restoreView(Memory& memory, const Mapping& saved) const
+void DebuggerDialog::restoreView(tuxape::Memory& memory, const Mapping& saved) const
 {
-    if (!anyView_->isChecked())
+    if (anyView_->isChecked())
+        memory.setMapping(saved);
+}
+
+// The three boxes: the machine's own mapping while its memory is shown as
+// it reads or writes it, and the user's to choose with Any. The list of
+// upper ROMs follows what is fitted.
+void DebuggerDialog::showMapping(const Mapping& machine, const Fitted& fitted)
+{
+    const tuxape::MachineConfig config = emulator_->machine();
+    QStringList names;
+    QList<int> numbers;
+    for (int slot = 0; slot < fitted.count; ++slot) {
+        QString name = tr("(Empty)");
+        if (fitted.present[static_cast<size_t>(slot)]) {
+            name = QFileInfo(QString::fromStdString(config.upperRoms[static_cast<size_t>(slot)])).completeBaseName();
+            if (name.isEmpty())
+                name = tr("ROM");
+        } else if (fitted.cartridge && slot == 0) {
+            name = tr("(Cartridge Bank 1)");
+        } else if (fitted.cartridge && slot == 7 && fitted.discRom) {
+            name = tr("(Cartridge Bank 3)");
+        }
+        names << hex(static_cast<unsigned>(slot), 2) + " - " + name;
+        numbers << slot;
+    }
+    if (fitted.cartridge) {
+        for (int bank = 0; bank < 32; ++bank) {
+            names << hex(static_cast<unsigned>(0x80 + bank), 2) + " - " + tr("Cartridge Bank %1").arg(bank);
+            numbers << 0x80 + bank;
+        }
+    }
+    if (names != upperRomChoices()) {
+        const QVariant chosen = upperRom_->currentData();
+        upperRom_->clear();
+        for (qsizetype i = 0; i < names.size(); ++i)
+            upperRom_->addItem(names[i], numbers[i]);
+        upperRom_->setCurrentIndex(qMax(0, upperRom_->findData(chosen)));
+    }
+
+    const bool any = anyView_->isChecked();
+    romBox_->setEnabled(any);
+    ramBox_->setEnabled(any);
+    secondaryBox_->setEnabled(any && fitted.cartridge);
+    if (any)
         return;
-    memory.setRomEnables(saved.lower, saved.upper);
-    memory.selectUpperRom(saved.rom);
-    memory.selectRamBank(saved.bank, 0x7F);
+    const QSignalBlocker blockLower(anyLower_), blockUpper(anyUpper_);
+    anyLower_->setChecked(machine.lowerRom);
+    anyUpper_->setChecked(machine.upperRom);
+    // A cartridge has 32 banks at most, whatever the number asked for.
+    const int rom = fitted.cartridge && machine.upperSelected >= 0x80 ? 0x80 | (machine.upperSelected & 0x1F)
+                                                                     : machine.upperSelected;
+    upperRom_->setCurrentIndex(upperRom_->findData(rom));
+    ramBank_->setCurrentIndex(ramBank_->findData(int(machine.ramConfig)));
+    romBase_->setCurrentIndex(machine.rmr2 >> 3 & 3);
+    cartridgeBank_->setCurrentIndex(machine.rmr2 & 7);
+}
+
+QStringList DebuggerDialog::upperRomChoices() const
+{
+    QStringList choices;
+    for (int i = 0; i < upperRom_->count(); ++i)
+        choices << upperRom_->itemText(i);
+    return choices;
 }
 
 void DebuggerDialog::setAnyView(bool lowerRom, bool upperRom, int upperRomNumber, int ramBank)
 {
+    // The boxes are set before the view changes: they only follow the
+    // machine while it does not.
+    const QSignalBlocker blockLower(anyLower_), blockUpper(anyUpper_), blockAny(anyView_);
+    anyView_->setChecked(true);
     anyLower_->setChecked(lowerRom);
     anyUpper_->setChecked(upperRom);
-    anyUpperRom_->setText(QString::number(upperRomNumber, 16).toUpper());
-    anyRamBank_->setText(QString::number(ramBank, 16).toUpper());
-    anyView_->setChecked(true);
+    upperRom_->setCurrentIndex(qMax(0, upperRom_->findData(upperRomNumber)));
+    ramBank_->setCurrentIndex(qMax(0, ramBank_->findData(ramBank)));
+    writeView_ = false;
+    refresh();
+}
+
+void DebuggerDialog::setSecondaryMapping(int lowerRomBase, int cartridgeBank)
+{
+    romBase_->setCurrentIndex(qBound(0, lowerRomBase, 3));
+    cartridgeBank_->setCurrentIndex(qBound(0, cartridgeBank, 7));
+    refresh();
+}
+
+void DebuggerDialog::setMachineView(bool write)
+{
+    (write ? writeViewButton_ : readView_)->setChecked(true);
     refresh();
 }
 

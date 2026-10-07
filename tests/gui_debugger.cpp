@@ -138,7 +138,14 @@ int main(int argc, char* argv[])
     CHECK(debugger->registerText("SP") == "BFF0");
     CHECK(debugger->registerText("HL") == "9000");
     CHECK(debugger->registerText("BC").startsWith("10"));
-    CHECK(debugger->flagsText() == ".Z.....C");
+    // The flags a bit each, under "SZ-H-VNC": Z and C here. They can be
+    // typed, and AF follows.
+    CHECK(debugger->flagsText() == "01000001");
+    CHECK(debugger->setRegister("Flags", "10000001"));
+    CHECK(debugger->flagsText() == "10000001" && debugger->registerText("AF").endsWith("81"));
+    CHECK(!debugger->setRegister("Flags", "2"));
+    CHECK(debugger->setRegister("Flags", "01000001"));
+    CHECK(debugger->flagsText() == "01000001" && debugger->registerText("AF").endsWith("41"));
     CHECK(debugger->stackLines().value(0) == "BFF0: ABCD");
     CHECK_EQ(code->selected(), 0x8000);
     if (!prefix.isEmpty()) {

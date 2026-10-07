@@ -3,6 +3,9 @@
 // the menu, and one taken from the Library. Runs without a display
 // (QT_QPA_PLATFORM=offscreen).
 //
+//   gui_plus [prefix]   also saves a picture of the debugger on a Plus as
+//                       <prefix>debugger_plus.png
+//
 // Needs WinAPE's system cartridge; exits with code 77 (skipped) without it.
 
 #include <functional>
@@ -13,6 +16,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
+#include <QGroupBox>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -25,6 +29,7 @@
 #include "core/cpc.h"
 #include "core/screen_text.h"
 #include "core/setup.h"
+#include "debuggerdialog.h"
 #include "emulator.h"
 #include "librarydialog.h"
 #include "mainwindow.h"
@@ -195,6 +200,111 @@ int main(int argc, char* argv[])
         CHECK(loaded.machine.isPlus());
         CHECK(QDir::fromNativeSeparators(QString::fromStdString(loaded.machine.cartridge)) == systemCartridge);
         CHECK_EQ(loaded.crtcType, 3);
+    }
+
+    // The debugger's Memory Selection on a Plus: the cartridge's banks
+    // among the upper ROMs, and the second mapping register's box.
+    {
+        QAction* pause = actionNamed(window, "Pause");
+        QAction* run = actionNamed(window, "Run");
+        CHECK(pause && run);
+        if (!(pause && run))
+            return checkSummary("gui_plus");
+        pause->trigger();
+        DebuggerDialog* debugger = window.debugger();
+        CHECK(debugger != nullptr);
+        if (!debugger)
+            return checkSummary("gui_plus");
+        const QStringList roms = debugger->upperRomChoices();
+        CHECK_EQ(roms.size(), 16 + 32);
+        CHECK(roms.value(0) == "00 - (Cartridge Bank 1)" && roms.value(7) == "07 - (Cartridge Bank 3)");
+        CHECK(roms.value(1) == "01 - (Empty)");
+        CHECK(roms.value(16) == "80 - Cartridge Bank 0" && roms.value(47) == "9F - Cartridge Bank 31");
+        auto* secondaryBox = debugger->findChild<QGroupBox*>("grpSecondaryROM");
+        CHECK(secondaryBox && !secondaryBox->isEnabled());
+
+        const QByteArray cartridge = [&] {
+            QFile file(systemCartridge);
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        }();
+        // The first bytes of a bank, from the file: after its header come
+        // chunks named "cb00", "cb01"... each with its length before it.
+        const auto bankBytes = [&](int bank, int from) {
+            const QByteArray wanted = QString("cb%1").arg(bank, 2, 10, QLatin1Char('0')).toLatin1();
+            for (qsizetype at = 12; at + 8 <= cartridge.size();) {
+                const auto* length = reinterpret_cast<const uchar*>(cartridge.constData() + at + 4);
+                const qsizetype size = length[0] | length[1] << 8 | length[2] << 16 | qsizetype(length[3]) << 24;
+                if (cartridge.mid(at, 4) == wanted)
+                    return cartridge.mid(at + 8 + from, 16);
+                at += 8 + size + (size & 1);
+            }
+            return QByteArray("no such bank");
+        };
+        const auto bankStart = [&](int bank) { return bankBytes(bank, 0); };
+        // The sixteen bytes the dump shows from an address.
+        const auto shown = [&](unsigned address) {
+            MemoryDumpView* dump = debugger->memoryDump();
+            dump->setCursor(static_cast<uint16_t>(address));
+            const QString wanted = QString("%1").arg(address, 4, 16, QLatin1Char('0')).toUpper();
+            for (int row = 0; row <= dump->visibleLines(); ++row)
+                if (dump->lineText(row).startsWith(wanted))
+                    return dump->lineText(row).mid(5, 47).remove(' ').toLatin1();
+            return QByteArray("not shown");
+        };
+        const auto hexOf = [](const QByteArray& bytes) { return bytes.toHex().toUpper(); };
+        using Mapping = tuxape::Memory::Mapping;
+        const Mapping before = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().mapping(); });
+
+        // Any bank as the upper ROM.
+        debugger->setAnyView(true, true, 0x80, 0xC0);
+        CHECK(secondaryBox && secondaryBox->isEnabled());
+        CHECK(shown(0xC000) == hexOf(bankStart(0)));
+        CHECK(shown(0x0000) == hexOf(bankStart(0)));
+        debugger->setAnyView(true, true, 0x83, 0xC0);
+        CHECK(shown(0xC000) == hexOf(bankStart(3)));
+        debugger->setAnyView(true, true, 0, 0xC0);
+        CHECK(shown(0xC000) == hexOf(bankStart(1)));
+        debugger->setAnyView(true, true, 7, 0xC0);
+        CHECK(shown(0xC000) == hexOf(bankStart(3)));
+        // The lower ROM elsewhere, and another bank in its place.
+        // (The firmware keeps a copy of its first bytes in the RAM under it:
+        // further on, the RAM is another matter.)
+        CHECK(shown(0x0100) == hexOf(bankBytes(0, 0x100)));
+        debugger->setSecondaryMapping(1, 0);
+        CHECK(shown(0x4000) == hexOf(bankStart(0)));
+        CHECK(shown(0x4100) == hexOf(bankBytes(0, 0x100)));
+        CHECK(shown(0x0100) != hexOf(bankBytes(0, 0x100)));
+        debugger->setSecondaryMapping(2, 5);
+        CHECK(shown(0x8000) == hexOf(bankStart(5)));
+        debugger->setSecondaryMapping(0, 2);
+        CHECK(shown(0x0000) == hexOf(bankStart(2)));
+        // The ASIC's registers at #4000: what a program reads there.
+        debugger->setSecondaryMapping(3, 0);
+        CHECK(shown(0x0000) == hexOf(bankStart(0)));
+        const QByteArray registers = emulator.withMachine([](tuxape::Cpc& cpc) {
+            const tuxape::Memory::Mapping saved = cpc.memory().mapping();
+            cpc.memory().setRmr2(0x18);
+            QByteArray bytes;
+            for (int i = 0; i < 16; ++i)
+                bytes += static_cast<char>(cpc.memory().read(static_cast<uint16_t>(0x6400 + i)));
+            cpc.memory().setMapping(saved);
+            return bytes;
+        });
+        CHECK(shown(0x6400) == hexOf(registers));
+        // The machine's own mapping has not moved.
+        const Mapping after = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().mapping(); });
+        CHECK(after.lowerRom == before.lowerRom && after.upperRom == before.upperRom);
+        CHECK(after.upperSelected == before.upperSelected && after.ramConfig == before.ramConfig);
+        CHECK(after.ramPage == before.ramPage && after.rmr2 == before.rmr2);
+        if (argc > 1) {
+            debugger->setAnyView(false, true, 0, 0xC0);
+            QApplication::processEvents();
+            debugger->grab().save(QString::fromLocal8Bit(argv[1]) + "debugger_plus.png");
+        }
+        debugger->setMachineView(false);
+        CHECK(secondaryBox && !secondaryBox->isEnabled());
+        run->trigger();
+        CHECK(!emulator.isPaused());
     }
 
     // Back to a CPC through the settings: the machine starts afresh.

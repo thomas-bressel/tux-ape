@@ -659,6 +659,9 @@ void MainWindow::showDebugger()
         debugger_ = new DebuggerDialog(emulator_, this);
         connect(debugger_, &DebuggerDialog::runRequested, this, [this] { setPaused(false); });
         connect(debugger_, &DebuggerDialog::runningOn, this, &MainWindow::updateDebugActions);
+        connect(debugger_, &DebuggerDialog::breakpointsRequested, this, &MainWindow::showBreakpoints);
+        connect(debugger_, &DebuggerDialog::timersRequested, this, &MainWindow::showTimers);
+        connect(debugger_, &DebuggerDialog::graphicsRequested, this, &MainWindow::showGraphics);
         connect(debugger_, &DebuggerDialog::breakpointsChanged, this, [this] {
             if (breakpoints_ && breakpoints_->isVisible())
                 breakpoints_->refresh();

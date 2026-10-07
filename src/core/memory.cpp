@@ -208,6 +208,17 @@ void Memory::selectRamBank(uint8_t value, uint8_t portHigh)
     remap();
 }
 
+void Memory::setMapping(const Mapping& mapping)
+{
+    lowerEnabled_ = mapping.lowerRom;
+    upperEnabled_ = mapping.upperRom;
+    upperSelected_ = mapping.upperSelected;
+    ramConfig_ = mapping.ramConfig;
+    ramPage_ = mapping.ramPage < pageOffset_.size() ? mapping.ramPage : 0;
+    rmr2_ = mapping.rmr2 & 0x1F;
+    remap();
+}
+
 void Memory::remap()
 {
     remapMachine();

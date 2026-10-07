@@ -194,6 +194,82 @@ void draw(QPainter& p, IconId id)
         p.setPen(outline());
         p.drawLine(QPointF(7, 17.5), QPointF(13, 17.5));
         break;
+    case IconId::LoadData:
+        // A folder, open.
+        p.setPen(outline());
+        p.setBrush(kYellow.darker(115));
+        p.drawPolygon(QPolygonF({{2, 5}, {7, 5}, {9, 7}, {16, 7}, {16, 16}, {2, 16}}));
+        p.setBrush(kYellow);
+        p.drawPolygon(QPolygonF({{5, 10}, {19, 10}, {16, 16}, {2, 16}}));
+        break;
+    case IconId::SaveData:
+        // A disc as programs draw them: shutter at the top, label below.
+        p.setPen(outline());
+        p.setBrush(kInk.lighter(120));
+        p.drawPolygon(QPolygonF({{3, 3}, {15, 3}, {17, 5}, {17, 17}, {3, 17}}));
+        p.setBrush(kPaper);
+        p.drawRect(QRectF(6, 3, 7, 5));
+        p.drawRect(QRectF(5.5, 11, 9, 6));
+        break;
+    case IconId::GoTo:
+        // A page, and an arrow to a place on it.
+        p.setPen(outline());
+        p.setBrush(kPaper);
+        p.drawRect(QRectF(7, 2.5, 10.5, 15));
+        p.drawLine(QPointF(10, 6), QPointF(15, 6));
+        p.drawLine(QPointF(10, 14), QPointF(15, 14));
+        arrow(p, {1.5, 10}, {11.5, 10}, kBlue);
+        break;
+    case IconId::Find:
+        // A magnifying glass.
+        p.setPen(outline(kInk, 2.4));
+        p.drawLine(QPointF(12, 12), QPointF(17, 17));
+        p.setPen(outline());
+        p.setBrush(QColor(0xC8, 0xE0, 0xF8));
+        p.drawEllipse(QPointF(8.5, 8.5), 5.5, 5.5);
+        break;
+    case IconId::Breakpoints:
+        p.setPen(outline(kRed.darker(140)));
+        p.setBrush(kRed);
+        p.drawEllipse(QPointF(10, 10), 6, 6);
+        break;
+    case IconId::DataAreas:
+        // A memory chip, seen from above.
+        p.setPen(outline());
+        for (qreal x : {5.0, 8.3, 11.7, 15.0}) {
+            p.drawLine(QPointF(x, 4), QPointF(x, 7));
+            p.drawLine(QPointF(x, 13), QPointF(x, 16));
+        }
+        p.setBrush(kInk.lighter(130));
+        p.drawRect(QRectF(2.5, 7, 15, 6));
+        break;
+    case IconId::Timers:
+        // A stopwatch.
+        p.setPen(outline());
+        p.drawLine(QPointF(10, 2), QPointF(10, 4.5));
+        p.drawLine(QPointF(8, 2), QPointF(12, 2));
+        p.setBrush(kPaper);
+        p.drawEllipse(QPointF(10, 11), 6.5, 6.5);
+        p.setPen(outline(kRed, 1.6));
+        p.drawLine(QPointF(10, 11), QPointF(10, 6.5));
+        p.drawLine(QPointF(10, 11), QPointF(13, 12.5));
+        break;
+    case IconId::Graphics: {
+        // A little figure, as a game's sprite would be.
+        p.setPen(Qt::NoPen);
+        p.setBrush(kYellow);
+        p.drawEllipse(QPointF(10.5, 4.2), 2.4, 2.4);
+        p.setPen(outline(kGreen.darker(120), 2.2));
+        p.drawLine(QPointF(10, 7.5), QPointF(9, 12));
+        p.drawLine(QPointF(10, 8.5), QPointF(14.5, 10.5));
+        p.drawLine(QPointF(10, 8.5), QPointF(5.5, 10));
+        p.setPen(outline(kBlue.darker(120), 2.2));
+        p.drawLine(QPointF(9, 12), QPointF(13, 14.5));
+        p.drawLine(QPointF(13, 14.5), QPointF(12, 18));
+        p.drawLine(QPointF(9, 12), QPointF(6.5, 15));
+        p.drawLine(QPointF(6.5, 15), QPointF(3.5, 16));
+        break;
+    }
     case IconId::Help: {
         p.setPen(outline(kBlue.darker(130)));
         p.setBrush(kBlue);

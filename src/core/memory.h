@@ -106,6 +106,23 @@ public:
     bool upperRomEnabled() const { return upperEnabled_; }
     uint8_t selectedUpperRom() const { return upperSelected_; }
     uint8_t ramBank() const { return ramConfig_; }  // as written, e.g. 0xC4
+    uint8_t rmr2() const { return rmr2_; }
+    int romSlotCount() const { return romSlotMask_ + 1; }
+    // Whether ROM 7 of the cartridge is its page 3 (a Plus with a drive).
+    bool cartridgeDiscRom() const { return discRom_; }
+
+    // Everything that decides what is where in the 64K, to look at memory
+    // through another mapping for a moment and put the machine's own back
+    // exactly: the RAM page of a large expansion is not all in the value
+    // written to the banking register.
+    struct Mapping {
+        bool lowerRom = true, upperRom = true;
+        uint8_t upperSelected = 0;
+        uint8_t ramConfig = 0xC0, ramPage = 0;
+        uint8_t rmr2 = 0;
+    };
+    Mapping mapping() const { return {lowerEnabled_, upperEnabled_, upperSelected_, ramConfig_, ramPage_, rmr2_}; }
+    void setMapping(const Mapping& mapping);
 
 private:
     RamExpansion expansion_ = RamExpansion::Internal;

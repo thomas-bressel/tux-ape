@@ -11,9 +11,12 @@
 #include <QStringList>
 
 #include "core/disasm.h"
+#include "core/memory.h"
 
 class Emulator;
 class QCheckBox;
+class QComboBox;
+class QGroupBox;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -163,7 +166,8 @@ public:
     DisassemblyView* disassembly() const { return disassembly_; }
     MemoryDumpView* memoryDump() const { return dump_; }
     // A register by the name it has in the window ("AF", "HL'", "PC"...):
-    // what is shown, and a new value typed in.
+    // what is shown, and a new value typed in. "Flags" is F a bit at a
+    // time, as the window has it under the flags' letters.
     QString registerText(const QString& name) const;
     bool setRegister(const QString& name, const QString& hex);
     QString flagsText() const;
@@ -207,9 +211,22 @@ public:
     void setDataAreas(const std::vector<DisassemblyView::DataArea>& areas);
     // The "Any" view of memory: the ROMs switched in or out and the RAM
     // bank chosen here, whatever the machine itself has. A bank is given
-    // as a program would select it, #C0 to #FF.
+    // as a program would select it, #C0 to #FF; an upper ROM by its
+    // number, #80 and up being the banks of a Plus's cartridge.
     void setAnyView(bool lowerRom, bool upperRom, int upperRomNumber, int ramBank);
     bool anyView() const;
+    // With it, the Plus's secondary mapping: where the lower ROM shows (0:
+    // #0000, 1: #4000, 2: #8000, 3: #0000 with the ASIC's registers at
+    // #4000) and which of the cartridge's first eight banks it is.
+    void setSecondaryMapping(int lowerRomBase, int cartridgeBank);
+    // The Read and Write views again.
+    void setMachineView(bool write);
+    // What the list of upper ROMs offers: "07 - AMSDOS", "0A - (Empty)",
+    // "80 - Cartridge Bank 0"...
+    QStringList upperRomChoices() const;
+    // The buttons' file boxes.
+    void askLoad();
+    void askSave();
     // The windows of the menu.
     void showFind();
     void showDataAreas();
@@ -224,6 +241,10 @@ signals:
     // A step over or a run to the line chosen has set it running, until it
     // gets there.
     void runningOn();
+    // The buttons for the windows that are not the debugger's own.
+    void breakpointsRequested();
+    void timersRequested();
+    void graphicsRequested();
 
 private:
     Emulator* emulator_;
@@ -233,7 +254,7 @@ private:
     DisassemblyView* disassembly_;
     MemoryDumpView* dump_;
     std::vector<std::pair<QString, QLineEdit*>> registers_;
-    QLabel* flags_;
+    QLineEdit* flags_;
     QLineEdit* interruptMode_;
     QCheckBox* interrupts_;
     QLabel* timer_;
@@ -241,11 +262,15 @@ private:
     QRadioButton* readView_;
     QRadioButton* writeViewButton_;
     QRadioButton* anyView_;
-    QWidget* anyBox_;
+    QGroupBox* romBox_;
+    QGroupBox* ramBox_;
+    QGroupBox* secondaryBox_;
     QCheckBox* anyLower_;
     QCheckBox* anyUpper_;
-    QLineEdit* anyUpperRom_;
-    QLineEdit* anyRamBank_;
+    QComboBox* upperRom_;
+    QComboBox* ramBank_;
+    QComboBox* romBase_;
+    QComboBox* cartridgeBank_;
     QCheckBox* followPc_;
     QCheckBox* hideOnRun_;
     QCheckBox* breakpointsOn_;
@@ -263,14 +288,16 @@ private:
     void showFill();
     void showCompare();
     void showDisassemble();
-    struct Mapping {
-        bool lower = false, upper = false;
-        uint8_t rom = 0, bank = 0xC0;
+    using Mapping = tuxape::Memory::Mapping;
+    Mapping applyView(tuxape::Memory& memory) const;
+    void restoreView(tuxape::Memory& memory, const Mapping& saved) const;
+    // What is fitted, for the list of upper ROMs.
+    struct Fitted {
+        int count = 16;  // ROM slots: 16, or 32 with the larger board
+        std::array<bool, tuxape::Memory::kRomSlots> present = {};
+        bool cartridge = false, discRom = false;
     };
-    template <class Memory>
-    Mapping applyView(Memory& memory) const;
-    template <class Memory>
-    void restoreView(Memory& memory, const Mapping& saved) const;
+    void showMapping(const Mapping& machine, const Fitted& fitted);
     QByteArray selectedBytes() const;
     void writeBytes(int start, const QByteArray& bytes);
 };
