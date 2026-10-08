@@ -677,6 +677,32 @@ void interlaceAddedLine()
     }
 }
 
+// R1 = 0 (17.4.3, 20.3.3). C0 meets R1 on every line's first character,
+// which still goes by what the line before was: it is the first line of the
+// new frame that takes R12/R13, and only half of the loading is done there,
+// the bits that are 0 in R12/R13 being cleared in the address kept and the
+// others left as they were. (Shaker "VMA' on R1=0" shows the page that
+// comes of it.)
+void offsetWithR1AtZero()
+{
+    Rig rig(CrtcType::MC6845);
+    rig.set(12, 0x30);
+    rig.seek(38, 7);
+    rig.nextLine();
+    CHECK_EQ(rig.crtc.ma(), 0x3000);
+    // The address of row 10 is the one kept from here on.
+    rig.seek(10, 0, 50);
+    rig.set(1, 0);
+    rig.seek(20, 0);
+    CHECK_EQ(rig.crtc.ma(), 0x3000 + 10 * 40);
+    rig.set(13, 0xFF);
+    rig.seek(38, 7);
+    CHECK_EQ(rig.crtc.ma(), 0x3000 + 10 * 40);
+    rig.nextLine();
+    CHECK(atFrameStart(rig));
+    CHECK_EQ(rig.crtc.ma(), (0x3000 + 10 * 40) & 0x30FF);
+}
+
 }  // namespace
 
 int main()
@@ -689,6 +715,7 @@ int main()
     adjustmentLines();
     r1WrittenOnItsCharacter();
     whereTheOffsetIsTaken();
+    offsetWithR1AtZero();
     r3JustInTime();
     vsyncOnce();
     interlaceVideoLines();
