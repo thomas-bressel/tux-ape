@@ -224,9 +224,18 @@ void Crtc::write(uint8_t value, bool early)
             // away. Not on the ASICs, which only look at R7 as a row
             // begins (16.4.4). Type 2 keeps it to itself when the write
             // comes during an HSYNC (16.4.3; Shaker "VSYNC conditions" on
-            // a real chip: 14 characters out of 64 with R3 = 14).
-            startVsync();
-            ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
+            // a real chip: 14 characters out of 64 with R3 = 14). And on
+            // an even frame with an interlace mode set it waits for the
+            // middle of the line like any other (19.7.2; Shaker "VSYNC IVM
+            // story", R7 = 0 written on character 16 of a frame's second
+            // line: 96 microseconds from the frame's start on a real chip,
+            // not 80).
+            if (type_ == CrtcType::MC6845 && interlace() && !parityFrame_) {
+                midVsync_ = true;
+            } else {
+                startVsync();
+                ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
+            }
         }
         break;
     case 12:

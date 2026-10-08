@@ -433,6 +433,22 @@ void interlaceAddedLine()
         rig.seek(30, 0);
         CHECK(rig.crtc.vsync());
     }
+    // A VSYNC that a write to R7 calls for waits for the middle of the line
+    // as well on an even frame ("VSYNC IVM story", R7 = 0 written on
+    // character 16 of a frame's second line: 96 microseconds from the
+    // frame's start on a real chip, 80 on an odd frame).
+    for (const bool odd : {false, true}) {
+        Rig rig(CrtcType::MC6845);
+        rig.set(8, 3);
+        toFrame(rig, odd);
+        rig.seek(0, 1, 16);
+        rig.set(7, 0);
+        CHECK(rig.crtc.vsync() == odd);
+        rig.to(30);
+        CHECK(rig.crtc.vsync() == odd);
+        rig.to(31);
+        CHECK(rig.crtc.vsync());
+    }
     // The parity of the next frame is settled as C4 meets R6: with R6 out
     // of reach it stays as it is, and every frame has the added line, or
     // none has.
