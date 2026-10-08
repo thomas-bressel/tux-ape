@@ -65,8 +65,10 @@ public:
     bool displayEnable(int half = 0) const;
     uint16_t ma() const { return ma_; }  // 14-bit refresh address
     // Raster line within the character row. It is C9 itself, except in
-    // "interlace sync & video" mode, where each frame shows every other line.
-    uint8_t ra() const { return type_ == CrtcType::HD6845S ? c9Out_ : vlc_; }
+    // "interlace sync & video" mode, where each frame shows every other
+    // line: types 0 and 2 (bits 0 and 2 of the mask) then put out a value
+    // worked out as the line begins, or as R8 is written.
+    uint8_t ra() const { return (0x05 >> static_cast<unsigned>(type_)) & 1 ? c9Out_ : vlc_; }
     // Interlace: whether the frame in progress is an odd one.
     bool oddFrame() const { return parityFrame_; }
 
@@ -196,6 +198,8 @@ private:
     bool ghostVsync_ = false;
     uint8_t r9AtStart_ = 0;        // R9 as the line began: what its first character goes by
     bool newFrame2_ = false;       // a frame has just begun: its first character has not been judged yet
+    bool firstLine2_ = false;      // on the first line of a frame that began without an added interlace line
+    uint8_t c9Ivm_ = 0;            // the display's own line counter ("C9.IVM")
 
     // ---- Interlace (R8, Compendium chapter 19) ---------------------------
     // Frames are told apart by a parity that the chip keeps whatever R8
@@ -227,6 +231,9 @@ private:
     // ---- Type 2 ----------------------------------------------------------
     void keepAddress2();
     bool veryLastLine2() const;
+    bool rowEnds2() const;
+    void latchC9Of2();
+    void endFrame2();
     void endOfLine2();
     void countLine2();
     void lineStart2();

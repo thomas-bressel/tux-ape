@@ -34,7 +34,8 @@ void Crtc::reset()
     lastLineOpen_ = previousLast_ = hsyncJudged_ = false;
     ghostVsync_ = false;
     r9AtStart_ = 0;
-    newFrame2_ = false;
+    newFrame2_ = firstLine2_ = false;
+    c9Ivm_ = 0;
     lastLine1_ = overran1_ = false;
     fromR12_ = true;
     parityInTest_ = false;
@@ -95,6 +96,10 @@ void Crtc::write(uint8_t value, bool early)
             r8Due_ = interlaceVideo() ? 1 : 2;
             late_ = true;
         }
+        // Type 2 puts out the other counter, or C9 again, from the very
+        // character of the write (19.5.4).
+        if (type_ == CrtcType::MC6845)
+            latchC9Of2();
         break;
     case 2:
         // R2 set to the character in progress starts the HSYNC there and
@@ -294,6 +299,12 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
         lastLineOpen_ = vcc_ != 0 || vlc_ != 0;
         previousLast_ = hsyncJudged_ = false;
         r9AtStart_ = reg_[9];
+        newFrame2_ = firstLine2_ = false;
+        // The display's own line counter, as a row counted from its start
+        // has it.
+        const uint8_t half = reg_[9] / 2;
+        c9Ivm_ = vlc_ > half ? static_cast<uint8_t>(vlc_ - half - 1) : vlc_;
+        latchC9Of2();
     }
     ghostVsync_ = false;
 }
@@ -821,13 +832,24 @@ void Crtc::startRow()
             startVsync();
         }
     } else if (vcc_ == reg_[7] && !vsync_) {
-        startVsync();
-        // Type 2: an HSYNC that reaches the line's last character hides
-        // the VSYNC that the next line's first one brings (15.6). This is
-        // asked before the line's own HSYNC is: one that starts on the
-        // first character hides nothing.
-        ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
+        if (type_ == CrtcType::MC6845 && interlace() && !parityFrame_) {
+            // An even frame with an interlace mode set: the VSYNC waits for
+            // the middle of the line (19.7.2).
+            midVsync_ = true;
+        } else {
+            startVsync();
+            // Type 2: an HSYNC that reaches the line's last character hides
+            // the VSYNC that the next line's first one brings (15.6). This
+            // is asked before the line's own HSYNC is: one that starts on
+            // the first character hides nothing.
+            ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
+        }
     }
+    // Type 2 settles there, as type 0 does, the parity the next frame will
+    // have, whatever R8 holds: a frame whose C4 never meets R6 leaves it
+    // where it was (19.5.4).
+    if (type_ == CrtcType::MC6845 && vcc_ == reg_[6])
+        parityR6_ = !parityFrame_;
 }
 
 // A new frame on type 2. R12/R13 are not looked at here: the chip took them
@@ -838,9 +860,15 @@ void Crtc::startFrame()
     inAdjust_ = false;
     vtac_ = 0;
     vlc_ = 0;
+    c9Ivm_ = 0;
     vcc_ = 0;
     vDisp_ = true;
     newFrame2_ = true;
+    // The first line of a frame that did not come after the line an
+    // interlace mode adds: see endOfLine2.
+    firstLine2_ = !interlaceLine_;
+    interlaceLine_ = false;
+    parityFrame_ = parityR6_;
     startRow();
 }
 
@@ -881,14 +909,39 @@ void Crtc::keepAddress2()
     }
     if (veryLastLine2())
         maRow_ = startAddress();
-    else if (vlc_ == reg_[9])
+    else if (rowEnds2())
         maRow_ = ma_;
+}
+
+// Whether the address reached on this line is kept for the lines that
+// follow. Outside "interlace sync & video" that is on a row's last line.
+// In that mode it goes by the display's own counter, which starts again
+// half-way down each row: the address moves on twice a row when R9 is odd,
+// and once only, half-way down, when R9 is even (19.4.3, 19.8.3).
+bool Crtc::rowEnds2() const
+{
+    if (!interlaceVideo())
+        return vlc_ == reg_[9];
+    return static_cast<uint8_t>(c9Ivm_ << 1) == (reg_[9] & 0x1E);
 }
 
 // Whether a new frame follows this line, as things stand.
 bool Crtc::veryLastLine2() const
 {
-    return inAdjust_ ? ((vtac_ + 1) & 0x1F) == reg_[5] : lastLine_ && reg_[5] == 0;
+    // The line an interlace mode adds is the last of all; the mode left
+    // during it, the frame goes on (19.6.3).
+    if (interlaceLine_)
+        return interlace();
+    const bool ends = inAdjust_ ? ((vtac_ + 1) & 0x1F) == reg_[5] : lastLine_ && reg_[5] == 0;
+    return ends && !(interlace() && parityR6_);
+}
+
+// What type 2 puts out as the line within the row: C9, or in "interlace
+// sync & video" the display's own counter doubled, with the frame's parity
+// as its lowest bit (19.5.4, 19.8.3).
+void Crtc::latchC9Of2()
+{
+    c9Out_ = interlaceVideo() ? static_cast<uint8_t>((c9Ivm_ << 1 | parityFrame_) & 0x1F) : vlc_;
 }
 
 // The end of a line on the MC6845 (Compendium 10.3.3, 11.2.5, 12.4.1). A
@@ -909,10 +962,21 @@ void Crtc::endOfLine2()
     if (hsync_)
         hsyncEnds2();
 
-    if (inAdjust_) {
+    const bool first = firstLine2_;
+    firstLine2_ = false;
+    if (interlaceLine_) {
+        // The line an interlace mode added. The mode left during it, the
+        // frame does not end there: C9 and C4 count on, C4 past R4 (19.6.3).
+        if (interlace()) {
+            startFrame();
+        } else {
+            interlaceLine_ = false;
+            countLine2();
+        }
+    } else if (inAdjust_) {
         vtac_ = (vtac_ + 1) & 0x1F;
         if (vtac_ == reg_[5])
-            startFrame();
+            endFrame2();
         else
             countLine2();
     } else if (lastLine_) {
@@ -921,20 +985,47 @@ void Crtc::endOfLine2()
             vtac_ = 0;
             countLine2();
         } else {
-            startFrame();
+            endFrame2();
         }
+    } else if (first && interlace() && parityR6_) {
+        // An interlace mode set during the first line of a frame that is
+        // to be followed by an odd one, and that began without the added
+        // line: the chip takes this line for it, and the frame begins
+        // again (19.6.3).
+        interlaceLine_ = true;
+        startFrame();
     } else {
         countLine2();
     }
+    latchC9Of2();
 }
 
+// The frame has run its lines, those of R5 included. With an interlace mode
+// set, one that is to be followed by an odd frame gets one more line, on
+// which C9 and C4 count as on any other (19.6.3).
+void Crtc::endFrame2()
+{
+    if (!interlace() || !parityR6_) {
+        startFrame();
+        return;
+    }
+    inAdjust_ = false;
+    interlaceLine_ = true;
+    countLine2();
+}
+
+// C9 and the display's own counter, which starts again half-way down the
+// row as well as at its end. It is kept all the time, to be put out as soon
+// as "interlace sync & video" is set (19.8.3).
 void Crtc::countLine2()
 {
     if (vlc_ == reg_[9]) {
         vlc_ = 0;
+        c9Ivm_ = 0;
         vcc_ = (vcc_ + 1) & 0x7F;
         startRow();
     } else {
+        c9Ivm_ = vlc_ == reg_[9] / 2 ? 0 : (c9Ivm_ + 1) & 0x1F;
         vlc_ = (vlc_ + 1) & 0x1F;
     }
 }
@@ -953,7 +1044,7 @@ void Crtc::lineStart2()
 // not looked at until the HSYNC says otherwise.
 void Crtc::judgeLineStart2()
 {
-    const bool atEnd = !inAdjust_ && vcc_ == reg_[4] && vlc_ == r9AtStart_;
+    const bool atEnd = !inAdjust_ && !interlaceLine_ && vcc_ == reg_[4] && vlc_ == r9AtStart_;
     lastLine_ = atEnd && !previousLast_ && !hsync_;
     lastLineOpen_ = vcc_ != 0 || vlc_ != 0;
 }

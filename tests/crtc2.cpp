@@ -1,9 +1,11 @@
 // What sets CRTC 2 (MC6845) apart, as the "Amstrad CPC CRTC Compendium" by
 // Longshot / Logon System describes it (chapters 11.2.5, 12.4, 15.5.2, 15.6,
-// 16.4.3, 17.4.3 and 20.3.3) and as the Logon System "Shaker" shows it on
-// real machines (module A: "VSYNC conditions", "R4 & R9 checkings", "R1
-// stories", "CRTC 2 offset"; module B: "RLAL" on CRTC 2, "R5 stories";
-// module C: "Last line condition").
+// 16.4.3, 17.4.3, 19.4.3, 19.5.4, 19.6.3, 19.7.2, 19.8.3 and 20.3.3) and as
+// the Logon System "Shaker" shows it on real machines (module A: "VSYNC
+// conditions", "R4 & R9 checkings", "R1 stories", "CRTC 2 offset"; module
+// B: "RLAL" on CRTC 2, "R5 stories", "Interlace C4/C9 counters"; module C:
+// "Last line condition", "Add line on parity bug", "Add line request &
+// trigger").
 
 #include <initializer_list>
 
@@ -310,6 +312,211 @@ void whereTheOffsetIsTaken()
     }
 }
 
+// Moves on to the start of a frame of the parity wanted. Frames take turns
+// whatever R8 holds, as long as C4 meets R6 (19.5.4).
+void toFrame(Rig& rig, bool odd)
+{
+    do
+        rig.seek(0, 0);
+    while (rig.crtc.oddFrame() != odd);
+}
+
+// "Interlace sync & video" (19.4.3, 19.8.3). C9 and C4 count as ever, so
+// nothing else has to be set again; what is put out is another counter,
+// which starts anew half-way down the row, doubled, with the frame's parity
+// below it. It is kept all the time and put out from the very character R8
+// is written on.
+void interlaceVideoLines()
+{
+    // The Compendium's tables: R9 = 7, the mode set on line 0 to 5 of row
+    // 0. Left column: what the lines that follow put out on an even frame.
+    static const int expected[6][8] = {
+        {0, 2, 4, 6, 0, 2, 4, 6}, {0, 1, 4, 6, 0, 2, 4, 6}, {0, 1, 2, 6, 0, 2, 4, 6},
+        {0, 1, 2, 3, 0, 2, 4, 6}, {0, 1, 2, 3, 4, 2, 4, 6}, {0, 1, 2, 3, 4, 5, 4, 6},
+    };
+    for (const bool odd : {false, true}) {
+        for (int at = 0; at < 6; ++at) {
+            Rig rig(CrtcType::MC6845);
+            toFrame(rig, odd);
+            // Away from the frame's first line, which has ways of its own.
+            rig.seek(2, 0);
+            for (int line = 0; line < 8; ++line) {
+                const int out = rig.crtc.ra();
+                const bool doubled = line > at;
+                CHECK_EQ(out, doubled ? expected[at][line] | odd : expected[at][line]);
+                if (line == at) {
+                    rig.to(20);
+                    rig.set(8, 3);
+                    // From this character on.
+                    const int half = line > 3 ? line - 4 : line;
+                    CHECK_EQ(rig.crtc.ra(), half * 2 | odd);
+                }
+                rig.nextLine();
+                CHECK_EQ(rig.crtc.vlc(), (line + 1) & 7);
+            }
+            // Row 3: C4 has moved as ever, and the lines go two by two.
+            CHECK_EQ(rig.crtc.vcc(), 3);
+            for (int line = 0; line < 8; ++line) {
+                CHECK_EQ(rig.crtc.ra(), (line & 3) * 2 | odd);
+                rig.nextLine();
+            }
+            // The mode left: C9 itself again, at once.
+            rig.seek(5, 6, 10);
+            CHECK_EQ(rig.crtc.ra(), 4 | odd);
+            rig.set(8, 0);
+            CHECK_EQ(rig.crtc.ra(), 6);
+        }
+    }
+
+    // The address moves on with that counter: twice a row when R9 is odd,
+    // and once only, half-way down, when it is even, the display's counter
+    // not getting to R9 again before C9 does.
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.set(8, 3);
+        rig.seek(0, 0);
+        rig.seek(0, 0);
+        CHECK_EQ(rig.crtc.ma(), 0);
+        rig.seek(0, 3);
+        CHECK_EQ(rig.crtc.ma(), 0);
+        rig.seek(0, 4);
+        CHECK_EQ(rig.crtc.ma(), 40);
+        rig.seek(0, 7);
+        CHECK_EQ(rig.crtc.ma(), 40);
+        rig.seek(1, 0);
+        CHECK_EQ(rig.crtc.ma(), 80);
+        rig.seek(2, 4);
+        CHECK_EQ(rig.crtc.ma(), 5 * 40);
+    }
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.set(8, 3);
+        rig.set(9, 6);
+        rig.seek(0, 0);
+        rig.seek(0, 0);
+        rig.seek(0, 4);
+        CHECK_EQ(rig.crtc.ma(), 40);
+        rig.seek(1, 0);
+        CHECK_EQ(rig.crtc.ma(), 40);
+        rig.seek(1, 4);
+        CHECK_EQ(rig.crtc.ma(), 80);
+    }
+}
+
+// The line an interlace mode adds, and the VSYNC it holds back (19.5.4,
+// 19.6.3, 19.7.2).
+void interlaceAddedLine()
+{
+    for (const int mode : {1, 3}) {
+        Rig rig(CrtcType::MC6845);
+        rig.set(8, mode);
+        // An even frame is a line longer, the line being one more of C4;
+        // its VSYNC begins in the middle of a line.
+        toFrame(rig, false);
+        rig.seek(30, 0);
+        CHECK(!rig.crtc.vsync());
+        rig.to(30);
+        CHECK(!rig.crtc.vsync());
+        rig.to(31);  // R0 / 2
+        CHECK(rig.crtc.vsync());
+        rig.seek(38, 7);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vcc(), 39);
+        CHECK_EQ(rig.crtc.vlc(), 0);
+        rig.nextLine();
+        CHECK(atFrameStart(rig));
+        CHECK(rig.crtc.oddFrame());
+        // An odd one has its 312 lines, and its VSYNC where it always is.
+        CHECK_EQ(rig.linesToFrameStart(), 312);
+        CHECK(!rig.crtc.oddFrame());
+        CHECK_EQ(rig.linesToFrameStart(), 313);
+        rig.seek(30, 0);
+        CHECK(rig.crtc.vsync());
+    }
+    // The parity of the next frame is settled as C4 meets R6: with R6 out
+    // of reach it stays as it is, and every frame has the added line, or
+    // none has.
+    for (const bool odd : {false, true}) {
+        Rig rig(CrtcType::MC6845);
+        toFrame(rig, odd);
+        rig.seek(26, 0);  // past R6: the next frame's parity is settled
+        rig.set(6, 50);
+        rig.set(8, 1);
+        rig.seek(0, 0);
+        CHECK(rig.crtc.oddFrame() != odd);
+        const int lines = odd ? 312 : 313;
+        CHECK_EQ(rig.linesToFrameStart(), lines);
+        CHECK_EQ(rig.linesToFrameStart(), lines);
+        CHECK(rig.crtc.oddFrame() != odd);
+    }
+    // The address for the next frame is taken on the added line, the very
+    // last one, as it is on the last of the lines of R5.
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.set(8, 1);
+        toFrame(rig, false);
+        rig.seek(38, 7, 50);
+        rig.set(12, 0x10);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vcc(), 39);
+        rig.to(41);
+        rig.set(12, 0x20);
+        rig.nextLine();
+        CHECK(atFrameStart(rig));
+        CHECK_EQ(rig.crtc.ma(), 0x1000);
+    }
+
+    // Two faults in that line ("Add line request & trigger" on a real
+    // chip). An interlace mode set during the first line of an odd frame
+    // makes that line the added one: line 0 comes again...
+    {
+        Rig rig(CrtcType::MC6845);
+        toFrame(rig, true);
+        rig.to(30);
+        rig.set(8, 3);
+        CHECK_EQ(rig.crtc.ra(), 1);  // odd at once
+        rig.nextLine();
+        CHECK(atFrameStart(rig));
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vlc(), 1);
+        CHECK_EQ(rig.linesToFrameStart(), 311);
+    }
+    // ...not that of an even frame, nor a second line.
+    {
+        Rig rig(CrtcType::MC6845);
+        toFrame(rig, false);
+        rig.to(30);
+        rig.set(8, 3);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vlc(), 1);
+    }
+    {
+        Rig rig(CrtcType::MC6845);
+        toFrame(rig, true);
+        rig.nextLine();
+        rig.to(30);
+        rig.set(8, 3);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vlc(), 2);
+    }
+    // And the mode left during the added line, the frame does not end: C9
+    // and C4 count on from there, C4 past R4.
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.set(8, 3);
+        toFrame(rig, false);
+        rig.seek(39, 0, 10);
+        rig.set(8, 0);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vcc(), 39);
+        CHECK_EQ(rig.crtc.vlc(), 1);
+        rig.seek(40, 0);
+        rig.seek(127, 7);
+        rig.nextLine();
+        CHECK(atFrameStart(rig));
+    }
+}
+
 }  // namespace
 
 int main()
@@ -322,5 +529,7 @@ int main()
     adjustmentLines();
     r1WrittenOnItsCharacter();
     whereTheOffsetIsTaken();
+    interlaceVideoLines();
+    interlaceAddedLine();
     return checkSummary("crtc2");
 }
