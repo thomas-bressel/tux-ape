@@ -136,17 +136,21 @@ void Crtc::write(uint8_t value, bool early)
                     hsync_ = false;
                     hsyncCut_ = HsyncCut::AtStart;
                 }
+            } else if (type_ == CrtcType::MC6845 && hsc_ == 0) {
+                // Type 2 on the pulse's first character: a width of 0 is 16
+                // characters for this chip, and there is nothing to cut
+                // (14.5.4, 14.6; Shaker "R3 JIT", R3 = 0 written on C0 = R2,
+                // on a real chip: sixteen characters of black, and the mode
+                // set at their end).
             } else if ((width == hsc_ && (old & 0x0F) != width) || (noPulse && type_ == CrtcType::UM6845R)) {
                 hsync_ = false;
                 // The pulse outlives the write by a quarter of a character.
                 // Cut on its very first character with a width of 0, types
                 // 0 and 1 give the half character it had begun with
                 // (14.5.4).
-                if (type_ == CrtcType::MC6845) {
-                    hsyncCut_ = HsyncCut::None;
+                hsyncCut_ = hsc_ == 0 && width == 0 ? HsyncCut::SecondHalf : HsyncCut::AfterQuarter;
+                if (type_ == CrtcType::MC6845)
                     hsyncEnds2();
-                } else
-                    hsyncCut_ = hsc_ == 0 && width == 0 ? HsyncCut::SecondHalf : HsyncCut::AfterQuarter;
             }
         }
         break;

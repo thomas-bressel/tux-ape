@@ -312,6 +312,40 @@ void whereTheOffsetIsTaken()
     }
 }
 
+// R3 written while the HSYNC lasts (14.5.4, 14.6). Brought down to the
+// pulse's counter it ends the pulse a quarter of a character later, as on
+// types 0 and 1. But 0 on the pulse's first character ends nothing: for
+// this chip a width of 0 is 16 characters ("R3 JIT" on a real chip: R3 = 0
+// on C0 = R2 gives sixteen characters of black, R3 = 1 on C0 = R2 + 1 a
+// character and a half).
+void r3JustInTime()
+{
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.set(2, 14);
+        rig.set(3, 14);
+        rig.seek(5, 0, 14);
+        CHECK(rig.crtc.hsync());
+        rig.set(3, 0);
+        CHECK(rig.crtc.hsync());
+        CHECK(rig.crtc.hsyncCut() == Crtc::HsyncCut::None);
+        rig.to(29);
+        CHECK(rig.crtc.hsync());
+        rig.to(30);
+        CHECK(!rig.crtc.hsync());
+    }
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.set(2, 14);
+        rig.set(3, 14);
+        rig.seek(5, 0, 15);
+        CHECK(rig.crtc.hsync());
+        rig.set(3, 1);
+        CHECK(!rig.crtc.hsync());
+        CHECK(rig.crtc.hsyncCut() == Crtc::HsyncCut::AfterQuarter);
+    }
+}
+
 // One VSYNC for one meeting of C4 and R7 (16.3). With R4 = R7 = 0, C4 never
 // leaves R7: there is a VSYNC of 16 lines and no other ("VSYNC torture" on
 // a real chip: #44 where the ASICs never come out of it). With R4 = 1, C4
@@ -616,6 +650,7 @@ int main()
     adjustmentLines();
     r1WrittenOnItsCharacter();
     whereTheOffsetIsTaken();
+    r3JustInTime();
     vsyncOnce();
     interlaceVideoLines();
     interlaceAddedLine();
