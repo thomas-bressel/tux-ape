@@ -444,6 +444,34 @@ void interlaceVideoLines()
         rig.seek(1, 4);
         CHECK_EQ(rig.crtc.ma(), 80);
     }
+    // The display's counter starts again whenever it has got to R9 itself,
+    // not only as C9 does: with R9 lowered below C9 as the mode is set, C9
+    // runs on to 31 and round, and meanwhile the address moves on every
+    // four lines ("Interlace C4/C9 counters", R9 = 6 and R8 = 3 written on
+    // line 7 of a row, on a real chip).
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(6, 7, 10);
+        rig.set(9, 6);
+        rig.set(8, 3);
+        CHECK_EQ(rig.crtc.ma(), 6 * 40 + 10);
+        rig.seek(6, 8);
+        CHECK_EQ(rig.crtc.ma(), 7 * 40);
+        rig.seek(6, 11);
+        CHECK_EQ(rig.crtc.ma(), 7 * 40);
+        rig.seek(6, 12);
+        CHECK_EQ(rig.crtc.ma(), 8 * 40);
+        rig.seek(6, 28);
+        CHECK_EQ(rig.crtc.ma(), 12 * 40);
+        rig.seek(6, 0);
+        CHECK_EQ(rig.crtc.ma(), 13 * 40);
+        // Half-way down the row, as ever; and not again as C9 meets R9,
+        // the counter being one short of it then.
+        rig.seek(6, 4);
+        CHECK_EQ(rig.crtc.ma(), 14 * 40);
+        rig.seek(7, 0);
+        CHECK_EQ(rig.crtc.ma(), 14 * 40);
+    }
 }
 
 // The line an interlace mode adds, and the VSYNC it holds back (19.5.4,

@@ -924,7 +924,7 @@ bool Crtc::rowEnds2() const
 {
     if (!interlaceVideo())
         return vlc_ == reg_[9];
-    return static_cast<uint8_t>(c9Ivm_ << 1) == (reg_[9] & 0x1E);
+    return ((c9Ivm_ << 1) & 0x1E) == (reg_[9] & 0x1E);
 }
 
 // Whether a new frame follows this line, as things stand.
@@ -1027,7 +1027,14 @@ void Crtc::countLine2()
         vcc_ = (vcc_ + 1) & 0x7F;
         startRow();
     } else {
-        c9Ivm_ = vlc_ == reg_[9] / 2 ? 0 : (c9Ivm_ + 1) & 0x1F;
+        // The display's counter starts again when C9 is half-way down the
+        // row, and whenever it has itself got to R9 (R9's lowest bit left
+        // out, the counter being put out doubled): while C9 runs past R9
+        // it goes round and round, and the address moves on each time
+        // (19.8.3; Shaker "Interlace C4/C9 counters", R9 lowered below C9
+        // as the mode is set).
+        const bool again = vlc_ == reg_[9] / 2 || ((c9Ivm_ << 1) & 0x1E) == (reg_[9] & 0x1E);
+        c9Ivm_ = again ? 0 : (c9Ivm_ + 1) & 0x0F;
         vlc_ = (vlc_ + 1) & 0x1F;
     }
 }
