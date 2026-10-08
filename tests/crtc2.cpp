@@ -1,8 +1,9 @@
 // What sets CRTC 2 (MC6845) apart, as the "Amstrad CPC CRTC Compendium" by
-// Longshot / Logon System describes it (chapters 11.2.5, 12.4, 15.5.2, 15.6
-// and 16.4.3) and as the Logon System "Shaker" shows it on real machines
-// (module A: "VSYNC conditions", "R4 & R9 checkings"; module B: "RLAL" on
-// CRTC 2, "R5 stories"; module C: "Last line condition").
+// Longshot / Logon System describes it (chapters 11.2.5, 12.4, 15.5.2, 15.6,
+// 16.4.3, 17.4.3 and 20.3.3) and as the Logon System "Shaker" shows it on
+// real machines (module A: "VSYNC conditions", "R4 & R9 checkings", "R1
+// stories", "CRTC 2 offset"; module B: "RLAL" on CRTC 2, "R5 stories";
+// module C: "Last line condition").
 
 #include <initializer_list>
 
@@ -243,6 +244,72 @@ void r1WrittenOnItsCharacter()
     CHECK_EQ(rig.crtc.ma(), 0);
 }
 
+// Where R12/R13 are taken (17.4.3, 20.3.3): as C0 meets R1 on the frame's
+// very last line, and nowhere else.
+void whereTheOffsetIsTaken()
+{
+    // Written before that character or during it, the next frame has them;
+    // a character later they wait a frame ("CRTC 2 offset" on a real chip:
+    // noise from &4000 with the write on C0 = 40, the old screen with it on
+    // 41).
+    for (const int at : {39, 40, 41}) {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(38, 7, at);
+        rig.set(12, 0x10);
+        rig.nextLine();
+        CHECK(atFrameStart(rig));
+        CHECK_EQ(rig.crtc.ma(), at <= 40 ? 0x1000 : 0);
+        rig.seek(38, 7);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 0x1000);
+    }
+    // With R1 above R0 they are never taken: every line of every frame
+    // starts at the address kept last. That is row 24's if R1 was raised
+    // before C0 met it on that row's last line, row 25's if it was raised
+    // on that very character, too late ("R1 stories").
+    for (const int at : {39, 40}) {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(24, 7, at);
+        rig.set(1, 255);
+        rig.to(50);
+        rig.set(12, 0x10);
+        const uint16_t kept = at == 39 ? 24 * 40 : 25 * 40;
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), kept);
+        rig.seek(0, 0);
+        CHECK_EQ(rig.crtc.ma(), kept);
+        rig.seek(10, 3);
+        CHECK_EQ(rig.crtc.ma(), kept);
+        rig.seek(0, 1);
+        CHECK_EQ(rig.crtc.ma(), kept);
+    }
+    // With lines of R5 to come, the last line keeps the address of the next
+    // row as any row's last line does, and the rows go on through those
+    // lines; R12/R13 are taken on the last of them. So R12 written on the
+    // last line after C0 = R1 is still in time ("R5 stories", whose second
+    // picture starts where it should on a real chip).
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.set(4, 10);
+        rig.set(5, 24);
+        rig.seek(10, 7, 53);
+        rig.set(12, 0x30);
+        rig.nextLine();
+        CHECK(rig.crtc.inVerticalAdjust());
+        CHECK_EQ(rig.crtc.ma(), 11 * 40);
+        rig.seek(12, 0);
+        CHECK_EQ(rig.crtc.ma(), 12 * 40);
+        rig.seek(13, 7, 41);
+        rig.set(12, 0x20);  // past C0 = R1 on the last of the lines of R5: a frame late
+        rig.nextLine();
+        CHECK(atFrameStart(rig));
+        CHECK_EQ(rig.crtc.ma(), 0x3000);
+        rig.seek(13, 7);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 0x2000);
+    }
+}
+
 }  // namespace
 
 int main()
@@ -254,5 +321,6 @@ int main()
     ghostVsync();
     adjustmentLines();
     r1WrittenOnItsCharacter();
+    whereTheOffsetIsTaken();
     return checkSummary("crtc2");
 }

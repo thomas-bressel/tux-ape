@@ -195,6 +195,7 @@ private:
     // VSYNC" (15.6, 16.4.3).
     bool ghostVsync_ = false;
     uint8_t r9AtStart_ = 0;        // R9 as the line began: what its first character goes by
+    bool newFrame2_ = false;       // a frame has just begun: its first character has not been judged yet
 
     // ---- Interlace (R8, Compendium chapter 19) ---------------------------
     // Frames are told apart by a parity that the chip keeps whatever R8
@@ -224,6 +225,8 @@ private:
     void startVsync();
 
     // ---- Type 2 ----------------------------------------------------------
+    void keepAddress2();
+    bool veryLastLine2() const;
     void endOfLine2();
     void countLine2();
     void lineStart2();

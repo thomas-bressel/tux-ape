@@ -34,6 +34,7 @@ void Crtc::reset()
     lastLineOpen_ = previousLast_ = hsyncJudged_ = false;
     ghostVsync_ = false;
     r9AtStart_ = 0;
+    newFrame2_ = false;
     lastLine1_ = overran1_ = false;
     fromR12_ = true;
     parityInTest_ = false;
@@ -222,6 +223,15 @@ void Crtc::write(uint8_t value, bool early)
             startVsync();
             ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
         }
+        break;
+    case 12:
+    case 13:
+        // Type 2 takes R12/R13 as the character on which C0 met R1 ends:
+        // written during that very character they are still in time, a
+        // character later they wait a frame (20.3.3; Shaker "CRTC 2
+        // offset" on a real chip).
+        if (type_ == CrtcType::MC6845 && hcc_ == reg_[1] && hcc_ != 0 && veryLastLine2())
+            maRow_ = startAddress();
         break;
     }
 
@@ -517,8 +527,12 @@ void Crtc::tick()
         ma_ = (ma_ + 1) & 0x3FFF;
     }
 
-    if (hcc_ == reg_[1])
-        displayEnds(!type1);
+    if (hcc_ == reg_[1]) {
+        const bool type2 = type_ == CrtcType::MC6845;
+        if (type2)
+            keepAddress2();
+        displayEnds(type0 || asic());
+    }
 
     // On type 0 the character an HSYNC ends on cannot start the next one:
     // two pulses are never joined (15.3.1; with R0 = 0, R2 = 0 and R3 = 1
@@ -816,6 +830,9 @@ void Crtc::startRow()
     }
 }
 
+// A new frame on type 2. R12/R13 are not looked at here: the chip took them
+// where C0 met R1 on the frame's last line, or did not take them at all
+// (keepAddress2).
 void Crtc::startFrame()
 {
     inAdjust_ = false;
@@ -823,7 +840,7 @@ void Crtc::startFrame()
     vlc_ = 0;
     vcc_ = 0;
     vDisp_ = true;
-    maRow_ = startAddress();
+    newFrame2_ = true;
     startRow();
 }
 
@@ -835,6 +852,44 @@ void Crtc::startVsync()
 }
 
 // ---- CRTC 2 ----------------------------------------------------------------
+
+// C0 at R1 on the MC6845: where the address for the next row is kept. On a
+// frame's very last line it is R12/R13 that are kept, and this is the only
+// place where the chip takes them: written after it, they wait a frame, and
+// with R1 above R0 they are never taken, every line showing the address kept
+// last (17.4.3, 20.3.3; Shaker "R1 stories" and "CRTC 2 offset"). The very
+// last line is the one found to be the last when no lines of R5 follow (by
+// its state, not by C4 and C9: R9 moved away since changes nothing, 12.4.2
+// note 1), and the last of the lines of R5 when they do: R12 written on
+// the last line after C0 = R1, with lines of R5 to come, is in time (Shaker
+// "R5 stories", whose second picture starts where it should on a real
+// chip). On any other line it is, as elsewhere, the address reached at the
+// end of a row's last line.
+void Crtc::keepAddress2()
+{
+    if (hcc_ == 0) {
+        // R1 = 0: the line's first character still goes by what the line
+        // before was. So it is a new frame's first line that takes R12/R13,
+        // and shows them at once; but only half of the loading is done
+        // there: the bits that are 0 in R12/R13 are cleared in the address
+        // kept, the others stay as they were.
+        if (newFrame2_) {
+            maRow_ &= startAddress();
+            ma_ = maRow_;
+        }
+        return;
+    }
+    if (veryLastLine2())
+        maRow_ = startAddress();
+    else if (vlc_ == reg_[9])
+        maRow_ = ma_;
+}
+
+// Whether a new frame follows this line, as things stand.
+bool Crtc::veryLastLine2() const
+{
+    return inAdjust_ ? ((vtac_ + 1) & 0x1F) == reg_[5] : lastLine_ && reg_[5] == 0;
+}
 
 // The end of a line on the MC6845 (Compendium 10.3.3, 11.2.5, 12.4.1). A
 // line found to be the frame's last is followed by a new frame, or by the
@@ -887,6 +942,7 @@ void Crtc::countLine2()
 void Crtc::lineStart2()
 {
     r9AtStart_ = reg_[9];
+    newFrame2_ = false;
     judgeLineStart2();
 }
 
