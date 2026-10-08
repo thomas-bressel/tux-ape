@@ -36,6 +36,8 @@ void Crtc::reset()
     r9AtStart_ = 0;
     newFrame2_ = firstLine2_ = false;
     c9Ivm_ = 0;
+    held2_ = Held2::Nothing;
+    heldAddress2_ = 0;
     lastLine1_ = overran1_ = false;
     fromR12_ = true;
     parityInTest_ = false;
@@ -251,8 +253,12 @@ void Crtc::write(uint8_t value, bool early)
         // written during that very character they are still in time, a
         // character later they wait a frame (20.3.3; Shaker "CRTC 2
         // offset" on a real chip).
-        if (type_ == CrtcType::MC6845 && hcc_ == reg_[1] && hcc_ != 0 && veryLastLine2())
-            maRow_ = startAddress();
+        if (type_ == CrtcType::MC6845 && hcc_ == reg_[1] && hcc_ != 0) {
+            if (held2_ == Held2::Start)
+                heldAddress2_ = startAddress();
+            else if (veryLastLine2())
+                maRow_ = startAddress();
+        }
         break;
     }
 
@@ -316,6 +322,7 @@ void Crtc::restoreCounters(uint8_t hcc, uint8_t vcc, uint8_t vlc, uint8_t hsc, u
         previousLast_ = hsyncJudged_ = false;
         r9AtStart_ = reg_[9];
         newFrame2_ = firstLine2_ = false;
+        held2_ = Held2::Nothing;
         // The display's own line counter, as a row counted from its start
         // has it.
         const uint8_t half = reg_[9] / 2;
@@ -899,6 +906,9 @@ void Crtc::startVsync()
 // "R5 stories", whose second picture starts where it should on a real
 // chip). On any other line it is, as elsewhere, the address reached at the
 // end of a row's last line.
+//
+// What an interlace mode has a say in is only settled as the line ends
+// (settleAddress2): here the address, or R12/R13, are set aside for it.
 void Crtc::keepAddress2()
 {
     if (hcc_ == 0) {
@@ -913,10 +923,45 @@ void Crtc::keepAddress2()
         }
         return;
     }
-    if (veryLastLine2())
+    if (interlaceLine_) {
+        held2_ = Held2::Start;
+        heldAddress2_ = startAddress();
+    } else if (veryLastLine2()) {
+        held2_ = Held2::Nothing;
         maRow_ = startAddress();
-    else if (rowEnds2())
+    } else if (!interlaceVideo() && vlc_ == reg_[9]) {
+        held2_ = Held2::Nothing;
         maRow_ = ma_;
+    } else {
+        // Out of the mode here, only the mode set by the line's end can
+        // still have this address kept: R9 brought to C9 after C0 = R1
+        // comes too late, as ever.
+        held2_ = interlaceVideo() ? Held2::Address : Held2::ForMode;
+        heldAddress2_ = ma_;
+    }
+}
+
+// The end of a line, for what was set aside where C0 met R1. On the line an
+// interlace mode added, R12/R13 only if the frame does end there. Elsewhere
+// it is the mode as the line ends that counts, not as it was at C0 = R1: in
+// "interlace sync & video" the address is kept when the display's own
+// counter is at its end, and out of that mode when C9 is at R9. (Shaker
+// "Stranger thing interlace", which sets and leaves the mode on every line,
+// a little later each time: on a real chip the address moves on half-way
+// down a row on the one line where the mode is set as the line ends, though
+// it was not at C0 = R1, and does not on the one where it was set at C0 = R1
+// and left since.)
+void Crtc::settleAddress2()
+{
+    const Held2 held = held2_;
+    held2_ = Held2::Nothing;
+    if (held == Held2::Start) {
+        if (interlace())
+            maRow_ = heldAddress2_;
+    } else if (held == Held2::Address || (held == Held2::ForMode && interlaceVideo())) {
+        if (rowEnds2())
+            maRow_ = heldAddress2_;
+    }
 }
 
 // Whether the address reached on this line is kept for the lines that
@@ -934,10 +979,10 @@ bool Crtc::rowEnds2() const
 // Whether a new frame follows this line, as things stand.
 bool Crtc::veryLastLine2() const
 {
-    // The line an interlace mode adds is the last of all; the mode left
-    // during it, the frame goes on (19.6.3).
+    // The line an interlace mode adds is the last of all, if the mode is
+    // still set as it ends: that is settled there.
     if (interlaceLine_)
-        return interlace();
+        return false;
     const bool ends = inAdjust_ ? ((vtac_ + 1) & 0x1F) == reg_[5] : lastLine_ && reg_[5] == 0;
     return ends && !(interlace() && parityR6_);
 }
@@ -967,6 +1012,8 @@ void Crtc::endOfLine2()
     // the line's last character.
     if (hsync_)
         hsyncEnds2();
+
+    settleAddress2();
 
     const bool first = firstLine2_;
     firstLine2_ = false;

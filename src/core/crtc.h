@@ -200,6 +200,10 @@ private:
     bool newFrame2_ = false;       // a frame has just begun: its first character has not been judged yet
     bool firstLine2_ = false;      // on the first line of a frame that began without an added interlace line
     uint8_t c9Ivm_ = 0;            // the display's own line counter ("C9.IVM")
+    // What was set aside where C0 met R1, to be settled as the line ends.
+    enum class Held2 : uint8_t { Nothing, Address, ForMode, Start };
+    Held2 held2_ = Held2::Nothing;
+    uint16_t heldAddress2_ = 0;
 
     // ---- Interlace (R8, Compendium chapter 19) ---------------------------
     // Frames are told apart by a parity that the chip keeps whatever R8
@@ -230,6 +234,7 @@ private:
 
     // ---- Type 2 ----------------------------------------------------------
     void keepAddress2();
+    void settleAddress2();
     bool veryLastLine2() const;
     bool rowEnds2() const;
     void latchC9Of2();

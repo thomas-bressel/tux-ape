@@ -506,6 +506,38 @@ void interlaceVideoLines()
         rig.seek(7, 0);
         CHECK_EQ(rig.crtc.ma(), 14 * 40);
     }
+    // Whether the address moves on with the display's counter is settled
+    // as the line ends, by the mode as it is then, not as it was where C0
+    // met R1 ("Stranger thing interlace" on a real chip, which sets and
+    // leaves the mode on every line). Half-way down a row: the mode set
+    // only as the line ends moves the address on; set at C0 = R1 and left
+    // before the end, it does not.
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(5, 3, 57);
+        rig.set(8, 3);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 6 * 40);
+    }
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(5, 3, 30);
+        rig.set(8, 3);
+        rig.to(50);
+        rig.set(8, 0);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 5 * 40);
+    }
+    // On a row's last line it moves on either way.
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(5, 7, 30);
+        rig.set(8, 3);
+        rig.to(50);
+        rig.set(8, 0);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 6 * 40);
+    }
 }
 
 // The line an interlace mode adds, and the VSYNC it holds back (19.5.4,
@@ -621,16 +653,23 @@ void interlaceAddedLine()
         CHECK_EQ(rig.crtc.vlc(), 2);
     }
     // And the mode left during the added line, the frame does not end: C9
-    // and C4 count on from there, C4 past R4.
+    // and C4 count on from there, C4 past R4. Nor are R12/R13 taken then,
+    // though the mode was still set where C0 met R1: the rows go on from
+    // where they were ("Stranger thing interlace" on a real chip).
     {
         Rig rig(CrtcType::MC6845);
         rig.set(8, 3);
         toFrame(rig, false);
-        rig.seek(39, 0, 10);
+        rig.set(12, 0x10);
+        rig.seek(39, 0);
+        const uint16_t reached = rig.crtc.ma();
+        CHECK_EQ(reached, 78 * 40);  // two addresses to a row, 39 rows
+        rig.to(50);
         rig.set(8, 0);
         rig.nextLine();
         CHECK_EQ(rig.crtc.vcc(), 39);
         CHECK_EQ(rig.crtc.vlc(), 1);
+        CHECK_EQ(rig.crtc.ma(), reached);
         rig.seek(40, 0);
         rig.seek(127, 7);
         rig.nextLine();
