@@ -237,6 +237,9 @@ void Crtc::write(uint8_t value, bool early)
                 ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
             }
         }
+        // R7 moved away from C4 lets the next meeting count again (16.3).
+        if (type_ == CrtcType::MC6845)
+            r7Match_ = vcc_ == reg_[7];
         break;
     case 12:
     case 13:
@@ -824,35 +827,25 @@ void Crtc::startRow()
         else
             vDisp_ = false;
     }
-    if (type_ == CrtcType::UM6845R) {
-        // Type 1 does not start a VSYNC twice from the same meeting of C4
-        // and R7: with R4 = R7 = 0, C4 never leaves R7 and there is one
-        // VSYNC, not one after the other without end (16.3; Shaker "VSYNC
-        // torture": 16 lines on a real chip, where types 3 and 4 never
-        // come out of it).
-        const bool match = vcc_ == reg_[7];
-        const bool fresh = match && !r7Match_ && !vsync_;
-        r7Match_ = match;
-        if (fresh && interlace() && !parityFrame_) {
-            // An even frame with an interlace mode set: the VSYNC waits
-            // for the middle of the line (19.7.2).
-            midVsync_ = true;
-        } else if (fresh) {
-            startVsync();
-        }
-    } else if (vcc_ == reg_[7] && !vsync_) {
-        if (type_ == CrtcType::MC6845 && interlace() && !parityFrame_) {
-            // An even frame with an interlace mode set: the VSYNC waits for
-            // the middle of the line (19.7.2).
-            midVsync_ = true;
-        } else {
-            startVsync();
-            // Type 2: an HSYNC that reaches the line's last character hides
-            // the VSYNC that the next line's first one brings (15.6). This
-            // is asked before the line's own HSYNC is: one that starts on
-            // the first character hides nothing.
-            ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
-        }
+    // Types 1 and 2 (the only ones that come this way) do not start a VSYNC
+    // twice from the same meeting of C4 and R7: with R4 = R7 = 0, C4 never
+    // leaves R7 and there is one VSYNC, not one after the other without end
+    // (16.3; Shaker "VSYNC torture": 16 lines on real chips of both types,
+    // where types 3 and 4 never come out of it).
+    const bool match = vcc_ == reg_[7];
+    const bool fresh = match && !r7Match_ && !vsync_;
+    r7Match_ = match;
+    if (fresh && interlace() && !parityFrame_) {
+        // An even frame with an interlace mode set: the VSYNC waits for the
+        // middle of the line (19.7.2).
+        midVsync_ = true;
+    } else if (fresh) {
+        startVsync();
+        // Type 2: an HSYNC that reaches the line's last character hides the
+        // VSYNC that the next line's first one brings (15.6). This is asked
+        // before the line's own HSYNC is: one that starts on the first
+        // character hides nothing.
+        ghostVsync_ = type_ == CrtcType::MC6845 && hsync_;
     }
     // Type 2 settles there, as type 0 does, the parity the next frame will
     // have, whatever R8 holds: a frame whose C4 never meets R6 leaves it

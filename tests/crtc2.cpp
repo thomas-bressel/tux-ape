@@ -312,6 +312,49 @@ void whereTheOffsetIsTaken()
     }
 }
 
+// One VSYNC for one meeting of C4 and R7 (16.3). With R4 = R7 = 0, C4 never
+// leaves R7: there is a VSYNC of 16 lines and no other ("VSYNC torture" on
+// a real chip: #44 where the ASICs never come out of it). With R4 = 1, C4
+// goes to 1 and comes back during the VSYNC: a meeting anew, and the VSYNC
+// starts again as it ends.
+void vsyncOnce()
+{
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(10, 0);  // well away from the VSYNC of row 30
+        rig.set(4, 0);
+        rig.set(7, 0);
+        rig.seek(0, 0);
+        CHECK(rig.crtc.vsync());
+        for (int line = 0; line < 15; ++line) {
+            rig.nextLine();
+            CHECK(rig.crtc.vsync());
+        }
+        rig.nextLine();
+        CHECK(!rig.crtc.vsync());
+        CHECK(!rig.vsyncWithin(100));
+        // R7 moved away and back: the next meeting counts again.
+        rig.set(7, 5);
+        rig.nextLine();
+        rig.set(7, 0);
+        CHECK(rig.crtc.vsync());
+    }
+    {
+        Rig rig(CrtcType::MC6845);
+        rig.seek(10, 0);
+        rig.set(4, 1);
+        rig.set(7, 0);
+        rig.seek(0, 0);
+        CHECK(rig.crtc.vsync());
+        rig.seek(1, 0);
+        CHECK(rig.crtc.vsync());
+        rig.seek(0, 0);  // the 17th line
+        CHECK(rig.crtc.vsync());
+        rig.seek(1, 3);
+        CHECK(rig.crtc.vsync());
+    }
+}
+
 // Moves on to the start of a frame of the parity wanted. Frames take turns
 // whatever R8 holds, as long as C4 meets R6 (19.5.4).
 void toFrame(Rig& rig, bool odd)
@@ -545,6 +588,7 @@ int main()
     adjustmentLines();
     r1WrittenOnItsCharacter();
     whereTheOffsetIsTaken();
+    vsyncOnce();
     interlaceVideoLines();
     interlaceAddedLine();
     return checkSummary("crtc2");
