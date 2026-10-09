@@ -649,6 +649,97 @@ void testSplitMoment()
     }
 }
 
+// The vertical scroll and the rows. Each line shows line (C9 + scroll)
+// modulo 8 of the row on show, and that row gives way to the next after
+// the line that shows its last, wherever C9 is: nothing is added to the
+// address for the lines that go round. On a real GX4000 (the notes in Kevin
+// Thacker's "vscrl2"): "vertical scrolling but not perfect because of no ma
+// being added", and a row whose lines were doubled by a scroll changed on
+// every line is followed by the same row at its usual size. A road drawn
+// with a split and a scroll on every line, and Eerie Forest's logo, need
+// it.
+void testScrolledRows()
+{
+    // Three lines of scroll, never changed: a row's lines 3 to 7, then
+    // lines 0 to 2 of the next.
+    {
+        Rig rig(CrtcType::AsicPlus);
+        rig.crtc.setScrollLines(3);
+        rig.seek(2, 0);
+        CHECK_EQ(rig.crtc.ma(), 80);
+        rig.seek(2, 4);
+        CHECK_EQ(rig.crtc.ma(), 80);
+        rig.seek(2, 5);
+        CHECK_EQ(rig.crtc.ma(), 120);
+        rig.seek(2, 7);
+        CHECK_EQ(rig.crtc.ma(), 120);
+        rig.seek(3, 0);
+        CHECK_EQ(rig.crtc.ma(), 120);
+    }
+    // A scroll set on every line so that all eight show the row's first:
+    // none was its last, and the row is still there when the CRTC's own
+    // row has ended. It is then shown whole.
+    {
+        Rig rig(CrtcType::AsicPlus);
+        rig.seek(2, 0);
+        for (int c9 = 0; c9 < 8; ++c9) {
+            rig.crtc.setScrollLines(static_cast<uint8_t>((8 - c9) & 7));
+            CHECK_EQ(rig.crtc.ma(), 80);
+            rig.nextLine();
+        }
+        rig.crtc.setScrollLines(0);
+        CHECK(rig.crtc.vcc() == 3 && rig.crtc.vlc() == 0);
+        for (int c9 = 0; c9 < 8; ++c9) {
+            CHECK_EQ(rig.crtc.ma(), 80);
+            rig.nextLine();
+        }
+        CHECK_EQ(rig.crtc.ma(), 120);
+    }
+    // After a split the lines come from the split's address, whatever the
+    // scroll makes of C9; and a split on the line that shows a row's last
+    // has the last word.
+    {
+        Rig rig(CrtcType::AsicPlus);
+        rig.seek(12, 3, 10);  // line 99
+        rig.crtc.setSplit(99, 0x1800);
+        rig.crtc.setScrollLines(6);
+        rig.nextLine();       // line 100, C9 = 4: line 2 of the row at &1800
+        CHECK_EQ(rig.crtc.ma(), 0x1800);
+        rig.to(10);
+        rig.crtc.setSplit(100, 0x1900);
+        rig.crtc.setScrollLines(3);  // 4 + 3: the row's last line
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 0x1900);
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.ma(), 0x1900);
+    }
+    // The picture: the screen at &4000 has a white first row over a blue
+    // second one. Split to it after line 100 with five lines of scroll,
+    // lines 101 to 103 (C9 = 5 to 7) show lines 2 to 4 of the white row,
+    // not the blue row below it; the white row lasts until its line 7 has
+    // been shown, on line 106.
+    {
+        PlusMachine m;
+        m.write(0x6400, 0x0F);
+        m.write(0x6402, 0xFF);
+        m.write(0x6403, 0x0F);
+        m.cpc.out(0x7F00, 0x8D);
+        const PlusMachine::Box screen = m.find(kBlue);
+        for (int line = 0; line < 8; ++line)
+            for (int x = 0; x < 80; ++x)
+                m.cpc.memory().baseRam()[0x4000 + line * 0x800 + x] = 0xF0;
+        m.write(0x6801, 100);
+        m.write(0x6802, 0x10);
+        m.write(0x6803, 0x00);
+        m.write(0x6804, 0x50);
+        const uint32_t* frame = m.picture();
+        CHECK_EQ(frame[(screen.y + 100) * Monitor::kWidth + screen.x + 100], kBlue);
+        for (int line = 101; line <= 106; ++line)
+            CHECK_EQ(frame[(screen.y + line) * Monitor::kWidth + screen.x + 100], kWhite);
+        CHECK_EQ(frame[(screen.y + 107) * Monitor::kWidth + screen.x + 100], kBlue);
+    }
+}
+
 // The parts of the register page with nothing behind them: a read there
 // gives what the bus last carried, the last byte the instruction fetched.
 void testFloatingBus()
@@ -1173,6 +1264,7 @@ int main()
     testSprites();
     testSplitAndScroll();
     testSplitMoment();
+    testScrolledRows();
     testFloatingBus();
     testRasterInterrupt();
     testSoundChannels();

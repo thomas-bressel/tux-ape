@@ -84,8 +84,10 @@ void Asic::reset()
     if (gateArray_)
         for (int index = 0; index < 32; ++index)
             gateArray_->setPlusColour(index, 0);
-    if (crtc_)
+    if (crtc_) {
         crtc_->setSplit(0, 0);
+        crtc_->setScrollLines(0);
+    }
 }
 
 void Asic::raiseRasterInterrupt()
@@ -452,7 +454,11 @@ void Asic::write(uint16_t address, uint8_t value)
         if (crtc_)
             crtc_->setSplit(splt_, ssa_);
         return;
-    case kRaster + 4: sscr_ = value; return;
+    case kRaster + 4:
+        sscr_ = value;
+        if (crtc_)
+            crtc_->setScrollLines(value >> 4 & 7);
+        return;
     case kRaster + 5: ivr_ = value; return;
     // The channels' registers: the list's address (even), then the
     // prescaler.

@@ -757,6 +757,14 @@ void Crtc::r6Written(R6Write effect)
     }
 }
 
+void Crtc::scrollRestored()
+{
+    if (scrollLines_ == 0 || vlc_ + scrollLines_ <= reg_[9])
+        return;
+    maRow_ = static_cast<uint16_t>((maRow_ + reg_[1]) & 0x3FFF);
+    ma_ = static_cast<uint16_t>((maRow_ + hcc_) & 0x3FFF);
+}
+
 // C0 has met R1: the border from here to the end of the line.
 void Crtc::displayEnds(bool keepAddress)
 {
@@ -770,7 +778,10 @@ void Crtc::displayEnds(bool keepAddress)
     // The address reached at the end of a row's last line becomes the
     // start of the next row. On the ASICs the lines added after the
     // last row keep its address (11.2.6).
-    if (keepAddress && c9AtR9() && !(asic() && (inAdjust_ || interlaceLine_)))
+    // With the Plus's vertical scroll it is the line shown that counts,
+    // not C9 (see setScrollLines).
+    const bool lastLine = scrollLines_ == 0 ? c9AtR9() : ((vlc_ + scrollLines_) & 0x1F) == reg_[9];
+    if (keepAddress && lastLine && !(asic() && (inAdjust_ || interlaceLine_)))
         maRow_ = ma_;
     // The Plus's split screen: after this line the picture comes from
     // another address.

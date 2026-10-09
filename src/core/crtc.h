@@ -102,6 +102,21 @@ public:
         splitDue_ = 2;
         late_ = true;
     }
+    // The Plus's vertical scroll (SSCR bits 6-4) shows each line of a row
+    // `lines` further down: line (C9 + lines) modulo 8 of the row on show.
+    // That row gives way to the next when the line so shown is its last,
+    // C9 + lines = R9, and not where C9 itself gets there. Nothing is added
+    // to the address for the lines that wrap round: a row whose scrolled
+    // line never meets R9 stays on show, and after a split the lines come
+    // from the split's row whatever the scroll. (Kevin Thacker's "vscrl2"
+    // on a real GX4000: "vertical scrolling but not perfect because of no
+    // ma being added"; with the scroll changed on every line so that each
+    // is doubled, the "chunky" row is followed by the same row at its
+    // usual size.)
+    void setScrollLines(uint8_t lines) { scrollLines_ = lines & 7; }
+    // A snapshot has put the scroll back after the counters: the row on
+    // show is what an undisturbed frame would have here.
+    void scrollRestored();
     // The line as the ASIC numbers it for its raster interrupt and its
     // split: C9's low three bits under six bits of C4. A register of eight
     // bits can therefore only name the first 256 lines of every 512: rows
@@ -286,6 +301,7 @@ private:
     uint8_t splitDueLine_ = 0;
     uint16_t splitDueAddress_ = 0;
     uint8_t frames_ = 0;           // types 3 and 4: frames counted, for the status that turns over every sixteen
+    uint8_t scrollLines_ = 0;      // the Plus: lines of vertical scroll
 };
 
 }  // namespace tuxape

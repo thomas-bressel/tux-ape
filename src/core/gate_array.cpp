@@ -542,17 +542,14 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
     // MA13-12 pick the 16K block, RA2-0 the line within the row.
     fetchedDisplay_[0] = crtc.displayEnable(0);
     fetchedDisplay_[1] = crtc.displayEnable(1);
-    uint16_t ma = crtc.ma();
+    const uint16_t ma = crtc.ma();
     unsigned ra = crtc.ra() & 7u;
     if (plus_) {
-        // The Plus's vertical scroll shows each row from a line further
-        // down, the lines missing at its foot being the first of the row
-        // below.
-        ra += asic_->scroll() >> 4 & 7u;
-        if (ra > 7) {
-            ra &= 7;
-            ma = static_cast<uint16_t>(ma + crtc.reg(1));
-        }
+        // The Plus's vertical scroll shows each line of the row from
+        // further down, going round within the row: the CRTC brings the
+        // next row in when the line shown is the last (see
+        // Crtc::setScrollLines).
+        ra = (ra + (asic_->scroll() >> 4 & 7u)) & 7u;
         fetchedFirst_ = crtc.hcc() == 0;
         fetchedX_ = crtc.hcc() * Monitor::kCellWidth;
         fetchedY_ = crtc.frameLine();
