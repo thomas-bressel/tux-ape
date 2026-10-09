@@ -249,9 +249,12 @@ private:
     // ---- Types 3 and 4 (the 6845 inside Amstrad's ASICs) -----------------
     bool asic() const { return type_ == CrtcType::AsicPlus || type_ == CrtcType::PreAsic; }
     void endOfLineAsic();
+    bool frameEndsAsic() const;
     void endFrameAsic();
     void newFrameAsic();
     void rowStartAsic(bool oddFrame);
+    uint8_t status1() const;
+    uint8_t status2() const;
 
     uint8_t dispNow() const;
     bool interlace() const { return (reg_[8] & 1) != 0; }
@@ -277,6 +280,7 @@ private:
     uint8_t splitDue_ = 0;         // characters to go before the split written is seen
     uint8_t splitDueLine_ = 0;
     uint16_t splitDueAddress_ = 0;
+    uint8_t frames_ = 0;           // types 3 and 4: frames counted, for the status that turns over every sixteen
 };
 
 }  // namespace tuxape

@@ -45,6 +45,7 @@ void Crtc::reset()
     parityFrame_ = parityR6_ = parityC9_ = false;
     extraLine_ = interlaceLine_ = midVsync_ = lateVsync_ = false;
     c9Out_ = 0;
+    frames_ = 0;
 }
 
 void Crtc::write(uint8_t value, bool early)
@@ -358,11 +359,89 @@ uint8_t Crtc::readData() const
     case CrtcType::MC6845:
         return selected_ >= 14 && selected_ <= 17 ? reg_[selected_] : 0x00;
     default: {
-        // Only three address bits are decoded.
+        // Only three address bits are decoded. Where registers 10 and 11
+        // would be, the ASICs answer with their statuses.
         static constexpr uint8_t map[8] = {16, 17, 10, 11, 12, 13, 14, 15};
-        return reg_[map[selected_ & 7]];
+        const uint8_t which = map[selected_ & 7];
+        if (which == 10)
+            return status1();
+        if (which == 11)
+            return status2();
+        return reg_[which];
     }
     }
+}
+
+// The two status bytes of types 3 and 4 (Compendium 21.3.4). Each bit tells
+// of one meeting of a counter and a register, for as long as it lasts: a
+// character for most, so that a program has to read at the right
+// microsecond. Several look one character ahead.
+uint8_t Crtc::status1() const
+{
+    const bool lineEnds = hcc_ == reg_[0];
+    uint8_t status = 0xFE;
+    if (lineEnds)
+        status |= 0x01;
+    if (hcc_ == reg_[0] / 2)
+        status &= ~0x02;
+    // The display ends with the next character.
+    if (reg_[0] >= reg_[1] && static_cast<uint8_t>(hcc_ + 1) == reg_[1])
+        status &= ~0x04;
+    if (hcc_ == reg_[2])
+        status &= ~0x08;
+    // The character after the HSYNC's last one (a width of 0 is 16).
+    const uint8_t width = reg_[3] & 0x0F ? reg_[3] & 0x0F : 16;
+    if (hcc_ == static_cast<uint8_t>(reg_[2] + width))
+        status &= ~0x10;
+    // The VSYNC's lines, counted from 1, against R3's high half: the last
+    // line of a VSYNC. With 0 there it is the sixteenth, and every line
+    // outside the VSYNC as well, the count being 0 then.
+    if ((vsync_ ? (vsc_ + 1) & 0x0F : 0) == reg_[3] >> 4)
+        status &= ~0x20;
+    // The address the next character will have ends in &00.
+    uint16_t next = static_cast<uint16_t>(ma_ + 1);
+    if (lineEnds && !frameEndsAsic())
+        next = maRow_;
+    else if (lineEnds)
+        next = splitLine_ != 0 && asicLine() == splitLine_ ? splitAddress_ : startAddress();
+    if ((next & 0xFF) == 0)
+        status &= ~0x80;
+    return status;
+}
+
+uint8_t Crtc::status2() const
+{
+    const bool lineEnds = hcc_ == reg_[0];
+    const bool rowEnds = vlc_ == reg_[9];
+    uint8_t status = 0x3F;
+    // The last character of the last row, of the rows shown, and of the
+    // row before the VSYNC. The lines of R5 are no row's end: with R4 = 37
+    // and R5 = 8 the first is seen once a frame, eight lines before the
+    // frame ends (the Shaker's "CRTC 3/4 status" on a real machine).
+    if (lineEnds && rowEnds && !inAdjust_) {
+        if (vcc_ == reg_[4])
+            status &= ~0x01;
+        if (vcc_ == static_cast<uint8_t>(reg_[6] - 1))
+            status &= ~0x02;
+        if (vcc_ == static_cast<uint8_t>(reg_[7] - 1))
+            status &= ~0x04;
+    }
+    // A bit that turns over every sixteen frames.
+    if (!(frames_ & 0x10))
+        status &= ~0x08;
+    // The lines of R5 as counted once the one in progress has ended,
+    // against R5: the last character of the last of them. The count is 0
+    // outside them, so that with R5 = 0 the bit is always set. (The same
+    // test finds R5 that way: it counts the lines after the last row whose
+    // last character leaves the bit at 0.)
+    if ((inAdjust_ ? (vlc_ + lineEnds) & 0x1F : 0) != reg_[5])
+        status &= ~0x10;
+    if (rowEnds)
+        status &= ~0x20;
+    // The next character is on a row's first line.
+    if (lineEnds ? rowEnds : vlc_ == 0)
+        status |= 0x80;
+    return status;
 }
 
 // DISPTMG for the two halves of the character in progress (bit 0, bit 1),
@@ -1200,6 +1279,16 @@ void Crtc::endOfLineAsic()
     }
 }
 
+// Whether a new frame follows the line in progress, as things stand: what
+// the end of the line will find, for the status that looks ahead.
+bool Crtc::frameEndsAsic() const
+{
+    if (interlaceLine_)
+        return true;
+    const bool ends = inAdjust_ ? ((vlc_ + 1) & 0x1F) >= reg_[5] : vlc_ >= reg_[9] && vcc_ == reg_[4] && reg_[5] == 0;
+    return ends && !(interlace() && !parityFrame_);
+}
+
 // The frame has run its lines. With an interlace mode set, an even frame
 // gets one more line: C4 stays where it is and C9 is 0 (19.6.4).
 void Crtc::endFrameAsic()
@@ -1221,6 +1310,7 @@ void Crtc::newFrameAsic()
     inAdjust_ = interlaceLine_ = false;
     vcc_ = 0;
     frameLine_ = 0;
+    ++frames_;
     // The parity changes with every frame, whatever R8 holds. A VSYNC on
     // row 0 is dealt with before it does (19.7.3).
     const bool before = parityFrame_;
