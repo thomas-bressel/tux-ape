@@ -374,7 +374,7 @@ int main()
     testInterruptPosition();
     testInkTiming(CrtcType::HD6845S, 8);
     testInkTiming(CrtcType::UM6845R, 8);
-    testInkTiming(CrtcType::AsicPlus, 4);
+    testInkTiming(CrtcType::AsicPlus, 5);
     testCrtcTiming(CrtcType::HD6845S, 3);
     testCrtcTiming(CrtcType::AsicPlus, 4);
     testCrtcTiming(CrtcType::PreAsic, 4);

@@ -446,9 +446,11 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
                 out[i] = kBlack;
         } else {
             // An ink set during this microsecond shows from the middle of
-            // the character on a Gate Array, from a quarter of the way in
-            // on the Plus ASIC.
-            const int split = inkChanged_ ? (plusAsic ? 4 : 8) : 0;
+            // the character on a Gate Array, five pixels into it on the
+            // Plus's ASIC, whatever the mode: a pixel of mode 0 or 1 can
+            // change colour part-way (Compendium 9.2.2; the Shaker's
+            // "Gate Array inkerisation").
+            const int split = inkChanged_ ? (plusAsic ? 5 : 8) : 0;
             // Each byte is either picture or border.
             const uint8_t* left = kPenTable.pens[mode_][fetched_[0]];
             const uint8_t* right = kPenTable.pens[mode_][fetched_[1]];
