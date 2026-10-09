@@ -380,6 +380,15 @@ void GateArray::hsyncStartedByWrite(const Crtc& crtc, bool late)
     lateBlanking_ = late;
 }
 
+void GateArray::hsyncEndedByWrite(const Crtc& crtc)
+{
+    // The ASICs' pulse, which is seen here a character late, has had its
+    // last character: the one in progress. (The discrete chips' cuts are
+    // told through Crtc::hsyncCut.)
+    if (crtc.type() == CrtcType::AsicPlus || crtc.type() == CrtcType::PreAsic)
+        delayedHsync_ = false;
+}
+
 void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor)
 {
     const bool plusAsic = crtc.type() == CrtcType::AsicPlus;

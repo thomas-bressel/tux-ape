@@ -269,6 +269,8 @@ void Cpc::crtcWrite(uint16_t port, uint8_t value, bool early)
         crtc_.write(value, early);
         if (crtc_.hsync() && !hsync)
             gateArray_.hsyncStartedByWrite(crtc_, !early);
+        else if (hsync && !crtc_.hsync())
+            gateArray_.hsyncEndedByWrite(crtc_);
         break;
     }
     }

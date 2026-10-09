@@ -130,7 +130,24 @@ void Crtc::write(uint8_t value, bool early)
         // on the three discrete chips; lower still, and the counter has to
         // go all the way round. The UM6845R also takes a width of 0 as "no
         // HSYNC" at any moment (Compendium 14.5).
-        if (hsync_ && type_ != CrtcType::AsicPlus && type_ != CrtcType::PreAsic) {
+        if (hsync_ && asic()) {
+            // The ASICs start their HSYNC, and its counter with it, a
+            // character after C0 has met R2 (they keep it in step with the
+            // picture; the Gate Array's side of this is in
+            // GateArray::sync): their counter is one behind the one kept
+            // here. So a width brought to this one is a width the chip's
+            // own counter has yet to reach, as the character ends: the
+            // pulse stops there, having lasted that many characters. One
+            // lower and the chip's counter is at it already, too late: it
+            // goes all the way round, 16 characters more (14.5.3, where a
+            // write on the fifth character of a pulse ends it for 5 and
+            // makes it 20 characters long for 4; Shaker "R3 JIT" on a real
+            // Plus: R3 = 1, 2, 3 written one, two, three characters after
+            // C0 = R2 give bars of one, two and three characters).
+            const uint8_t width = reg_[3] & 0x0F;
+            if (hsc_ != 0 && width == hsc_ && (old & 0x0F) != width)
+                hsync_ = false;
+        } else if (hsync_) {
             const uint8_t width = reg_[3] & 0x0F;
             const bool noPulse = width == 0 && type_ != CrtcType::MC6845;
             if (early) {

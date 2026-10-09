@@ -40,6 +40,8 @@ public:
     // `late` is for the OUT (C),r kind of write, after which the picture
     // goes blank a little further on.
     void hsyncStartedByWrite(const Crtc& crtc, bool late);
+    // An R3 write has just ended the HSYNC in progress.
+    void hsyncEndedByWrite(const Crtc& crtc);
     void acknowledgeInterrupt();
 
     bool lowerRomEnabled() const { return !(rmr_ & 0x04); }

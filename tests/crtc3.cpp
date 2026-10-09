@@ -439,6 +439,74 @@ void interlaceFrames()
     }
 }
 
+// R3 written during the HSYNC (14.5.3, with R2 = 11 and R3 = 10, the write
+// landing on the pulse's fifth character as these chips count it: they
+// start their pulse, and its counter, a character after C0 = R2). A width
+// above the counter is the new end; the counter's own value comes too late
+// and the pulse goes all the way round; and the value the counter is about
+// to take ends the pulse with the character of the write. The Gate Array
+// sees all of this a character late (GateArray::sync), which makes whole
+// characters of it: 5 for a width of 5, 6 for 6, 20 for 4.
+void r3WrittenDuringHsync()
+{
+    struct {
+        int width;
+        int lasts;  // characters of HSYNC from C0 = R2 on, the one of the write included
+    } const cases[] = {{0, 16}, {1, 17}, {2, 18}, {3, 19}, {4, 20}, {5, 6}, {6, 6}, {7, 7}, {10, 10}};
+    for (const auto& c : cases) {
+        Rig rig(CrtcType::AsicPlus);
+        rig.set(2, 11);
+        rig.set(3, 0x8A);
+        rig.seek(5, 2, 10);
+        CHECK(!rig.crtc.hsync());
+        rig.to(16);
+        CHECK(rig.crtc.hsync());
+        rig.set(3, 0x80 | c.width);
+        // For 5 the pulse is over as the write is made, its sixth
+        // character begun: the Gate Array, a character behind, has seen
+        // five.
+        CHECK_EQ(rig.crtc.hsync(), c.width != 5);
+        int lasts = 6;
+        while (rig.crtc.hsync() && lasts < 40) {
+            rig.crtc.tick();
+            if (rig.crtc.hsync())
+                ++lasts;
+        }
+        CHECK_EQ(lasts, c.lasts);
+    }
+    // The Shaker's "R3 JIT" on a real Plus: R2 = R3 = 14, then R3 = 1, 2
+    // or 3 written one, two or three characters after C0 = R2 give bars of
+    // one, two and three characters, and R3 = 0 written on C0 = R2 one of
+    // sixteen.
+    for (const int width : {0, 1, 2, 3}) {
+        Rig rig(CrtcType::AsicPlus);
+        rig.set(2, 14);
+        rig.set(3, 0x8E);
+        rig.seek(5, 2, 14 + width);
+        rig.set(3, 0x80 | width);
+        CHECK_EQ(rig.crtc.hsync(), width == 0);
+        if (width == 0) {
+            int lasts = 1;
+            while (rig.crtc.hsync() && lasts < 40) {
+                rig.crtc.tick();
+                if (rig.crtc.hsync())
+                    ++lasts;
+            }
+            CHECK_EQ(lasts, 16);
+        }
+    }
+    // The same write on a discrete chip is another story (crtc0, crtc2):
+    // here only that the pulse does not go round on type 0.
+    {
+        Rig rig(CrtcType::HD6845S);
+        rig.set(2, 11);
+        rig.set(3, 0x8A);
+        rig.seek(5, 2, 16);
+        rig.set(3, 0x85);
+        CHECK(!rig.crtc.hsync());
+    }
+}
+
 }  // namespace
 
 int main()
@@ -452,5 +520,6 @@ int main()
     statusTwoTimer();
     interlaceSwitchedOn();
     interlaceFrames();
+    r3WrittenDuringHsync();
     return checkSummary("crtc3");
 }
