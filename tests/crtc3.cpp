@@ -285,6 +285,160 @@ void statusTwoTimer()
     }
 }
 
+// Brings the chip to the start of an odd or an even frame. The parity turns
+// over with every frame, whatever R8 holds (19.5.5).
+void toFrame(Rig& rig, bool odd)
+{
+    for (int frame = 0; frame < 4; ++frame) {
+        // To the first character of a frame: C4 back at 0 (C9 need not be,
+        // with an interlace mode set).
+        int before = 0;
+        do {
+            before = rig.crtc.vcc();
+            rig.crtc.tick();
+        } while (rig.crtc.vcc() != 0 || before == 0);
+        if (rig.crtc.oddFrame() == odd)
+            return;
+    }
+    std::printf("toFrame: no %s frame\n", odd ? "odd" : "even");
+    ++g_failures;
+}
+
+// C4 and C9 at the start of each of the lines that follow.
+struct Line {
+    int c4, c9;
+};
+
+void expectLines(Rig& rig, std::initializer_list<Line> lines)
+{
+    for (const Line& line : lines) {
+        rig.nextLine();
+        CHECK_EQ(rig.crtc.vcc(), line.c4);
+        CHECK_EQ(rig.crtc.vlc(), line.c9);
+    }
+}
+
+// "Interlace sync & video" set in the middle of a frame (19.8.4, the six
+// diagrams of "Switching to IVM mode"): the lines take the parity C9 has on
+// the line of the write, in an odd frame as in an even one, C9 goes up two
+// at a time from there, and a row ends once C9 has reached R9 or gone past
+// it. With R9 odd the parity then turns over with every row, rows of five
+// even lines and rows of four odd ones following one another.
+void interlaceSwitchedOn()
+{
+    for (const bool odd : {false, true}) {
+        {
+            Rig rig(CrtcType::AsicPlus);
+            toFrame(rig, odd);
+            rig.to(20);
+            rig.set(8, 3);
+            expectLines(rig, {{0, 2}, {0, 4}, {0, 6}, {0, 8}, {1, 1}, {1, 3}, {1, 5}, {1, 7}, {2, 0}, {2, 2}, {2, 4}, {2, 6}, {2, 8}});
+        }
+        {
+            Rig rig(CrtcType::AsicPlus);
+            toFrame(rig, odd);
+            rig.seek(0, 1, 20);
+            rig.set(8, 3);
+            expectLines(rig, {{0, 3}, {0, 5}, {0, 7}, {1, 0}, {1, 2}, {1, 4}, {1, 6}, {1, 8}, {2, 1}, {2, 3}, {2, 5}, {2, 7}});
+        }
+        {
+            Rig rig(CrtcType::AsicPlus);
+            toFrame(rig, odd);
+            rig.seek(0, 2, 20);
+            rig.set(8, 3);
+            expectLines(rig, {{0, 4}, {0, 6}, {0, 8}, {1, 1}, {1, 3}, {1, 5}, {1, 7}, {2, 0}, {2, 2}, {2, 4}, {2, 6}});
+        }
+        // R9 even: every row has the same lines.
+        {
+            Rig rig(CrtcType::AsicPlus);
+            rig.set(9, 6);
+            toFrame(rig, odd);
+            rig.to(20);
+            rig.set(8, 3);
+            expectLines(rig, {{0, 2}, {0, 4}, {0, 6}, {1, 0}, {1, 2}, {1, 4}, {1, 6}, {2, 0}, {2, 2}, {2, 4}, {2, 6}, {3, 0}, {3, 2}});
+        }
+        {
+            Rig rig(CrtcType::AsicPlus);
+            rig.set(9, 6);
+            toFrame(rig, odd);
+            rig.seek(0, 1, 20);
+            rig.set(8, 3);
+            expectLines(rig, {{0, 3}, {0, 5}, {0, 7}, {1, 1}, {1, 3}, {1, 5}, {1, 7}, {2, 1}, {2, 3}, {2, 5}, {2, 7}, {3, 1}});
+        }
+        {
+            Rig rig(CrtcType::AsicPlus);
+            rig.set(9, 6);
+            toFrame(rig, odd);
+            rig.seek(0, 2, 20);
+            rig.set(8, 3);
+            expectLines(rig, {{0, 4}, {0, 6}, {1, 0}, {1, 2}, {1, 4}, {1, 6}, {2, 0}, {2, 2}, {2, 4}, {2, 6}, {3, 0}});
+        }
+    }
+    // The mode left, C9 goes up one at a time again from where it is.
+    {
+        Rig rig(CrtcType::AsicPlus);
+        toFrame(rig, false);
+        rig.seek(0, 1, 20);
+        rig.set(8, 3);
+        rig.seek(1, 2, 20);
+        rig.set(8, 0);
+        expectLines(rig, {{1, 3}, {1, 4}, {1, 5}, {1, 6}, {1, 7}, {2, 0}, {2, 1}});
+    }
+}
+
+// With the mode left on, every new frame gives the lines its own parity
+// (19.5.5): odd lines first on an odd frame, even ones on an even frame.
+// And where an odd frame's row has even lines (an odd row when R9 is odd),
+// the VSYNC comes a line late, which keeps the two frames in step; on an
+// even frame it waits for the middle of the line.
+void interlaceFrames()
+{
+    for (const bool odd : {false, true}) {
+        Rig rig(CrtcType::AsicPlus);
+        rig.set(4, 9);
+        rig.set(6, 8);
+        rig.set(7, 30);
+        rig.seek(1, 0, 0);
+        rig.set(8, 3);
+        toFrame(rig, odd);
+        CHECK_EQ(rig.crtc.vlc(), odd ? 1 : 0);
+        if (odd)
+            expectLines(rig, {{0, 3}, {0, 5}, {0, 7}, {1, 0}, {1, 2}, {1, 4}, {1, 6}, {1, 8}, {2, 1}, {2, 3}, {2, 5}, {2, 7}, {3, 0}});
+        else
+            expectLines(rig, {{0, 2}, {0, 4}, {0, 6}, {0, 8}, {1, 1}, {1, 3}, {1, 5}, {1, 7}, {2, 0}, {2, 2}, {2, 4}, {2, 6}, {2, 8}, {3, 1}});
+    }
+    for (const bool odd : {false, true}) {
+        for (const int row : {1, 2, 3, 4}) {
+            Rig rig(CrtcType::AsicPlus);
+            rig.set(4, 9);
+            rig.set(6, 8);
+            rig.set(7, row);
+            rig.seek(row + 1, 0, 0);
+            rig.set(8, 3);
+            toFrame(rig, odd);
+            rig.set(3, 0x2E);  // a VSYNC of two lines
+            while (rig.crtc.vcc() != row)
+                rig.nextLine();
+            // The row's first line: C9 is the lines' parity there.
+            const bool evenLines = rig.crtc.vlc() == 0;
+            CHECK_EQ(evenLines, odd == ((row & 1) != 0));
+            if (!odd) {
+                CHECK(!rig.crtc.vsync());
+                rig.to(31);
+                CHECK(rig.crtc.vsync());
+            } else if (evenLines) {
+                rig.to(63);
+                CHECK(!rig.crtc.vsync());
+                rig.nextLine();
+                CHECK_EQ(rig.crtc.vlc(), 2);
+                CHECK(rig.crtc.vsync());
+            } else {
+                CHECK(rig.crtc.vsync());
+            }
+        }
+    }
+}
+
 }  // namespace
 
 int main()
@@ -296,5 +450,7 @@ int main()
     statusTwoOverAFrame();
     statusTwoAndR5();
     statusTwoTimer();
+    interlaceSwitchedOn();
+    interlaceFrames();
     return checkSummary("crtc3");
 }

@@ -103,6 +103,11 @@ void Crtc::write(uint8_t value, bool early)
         // character of the write (19.5.4).
         if (type_ == CrtcType::MC6845)
             latchC9Of2();
+        // Types 3 and 4: an interlace mode coming on gives the lines the
+        // parity C9 has there and then, whatever the frame's (19.5.5,
+        // 19.8.4): set on an odd line the mode goes on with odd lines.
+        if (asic() && interlace() && (old & 3) != (reg_[8] & 3))
+            parityC9_ = vlc_ & 1;
         break;
     case 2:
         // R2 set to the character in progress starts the HSYNC there and
