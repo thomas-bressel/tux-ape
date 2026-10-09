@@ -522,6 +522,21 @@ void testSprites()
     CHECK_EQ(red.y, screen.y);
     CHECK_EQ(red.width, 8);
     CHECK_EQ(red.height, 12);
+    // Nor on the border that the scroll register lays over each line's
+    // first character: of a sprite that starts half-way through that
+    // character, the half beyond it is all that shows.
+    m.write(0x6000, 8);
+    m.write(0x6001, 0);
+    m.write(0x6002, 16);
+    m.write(0x6003, 0);
+    red = m.find(kRed);
+    CHECK_EQ(red.x, screen.x + 8);
+    CHECK_EQ(red.width, 16);
+    m.write(0x6804, 0x80);
+    red = m.find(kRed);
+    CHECK_EQ(red.x, screen.x + 16);
+    CHECK_EQ(red.width, 8);
+    m.write(0x6804, 0);
     // Hidden.
     m.write(0x6004, 0);
     CHECK_EQ(m.find(kRed).width, 0);

@@ -508,7 +508,10 @@ void GateArray::drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* righ
     const uint8_t scroll = asic_->scroll();
     const int shift = scroll & 0x0F;
     // The border can be drawn over the first character of each line, to
-    // hide where the scrolled picture comes in.
+    // hide where the scrolled picture comes in. It is border like the
+    // rest, which Amstrad's description puts in front of the sprites: they
+    // do not show on it either. The trees of Eerie Forest and the zombies
+    // of Ghosts'n Goblins (2018) come in from behind it.
     const bool masked = (scroll & 0x80) && fetchedFirst_;
     for (int i = 0; i < 16; ++i) {
         const bool shown = fetchedDisplay_[i >> 3] && !masked;
@@ -517,7 +520,7 @@ void GateArray::drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* righ
     }
     std::memcpy(pensBefore_, pens, sizeof pens);
 
-    if (!asic_->spritesShown() || !(fetchedDisplay_[0] || fetchedDisplay_[1]))
+    if (!asic_->spritesShown() || masked || !(fetchedDisplay_[0] || fetchedDisplay_[1]))
         return;
     unsigned covered = 0;
     for (int number = 0; number < 16 && covered != 0xFFFF; ++number) {
