@@ -40,6 +40,10 @@ add_executable(video_timing video_timing.cpp)
 target_link_libraries(video_timing PRIVATE tuxape_core)
 add_test(NAME video_timing COMMAND video_timing)
 
+add_executable(monitor monitor.cpp)
+target_link_libraries(monitor PRIVATE tuxape_core)
+add_test(NAME monitor COMMAND monitor)
+
 add_executable(crtc0 crtc0.cpp)
 target_link_libraries(crtc0 PRIVATE tuxape_core)
 add_test(NAME crtc0 COMMAND crtc0)

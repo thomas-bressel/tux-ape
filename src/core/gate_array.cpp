@@ -336,12 +336,23 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
                 switchedFrom_ = static_cast<int8_t>(mode_);
             mode_ = rmr_ & 3;
         }
+        // The pulse sent to the monitor lasts four microseconds at most.
+        if (hsyncAge_ == kHsyncPulse)
+            monitor.hsyncEnded(4 * Monitor::kCellWidth);
         if (hsyncAge_ < 0xFF)
             ++hsyncAge_;
     } else if (prevHsync_ && crtc.previousHsyncCut() == Crtc::HsyncCut::Never) {
         // R3 was cleared just in time: there has been no pulse.
         hsyncAge_ = 0;
     } else if (prevHsync_) {
+        // An HSYNC of less than six microseconds cuts the monitor's pulse
+        // short with it; ended by R3 just in time, its last character was
+        // only a quarter of one, or none (Compendium 14.4, 14.5.4).
+        if (hsyncAge_ > 2 && hsyncAge_ <= kHsyncPulse) {
+            const Crtc::HsyncCut cut = crtc.previousHsyncCut();
+            const int lost = cut == Crtc::HsyncCut::AfterQuarter ? 12 : cut == Crtc::HsyncCut::AtStart ? 16 : 0;
+            monitor.hsyncEnded((hsyncAge_ - 2) * Monitor::kCellWidth - lost);
+        }
         // A shorter HSYNC sets the mode as it ends, provided it lasted two
         // microseconds; one that R3 cut short during its second character
         // does not (9.3.4.1).
