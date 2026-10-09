@@ -43,6 +43,14 @@ public:
     // An R3 write has just ended the HSYNC in progress.
     void hsyncEndedByWrite(const Crtc& crtc);
     void acknowledgeInterrupt();
+    // The Plus: a line has just been set for the raster interrupt where
+    // there was none. The interrupt of the CPC kind still waiting to be
+    // taken is dropped (see Asic::write).
+    void rasterLineSet() { interrupt_ = false; }
+    // A snapshot has put the ASIC's registers back: if the HSYNC of the
+    // line it holds for the raster interrupt is on, that line has asked
+    // for its interrupt already.
+    void rasterLineRestored(const Crtc& crtc);
 
     bool lowerRomEnabled() const { return !(rmr_ & 0x04); }
     bool upperRomEnabled() const { return !(rmr_ & 0x08); }

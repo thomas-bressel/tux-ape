@@ -267,6 +267,7 @@ bool loadSnapshot(Cpc& cpc, std::span<const uint8_t> data, std::string* error)
         else
             cpc.asic().restore(Asic().snapshot());
         memory.setRmr2(cpc.asic().rmr2());
+        cpc.gateArray().rasterLineRestored(crtc);
     }
     return true;
 }

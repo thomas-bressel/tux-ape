@@ -351,7 +351,7 @@ void Asic::restore(std::span<const uint8_t> chunk)
     for (int n = 0; n < 32; ++n)
         setColour(n, static_cast<uint16_t>(chunk[static_cast<size_t>(0x880 + n * 2)]
                                            | chunk[static_cast<size_t>(0x881 + n * 2)] << 8));
-    write(kRaster, chunk[0x8C0]);
+    pri_ = chunk[0x8C0];  // not a line being set: the interrupt waiting, if any, stays
     write(kRaster + 1, chunk[0x8C1]);
     write(kRaster + 2, chunk[0x8C2]);
     write(kRaster + 3, chunk[0x8C3]);
@@ -421,7 +421,25 @@ void Asic::write(uint16_t address, uint8_t value)
         return;
     }
     switch (at) {
-    case kRaster: pri_ = value; return;
+    case kRaster:
+        // A line set where there was none: the interrupt of the CPC kind
+        // that was still waiting to be taken is dropped. Eerie Forest
+        // (Logon System, 2017) sets itself up with interrupts off and no
+        // line for three quarters of a second, then sets line 1, turns
+        // interrupts on and goes on to its main program through the
+        // address it keeps in IX. Taken there and then, the interrupt
+        // asked for meanwhile lost that address: the demo ran on its
+        // interrupts alone and fell over twenty seconds in. Kevin
+        // Thacker's "pritest" carries a note that reads the same way,
+        // above a check left unfinished ("delay normal int, set pri, see
+        // how long before int is triggered - setting pri clear"). An
+        // interrupt the line itself asked for stays when the line is
+        // written again: "pritest" (PRI re-trigger) and "dmatest" (dma int
+        // request) count on that.
+        if (pri_ == 0 && value != 0 && gateArray_)
+            gateArray_->rasterLineSet();
+        pri_ = value;
+        return;
     case kRaster + 1:
     case kRaster + 2:
     case kRaster + 3:

@@ -219,6 +219,13 @@ void GateArray::restore(uint8_t pen, const uint8_t* inks, uint8_t romAndMode, ui
     interrupt_ = interrupt;
 }
 
+void GateArray::rasterLineRestored(const Crtc& crtc)
+{
+    const uint8_t line = asic_->rasterInterruptLine();
+    rasterMatch_ = crtc.hsync() && line != 0 && crtc.asicLine() == line;
+    rasterDue_ = false;
+}
+
 void GateArray::acknowledgeInterrupt()
 {
     // Clearing bit 5 guarantees the next interrupt is at least 32 lines away.

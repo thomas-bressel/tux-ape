@@ -685,15 +685,44 @@ void testRasterInterrupt()
     nextInterrupt();
     CHECK_EQ(cpc.irqAck(), 0xFE);
 
+    // A line set where there was none drops the interrupt of the CPC kind
+    // that was still waiting to be taken. Eerie Forest sets its first line
+    // with one asked for while it had interrupts off, turns them on, and
+    // must get to its main program before anything interrupts it.
+    const int waiting = nextInterrupt();
+    CHECK(waiting >= 0 && waiting != 77);
+    m.write(0x6800, 77);
+    cpc.run(2);
+    CHECK(!cpc.gateArray().interruptRequested());
+
     // With a line set, there is the one interrupt a frame, on that line,
     // as its HSYNC starts.
-    m.write(0x6800, 77);
     m.write(0x6805, 0x51);
     for (int frame = 0; frame < 3; ++frame) {
         CHECK_EQ(nextInterrupt(), 77);
         // R2 is 46, and the Gate Array sees the HSYNC a character late; the
         // instruction under way (three microseconds) then has to end.
         CHECK(cpc.crtc().hcc() >= 47 && cpc.crtc().hcc() <= 49);
+        // Written again, the line keeps the interrupt it has asked for
+        // ("pritest" writes it sixty-four times in a row and counts two).
+        m.write(0x6800, 77);
+        cpc.run(2);
+        CHECK(cpc.gateArray().interruptRequested());
+        // A snapshot keeps it too, taken here once the pulse is over: the
+        // line it brings back was set before, it is not a new one.
+        auto afterSnapshot = [&] {
+            const std::vector<uint8_t> snapshot = saveSnapshot(cpc, SnapshotMachine::Plus6128);
+            PlusMachine other;
+            std::string error;
+            CHECK(loadSnapshot(other.cpc, snapshot, &error));
+            other.cpc.run(4);
+            return other.cpc.gateArray().interruptRequested();
+        };
+        if (frame == 1) {
+            cpc.run(40);
+            CHECK(!cpc.crtc().hsync());
+            CHECK(afterSnapshot());
+        }
         CHECK_EQ(cpc.memory().read(0x6C0F) & 0x80, 0x80);
         // The vector: the register's upper bits, with 11 for the raster.
         CHECK_EQ(cpc.irqAck(), 0x56);
@@ -701,6 +730,12 @@ void testRasterInterrupt()
         // Bit 7 of the status goes on saying that the interrupt taken last
         // was the raster's: a handler reads it to know why it was called.
         CHECK_EQ(cpc.memory().read(0x6C0F) & 0x80, 0x80);
+        // A snapshot taken while the pulse lasts does not have the
+        // interrupt asked for a second time.
+        if (frame == 0) {
+            CHECK(cpc.crtc().hsync());
+            CHECK(!afterSnapshot());
+        }
     }
     // How many in a frame: one, whatever the line. The ASIC numbers lines
     // with six bits of C4, so that lines 256 and up, which only differ
