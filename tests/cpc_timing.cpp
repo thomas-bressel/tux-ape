@@ -192,9 +192,10 @@ struct Idle {
     Cpc cpc;
     uint64_t request = 0;  // when the next request is raised, in T-states
 
-    explicit Idle(bool enabled)
+    explicit Idle(bool enabled, tuxape::CrtcType type = tuxape::CrtcType::HD6845S)
     {
         auto& cpu = cpc.cpu();
+        cpc.crtc().setType(type);
         cpc.memory().setRomEnables(false, false);
         const uint8_t crtc[] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7};
         for (uint8_t r = 0; r < sizeof crtc; ++r) {
@@ -263,6 +264,31 @@ void testInterruptAgainstInstructionEnd()
         if (taken != c.taken) {
             std::printf("%s: interrupt %s\n", c.name, taken ? "taken at once" : "left for later");
             ++g_failures;
+        }
+    }
+    // The ASICs raise it a quarter of a microsecond sooner: an instruction
+    // ending two T-states short is interrupted as well. The Shaker's "INT
+    // Z80A signal" runs through a field of DEC DE, which end there one time
+    // in two, and notes where each interrupt stops it: &0758, &077A, &0779
+    // on real machines of types 3 and 4, &0759, &0779, &077A on those of
+    // types 0, 1 and 2; with NOP and CP (HL) all five give the same.
+    for (const tuxape::CrtcType type : {tuxape::CrtcType::UM6845R, tuxape::CrtcType::MC6845, tuxape::CrtcType::AsicPlus,
+                                        tuxape::CrtcType::PreAsic}) {
+        const bool asic = type == tuxape::CrtcType::AsicPlus || type == tuxape::CrtcType::PreAsic;
+        struct {
+            std::initializer_list<uint8_t> code;
+            unsigned before;
+            bool taken;
+        } const others[] = {
+            {{0x00}, 4, true},    // NOP ending on the request
+            {{0xBE}, 8, true},    // CP (HL) ending 1 T before
+            {{0x1B}, 8, asic},    // DEC DE ending 2 T before
+            {{0x00}, 8, false},   // NOP ending 4 T before
+        };
+        for (const auto& c : others) {
+            Idle idle(true, type);
+            idle.runAt(idle.request, c.before, c.code);
+            CHECK_EQ(idle.cpc.cpu().interruptDue(), c.taken);
         }
     }
 }

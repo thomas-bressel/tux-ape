@@ -307,9 +307,19 @@ public:
     // last T-state begins. Put together, an instruction ending one T-state
     // short of a microsecond already sees the interrupt that the end of an
     // HSYNC raises there (Compendium 27.7.2, the two ADD HL,DE in a row).
+    //
+    // The ASICs (the Plus's, and the "cost down" CPC's) raise it a little
+    // sooner still within the microsecond: an instruction ending two
+    // T-states short sees it too. The Shaker's "INT Z80A signal" runs
+    // through a field of one instruction and notes where each interrupt
+    // stops it. With NOP (4 T-states) and CP (HL) (7) every machine gives
+    // the same addresses; with DEC DE (6), which ends half-way through a
+    // microsecond, real machines of types 3 and 4 are stopped one
+    // instruction sooner than those of types 0, 1 and 2 (&0758, &077A,
+    // &0779... against &0759, &0779, &077A...).
     bool irq()
     {
-        runVideo(clk_ + 1);
+        runVideo(clk_ + (static_cast<unsigned>(crtc_.type()) >= static_cast<unsigned>(CrtcType::AsicPlus) ? 2 : 1));
         return gateArray_.interruptRequested() || (plus_ && asic_.interruptPending());
     }
 
