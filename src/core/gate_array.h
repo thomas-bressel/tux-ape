@@ -148,6 +148,7 @@ private:
     bool soundRound_ = false;   // the Plus: the sound channels' round for this line is under way
     bool prevVsync_ = false;
     bool delayedHsync_ = false;  // the CRTC's HSYNC one microsecond ago
+    bool lastPixelBlack_ = false;  // the character drawn last ended blanked
     bool hsync_ = false;         // HSYNC as the Gate Array sees it now
     bool blankedBefore_ = false;  // the previous character was blanked to its end
     bool lateBlanking_ = false;   // this HSYNC was started by an R2 write that came late

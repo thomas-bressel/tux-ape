@@ -89,6 +89,7 @@ void GateArray::reset()
     interrupt_ = false;
     prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
     rasterMatch_ = rasterDue_ = soundRound_ = false;
+    lastPixelBlack_ = false;
 }
 
 uint32_t GateArray::monitorColour(int hardwareColour, MonitorKind kind, bool linear, int brightness)
@@ -451,18 +452,42 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
             // Each byte is either picture or border.
             const uint8_t* left = kPenTable.pens[mode_][fetched_[0]];
             const uint8_t* right = kPenTable.pens[mode_][fetched_[1]];
-            if (!plus_) {
+            if (plus_) {
+                drawPlus(out, left, right, split);
+            } else if (mode_ != 2 || plusAsic) {
                 for (int i = 0; i < 8; ++i) {
                     out[i] = (i < split ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[i] : kBorder];
                     out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
                 }
             } else {
-                drawPlus(out, left, right, split);
+                // A Gate Array is a pixel early in mode 2: picture and
+                // border alike come out one pixel sooner than in the other
+                // modes (Compendium 9.1; the Plus's ASIC keeps its modes
+                // in line). The character's first pixel therefore goes
+                // where the one before it ended, unless that is off the
+                // screen or blanked, and its last place is filled again
+                // by the character that follows. An ink set during the
+                // microsecond still changes at the same place on the
+                // screen, a pixel further into the character, except on
+                // the 40226 (CRTC 4), where it moves with the pixels
+                // (9.2.2).
+                const int from = split == 0 || crtc.type() == CrtcType::PreAsic ? split : split + 1;
+                uint32_t pixels[16];
+                for (int i = 0; i < 8; ++i) {
+                    pixels[i] = (i < from ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[i] : kBorder];
+                    pixels[i + 8] = (i + 8 < from ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
+                }
+                if (!lastPixelBlack_ && monitor.beamColumn() > 0)
+                    out[-1] = pixels[0];
+                for (int i = 1; i < 16; ++i)
+                    out[i - 1] = pixels[i];
+                out[15] = pixels[15];
             }
             for (int i = blackFrom; i < blackTo; ++i)
                 out[i] = kBlack;
         }
     }
+    lastPixelBlack_ = blackFrom < blackTo && blackTo == Monitor::kCellWidth;
     inkChanged_ = false;
 
     // Fetch the character the CRTC is pointing at; it is drawn next time.

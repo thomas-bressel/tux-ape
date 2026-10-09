@@ -37,7 +37,7 @@ void outPort(Cpc& cpc, uint16_t port, uint8_t value)
 // microseconds, then writes `data` to the port whose high address byte is
 // `portHigh`, with the given form of instruction. Returns where a pixel
 // first differs from `before`, the colour the area had until then.
-Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool allBorder, uint32_t before)
+Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool allBorder, uint32_t before, int mode = 0)
 {
     Cpc cpc;
     cpc.crtc().setType(type);
@@ -55,7 +55,7 @@ Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool all
     outPort(cpc, 0x7F00, 0x54);
     outPort(cpc, 0x7F00, 0x10);
     outPort(cpc, 0x7F00, allBorder ? 0x54 : 0x4B);
-    outPort(cpc, 0x7F00, 0x8C);  // mode 0, no ROM
+    outPort(cpc, 0x7F00, static_cast<uint8_t>(0x8C | mode));  // no ROM
     // Leave the right register selected for the write under test.
     outPort(cpc, 0xBC00, 8);
     outPort(cpc, 0x7F00, 0x10);
@@ -162,6 +162,74 @@ void testInkTiming(CrtcType type, int splitPixel)
     CHECK_EQ(outi.x - outC.x, 2 * 16);
     // The new colour starts part-way through a character.
     CHECK_EQ(outC.x % 16, splitPixel);
+}
+
+// Where the picture starts and where it ends, on a line in the middle of a
+// standard screen in the given mode: black paper in a white border.
+struct Edges {
+    int first = -1;  // the first pixel of the picture
+    int after = -1;  // the first pixel of the border that follows it
+};
+
+Edges pictureEdges(CrtcType type, int mode)
+{
+    Cpc cpc;
+    cpc.crtc().setType(type);
+    cpc.memory().setRomEnables(false, false);
+    const uint8_t crtc[] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7, 0, 0, 0x30, 0};
+    for (uint8_t r = 0; r < sizeof crtc; ++r) {
+        outPort(cpc, 0xBC00, r);
+        outPort(cpc, 0xBD00, crtc[r]);
+    }
+    outPort(cpc, 0x7F00, 0x00);
+    outPort(cpc, 0x7F00, 0x54);
+    outPort(cpc, 0x7F00, 0x10);
+    outPort(cpc, 0x7F00, 0x4B);
+    outPort(cpc, 0x7F00, static_cast<uint8_t>(0x8C | mode));
+    // Memory is all zeros: the CPU runs NOPs while the monitor settles.
+    cpc.run(20 * Cpc::kFrameMicroseconds);
+    const uint32_t* line = cpc.monitor().frame() + 135 * Monitor::kWidth;
+    Edges edges;
+    for (int x = 1; x < Monitor::kWidth && edges.after < 0; ++x) {
+        if (edges.first < 0 && line[x] == kBlack && line[x - 1] != kBlack)
+            edges.first = x;
+        else if (edges.first >= 0 && line[x] != kBlack)
+            edges.after = x;
+    }
+    return edges;
+}
+
+// A Gate Array is a pixel early in mode 2: the picture starts and ends one
+// pixel sooner than in the other modes. Not so the Plus's ASIC, which
+// keeps its modes in line (Compendium 9.1; the Shaker's "Gate Array
+// moderisation" screen shows the step between its zones on a real machine
+// of each kind).
+void testModeTwoEarly()
+{
+    for (const CrtcType type : {CrtcType::HD6845S, CrtcType::UM6845R, CrtcType::MC6845, CrtcType::PreAsic,
+                                CrtcType::AsicPlus}) {
+        const int early = type == CrtcType::AsicPlus ? 0 : 1;
+        const Edges one = pictureEdges(type, 1);
+        CHECK(one.first > 0 && one.after - one.first == 640);
+        for (const int mode : {0, 3})
+            CHECK_EQ(pictureEdges(type, mode).first, one.first);
+        const Edges two = pictureEdges(type, 2);
+        CHECK_EQ(two.first, one.first - early);
+        CHECK_EQ(two.after, one.after - early);
+
+        // An ink set in the middle of a line changes at the same place on
+        // the screen whatever the mode. But on the 40226 (CRTC 4), where
+        // the change comes a pixel sooner in mode 2, as the pixels do
+        // (9.2.2).
+        const int sooner = type == CrtcType::PreAsic ? 1 : 0;
+        for (const Form form : {Form::OutC, Form::Outi}) {
+            const Probe other = measure(type, form, 0x7F, 0x5F, true, kBlack, 1);
+            const Probe inTwo = measure(type, form, 0x7F, 0x5F, true, kBlack, 2);
+            CHECK(other.row > 0);
+            CHECK_EQ(inTwo.row, other.row);
+            CHECK_EQ(inTwo.x, other.x - sooner);
+        }
+    }
 }
 
 // A CRTC register write, seen by turning the display off with R8 so that
@@ -297,6 +365,7 @@ int main()
     testCrtcTiming(CrtcType::HD6845S, 3);
     testCrtcTiming(CrtcType::AsicPlus, 4);
     testCrtcTiming(CrtcType::PreAsic, 4);
+    testModeTwoEarly();
     testModeChange();
     return checkSummary("video_timing");
 }
