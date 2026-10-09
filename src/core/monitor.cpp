@@ -22,7 +22,8 @@ void Monitor::reset()
     std::fill(bufferB_.begin(), bufferB_.end(), kBlack);
     beam_ = y_ = 0;
     limit_ = period_ = kFreeRun;
-    locked_ = nextLocked_ = own_ = awaited_ = pulse_ = false;
+    locked_ = nextLocked_ = awaited_ = pulse_ = stray_ = strayLine_ = false;
+    strayMark_ = 0;
     owed_ = lastLack_ = sincePulse_ = lastInterval_ = 0;
     pace_ = kLine;
     edgeRow_ = -1;
@@ -38,21 +39,17 @@ void Monitor::hsync(bool late)
     // so that the frame is centred all the same (Compendium 15.1): the
     // visible area starts a character sooner after the pulse.
     firstPixel_ = (late ? kFirstColumn - 1 : kFirstColumn) * kCellWidth;
-    if (beam_ <= kWindow && !own_ && (awaited_ || locked_)) {
-        // The line has just begun: the pulse is its own, on time or late.
-        // (A second one close behind is not heard: two short pulses a line
-        // leave the picture where the first alone would put it, as the
-        // Shaker's "CSYNC4 vs 2 x CSYNC2" has it.)
-        own_ = true;
+    if (beam_ <= kWindow && awaited_) {
+        // The line has just begun and waits for its pulse: this is it, on
+        // time or late.
         locked_ = true;
-        if (awaited_)
-            countLine();
+        countLine();
         pulse_ = true;
         // The line it has started is the one that gives or takes: the next
         // starts nearer the mark, this one where it did.
         const int give = correction(beam_);
         limit_ = period_ = pace_ + give;
-    } else if (locked_ && beam_ >= period_ - kWindow) {
+    } else if (locked_ && beam_ >= period_ - kEarly) {
         // Shortly before the line's end: the pulse of the next one, early.
         // The line in progress is cut short for it at once; if it is the
         // other way the pulse pushes, the line it belongs to gives.
@@ -67,13 +64,17 @@ void Monitor::hsync(bool late)
         // Running free, the tube takes the pulse as it comes.
         newLine();
         beam_ = 0;
-        own_ = true;
         locked_ = true;
         awaited_ = false;
         limit_ = period_ = pace_;
         pulse_ = true;
         sincePulse_ = 0;
         lastInterval_ = 0;
+    } else if (locked_ && beam_ - sincePulse_ >= kDeaf) {
+        // Any other pulse, with the line on its own: it pulls from afar
+        // (see strayPulse), by where it is after the line's own.
+        stray_ = true;
+        strayAt_ = beam_ - sincePulse_;
     }
 }
 
@@ -118,7 +119,9 @@ int Monitor::correction(int late)
     } else {
         lastInterval_ = 0;
     }
-    const int error = late - jitter / 2;
+    // (strayMark_: what a pulse elsewhere on the line before has made of
+    // the mark, see strayPulse.)
+    const int error = late - jitter / 2 + strayMark_;
     // (Rounded away from nothing: the last sixteenth of a pixel is given
     // back too, and the line ends up on the mark exactly.)
     return (error * 3 + (error > 0 ? 7 : -7)) / 8;
@@ -126,6 +129,12 @@ int Monitor::correction(int late)
 
 void Monitor::hsyncEnded(int pixels)
 {
+    if (stray_) {
+        stray_ = false;
+        if (locked_ && !pulse_)
+            strayPulse(pixels);
+        return;
+    }
     if (!pulse_)
         return;
     pulse_ = false;
@@ -140,6 +149,38 @@ void Monitor::hsyncEnded(int pixels)
         limit_ = period_ += (error * 3 - 7) / 8;
 }
 
+// A pulse that is not the line's own, somewhere along it. The tube's
+// detector no longer tells how far it is, only on which side: in the first
+// half of the line it moves the mark for the next line's pulse later by a
+// fixed amount, in the second half sooner by seven thirteenths of that,
+// and around the middle the one turns into the other, by way of nothing
+// (the short pulses of the Shaker's "R3 JIT", 32 microseconds after the
+// line's own, leave the picture alone). The amount grows with the pulse's
+// length, and in the six microseconds that follow the line's own pulse the
+// tube hears nothing. Figures from Amspirit-lite on the
+// Shaker's "2 x CSYNC relative" (a second pulse of 4, 3, 2 or 1
+// microseconds 7 to 19 microseconds after the first: the picture 23, 16, 10
+// and 3 pixels to the left; 29 and 30 after: 10 and 5 for the longest; 31:
+// none; 7 to 11 before the next: 13, 9, 6 and 2 to the right) and on "R2
+// upd during & after HSYNC" (10 to the left).
+void Monitor::strayPulse(int pixels)
+{
+    const int length = pixels << kUnitShift;
+    const int late = length > kStrayLost ? (length - kStrayLost) * 5 / 12 : 0;
+    const int early = late * 7 / 13;
+    if (strayAt_ <= kStrayLate)
+        strayMark_ = late;
+    else if (strayAt_ < kStrayTurn)
+        strayMark_ = late * (kStrayTurn - strayAt_) / (kStrayTurn - kStrayLate);
+    else if (strayAt_ < kStrayBack)
+        strayMark_ = 0;
+    else if (strayAt_ < kStrayEarly)
+        strayMark_ = -early * (strayAt_ - kStrayBack) / (kStrayEarly - kStrayBack);
+    else
+        strayMark_ = -early;
+    strayLine_ = true;
+}
+
 void Monitor::vsync()
 {
     if (y_ >= kMinFrame)
@@ -150,7 +191,9 @@ void Monitor::newLine()
 {
     beam_ -= period_;
     sincePulse_ -= period_;
-    own_ = false;
+    if (!strayLine_)
+        strayMark_ = 0;
+    strayLine_ = false;
     // A line that follows one with its pulse starts on the oscillator's
     // word and waits for its own, which may be late.
     awaited_ = locked_ && !nextLocked_;

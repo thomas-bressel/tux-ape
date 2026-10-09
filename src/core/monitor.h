@@ -102,6 +102,20 @@ private:
     // A pulse that begins within eight microseconds of a line's start, on
     // either side, steers the oscillator; any other is not for it.
     static constexpr int kWindow = (8 * kCellWidth) << kUnitShift;
+    // ... but the pulse of the line to come is only known for it within
+    // five microseconds of that line; and for six microseconds after its
+    // own pulse the tube hears no other.
+    static constexpr int kEarly = (5 * kCellWidth) << kUnitShift;
+    static constexpr int kDeaf = (6 * kCellWidth) << kUnitShift;
+    // A pulse elsewhere along the line: up to where it pushes the line
+    // later, where it stops pushing, from where it starts pulling it
+    // sooner and where it pulls in full; and what of its length does not
+    // count (see strayPulse).
+    static constexpr int kStrayLate = (53 * kCellWidth / 2) << kUnitShift;
+    static constexpr int kStrayTurn = (31 * kCellWidth) << kUnitShift;
+    static constexpr int kStrayBack = (33 * kCellWidth) << kUnitShift;
+    static constexpr int kStrayEarly = (38 * kCellWidth) << kUnitShift;
+    static constexpr int kStrayLost = (kCellWidth / 2) << kUnitShift;
 
     std::vector<uint32_t> bufferA_;
     std::vector<uint32_t> bufferB_;
@@ -114,10 +128,13 @@ private:
     int firstPixel_ = kFirstColumn * kCellWidth;
     int firstLine_ = kFirstLine;
     bool locked_ = false;      // the line in progress has had its pulse
-    bool own_ = false;         // ... and at its start, not before it
     bool awaited_ = false;     // the line began on the oscillator's word: its pulse may still come
     bool nextLocked_ = false;  // the pulse of the line to come is already here
     bool pulse_ = false;       // a pulse the oscillator listens to is in progress
+    bool stray_ = false;       // ... or one that is not the line's own
+    int strayAt_ = 0;          // where that one began, after the line's own
+    int strayMark_ = 0;        // how much later it wants the next line's pulse to find the line
+    bool strayLine_ = false;   // the line in progress has had such a pulse
     int sincePulse_ = 0;       // where the last such pulse began, from this line's start
     int lastInterval_ = 0;     // the time between the last two such pulses, if they were neighbours
     int pace_ = kLine;         // the line's length the oscillator has settled on
@@ -131,6 +148,7 @@ private:
     uint64_t frameNumber_ = 0;
 
     int correction(int late);
+    void strayPulse(int pixels);
     void lineEvent();
     void countLine();
     uint32_t* edgeCell(int row, int px);

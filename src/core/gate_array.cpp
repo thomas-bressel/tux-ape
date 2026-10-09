@@ -347,11 +347,16 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
     } else if (prevHsync_) {
         // An HSYNC of less than six microseconds cuts the monitor's pulse
         // short with it; ended by R3 just in time, its last character was
-        // only a quarter of one, or none (Compendium 14.4, 14.5.4).
+        // only a quarter of one, or none (Compendium 14.4, 14.5.4). The
+        // ASICs' pulse is a quarter of a microsecond shorter when cut so
+        // (Amspirit-lite on the Shaker's "2 x CSYNC relative": with R3 at
+        // 5, 4 and 3 the picture of a type 3 or 4 is two pixels further to
+        // the right than a Gate Array's; with 6, where it is).
         if (hsyncAge_ > 2 && hsyncAge_ <= kHsyncPulse) {
             const Crtc::HsyncCut cut = crtc.previousHsyncCut();
             const int lost = cut == Crtc::HsyncCut::AfterQuarter ? 12 : cut == Crtc::HsyncCut::AtStart ? 16 : 0;
-            monitor.hsyncEnded((hsyncAge_ - 2) * Monitor::kCellWidth - lost);
+            const int sooner = asic && hsyncAge_ < kHsyncPulse ? 4 : 0;
+            monitor.hsyncEnded((hsyncAge_ - 2) * Monitor::kCellWidth - lost - sooner);
         }
         // A shorter HSYNC sets the mode as it ends, provided it lasted two
         // microseconds; one that R3 cut short during its second character

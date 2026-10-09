@@ -137,20 +137,53 @@ void testShortPulses()
     CHECK_EQ(tube.line(48, 3 * Monitor::kCellWidth + 12), kHome + 2);
 }
 
-// A second pulse close behind the line's own does nothing.
+// A second pulse on every line. Within six microseconds of the line's own
+// it is not heard (the Shaker's "CSYNC4 vs 2 x CSYNC2": two pulses of two
+// microseconds leave the picture where the first alone would put it).
+// Further along it pulls from afar, by an amount that hangs on its length
+// and on the half of the line it is in, not on where exactly: later in the
+// first half, sooner and less in the second, nothing where the two meet
+// (the Shaker's "2 x CSYNC relative" on Amspirit-lite: 23, 16, 10 and 3
+// pixels to the left for pulses of 4, 3, 2 and 1 microseconds, 13, 9, 6
+// and 2 to the right).
 void testSecondPulse()
 {
-    Tube tube;
-    tube.secondAt = 53;
-    tube.settle(48, 2 * Monitor::kCellWidth);
-    for (int n = 0; n < 8; ++n)
-        CHECK_EQ(tube.line(48, 2 * Monitor::kCellWidth), kHome + 16);
-    // Nor one in the middle of the line.
-    Tube other;
-    other.settle(48);
-    other.secondAt = 16;
-    for (int n = 0; n < 20; ++n)
-        CHECK_EQ(other.line(48), kHome);
+    {
+        Tube tube;
+        tube.secondAt = 53;
+        tube.settle(48, 2 * Monitor::kCellWidth);
+        for (int n = 0; n < 8; ++n)
+            CHECK_EQ(tube.line(48, 2 * Monitor::kCellWidth), kHome + 16);
+    }
+    struct Case {
+        int at;            // where the second pulse begins
+        int microseconds;  // how long both pulses last
+        int left;          // how far left of its place the picture rests
+    };
+    const Case cases[] = {
+        {55, 4, 23}, {60, 4, 23}, {3, 4, 23}, {10, 4, 23},  // 7 to 26 microseconds after the first
+        {55, 3, 16}, {55, 2, 10}, {55, 1, 3},
+        {13, 4, 10}, {14, 4, 5}, {15, 4, 0},               // 29, 30, 31: the turn
+        {13, 3, 7}, {14, 3, 3}, {13, 2, 4}, {14, 2, 2},
+        {30, 4, -13}, {41, 4, -13},                        // the second half of the line
+        {41, 3, -9}, {41, 2, -6}, {41, 1, -2},
+    };
+    for (const Case& c : cases) {
+        Tube tube;
+        const int pixels = c.microseconds * Monitor::kCellWidth;
+        tube.settle(48, pixels);
+        tube.secondAt = c.at;
+        for (int n = 0; n < 40; ++n)
+            tube.line(48, pixels);
+        const int home = kHome + (4 - c.microseconds) * 8;
+        for (int n = 0; n < 4; ++n)
+            CHECK_EQ(tube.line(48, pixels), home - c.left);
+        // With the second pulse gone the picture comes back.
+        tube.secondAt = -1;
+        for (int n = 0; n < 30; ++n)
+            tube.line(48, pixels);
+        CHECK_EQ(tube.line(48, pixels), home);
+    }
 }
 
 // The pulses come a microsecond later from one line on: the line that pulse
