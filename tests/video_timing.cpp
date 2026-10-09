@@ -411,16 +411,18 @@ ModeChange modeChange(CrtcType type, int from, int to, uint8_t byte)
     while (cpc.monitor().frameNumber() == frame)
         cpc.run(1000);
     const uint32_t* pixels = cpc.monitor().frame();
-    // The line with a short black run in the middle of the picture; the
-    // character after the pulse is the 21st shown.
+    // The line with a short black run in the middle of the picture. The
+    // character after the pulse is the 21st shown, the 22nd with an ASIC,
+    // which blanks from the character R2 names and not from the one before.
+    const int after = type == CrtcType::PreAsic || type == CrtcType::AsicPlus ? 22 : 21;
     for (int row = 40; row < 230; ++row) {
         const uint32_t* line = pixels + row * Monitor::kWidth;
         int black = 0;
-        for (int x = 64 + 18 * 16; x < 64 + 23 * 16; ++x)
+        for (int x = 64 + 18 * 16; x < 64 + 24 * 16; ++x)
             black += line[x] == kBlack;
         if (black >= 24 && black <= 40) {
             for (int i = 0; i < 17; ++i)
-                result.pixels[i] = line[64 + 21 * 16 + i - 1];
+                result.pixels[i] = line[64 + after * 16 + i - 1];
             return result;
         }
     }
@@ -429,40 +431,50 @@ ModeChange modeChange(CrtcType type, int from, int to, uint8_t byte)
 }
 
 // What a Gate Array shows where it changes mode after a pulse of two
-// microseconds (Compendium 9.3.4.2 and 9.3.4.3, for the 40010). The black
-// lasts into the character after the pulse: four pixels of it with the
-// HD6845S and the MC6845, five with the UM6845R. The change comes on the
-// sixth: what is seen before it, one pixel on the first two chips, is
-// still in the old mode. From there the new mode takes the byte as the
-// old one left it, shifted five times by mode 2, twice by mode 1, once by
-// modes 0 and 3, with zeros coming in: four pixels of it, three if the new
-// mode is mode 2, whose next byte starts a pixel early.
+// microseconds (Compendium 9.3.4.2, 9.3.4.3 for the 40010 and 9.3.4.5 for
+// the 40226). The black lasts into the character after the pulse: four
+// pixels of it with the HD6845S and the MC6845, five with the UM6845R, two
+// with the 40226. The change comes on the sixth pixel, the fourth on the
+// 40226: what is seen before it, one pixel but with the UM6845R, is still
+// in the old mode. From there the new mode takes the byte as the old one
+// has shifted it, with zeros coming in, and goes on shifting it its own
+// way: a mode shifts as each of its pixels ends, mode 2 at every pixel (its
+// first comes a pixel early), mode 1 at the third, fifth and seventh of the
+// byte, modes 0 and 3 at the fifth. The byte's place ends a pixel sooner
+// in mode 2.
 void testModeChangePixels()
 {
-    static const int shifts[4] = {1, 2, 5, 1};
-    for (const CrtcType type : {CrtcType::HD6845S, CrtcType::UM6845R, CrtcType::MC6845}) {
-        const int blackTo = type == CrtcType::UM6845R ? 5 : 4;
+    auto shifts = [](int mode, int at) { return mode == 2 ? at : mode == 1 ? (at - 1) / 2 : (at - 1) / 4; };
+    struct Chip {
+        CrtcType type;
+        int blackTo, change;
+    };
+    const Chip chips[] = {{CrtcType::HD6845S, 4, 5}, {CrtcType::UM6845R, 5, 5}, {CrtcType::MC6845, 4, 5}, {CrtcType::PreAsic, 2, 3}};
+    for (const Chip& chip : chips) {
         for (int from = 0; from < 4; ++from) {
             for (int to = 0; to < 4; ++to) {
                 if (to == from)
                     continue;
                 for (const uint8_t byte : {uint8_t(0xB5), uint8_t(0x4E), uint8_t(0xD3)}) {
-                    const ModeChange seen = modeChange(type, from, to, byte);
-                    uint8_t before[8], cooked[8], after[8];
+                    const ModeChange seen = modeChange(chip.type, from, to, byte);
+                    uint8_t before[8], after[8];
                     pensOf(from, byte, before);
-                    pensOf(to, static_cast<uint8_t>(byte << shifts[from]), cooked);
                     pensOf(to, byte, after);
                     const int second = to == 2 ? 8 : 9;
                     for (int i = 0; i < 17; ++i) {
                         uint32_t want;
-                        if (i < blackTo)
+                        if (i < chip.blackTo) {
                             want = kBlack;
-                        else if (i < 5)
+                        } else if (i < chip.change) {
                             want = seen.colour[before[from == 2 ? i : i - 1]];
-                        else if (i < second)
-                            want = seen.colour[cooked[i - 5]];
-                        else
+                        } else if (i < second) {
+                            uint8_t cooked[8];
+                            const int done = shifts(from, chip.change) + shifts(to, i) - shifts(to, chip.change);
+                            pensOf(to, static_cast<uint8_t>(byte << done), cooked);
+                            want = seen.colour[cooked[0]];
+                        } else {
                             want = seen.colour[after[(i - second) & 7]];
+                        }
                         CHECK_EQ(seen.pixels[i], want);
                     }
                 }

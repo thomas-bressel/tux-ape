@@ -490,8 +490,8 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
             // it when the picture comes back.
             tailByte_ = fetched_[1];
             tailShown_ = fetchedDisplay_[1];
-        } else if (switched >= 0 && discrete && !plus_) [[unlikely]] {
-            drawModeSwitch(out, before(), switched, blackFrom, blackTo);
+        } else if (switched >= 0 && !plusAsic && !plus_) [[unlikely]] {
+            drawModeSwitch(out, before(), switched, blackFrom, blackTo, preAsic ? 3 : 5);
         } else {
             if (wasBlanked && blackTo == 0 && plusAsic)
                 *before() = rgb_[tailShown_ ? kPenTable.pens[mode_][tailByte_][7] : kBorder];
@@ -565,19 +565,21 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
 }
 
 // The character in which a Gate Array changes screen mode, after an HSYNC
-// too short to hide it (Compendium 9.3.4.3). The chip goes on shifting the
-// byte it was showing: the new mode takes it as the old one has left it.
-// By the sixth pixel of the character, where the change comes, mode 2 has
-// shifted five times, mode 1 twice, modes 0 and 3 once; the bits that come
-// in at the other end are zeros on a 40010. What the new mode makes of the
-// byte from there fills the rest of its place: four pixels, three if the
-// new mode is mode 2, whose next byte is a pixel early. Before the change,
-// whatever the blanking leaves is still in the old mode: one pixel with the
-// HD6845S and the MC6845, none with the UM6845R, which blanks a pixel more.
-void GateArray::drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo)
+// too short to hide it (Compendium 9.3.4.3, and 9.3.4.5 for the 40226). The
+// chip goes on shifting the byte it was showing, and the new mode takes it
+// as the old one has left it. A byte is shifted as each of its pixels ends:
+// at every pixel in mode 2, whose first comes a pixel early; at the third,
+// fifth and seventh pixel of the byte in mode 1; at the fifth in modes 0
+// and 3. The change comes on the character's sixth pixel (its fourth on
+// the 40226); the bits that come in at the other end of the byte are zeros.
+// What the new mode makes of the byte from there fills the rest of its
+// place, which in mode 2 ends a pixel sooner. Before the change, whatever
+// the blanking leaves is still in the old mode: one pixel, or none with the
+// UM6845R, which blanks a pixel more.
+void GateArray::drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo, int change)
 {
-    static constexpr int kShifts[4] = {1, 2, 5, 1};
-    constexpr int kChange = 5;
+    // How many times a mode has shifted the byte by a given pixel.
+    auto shifts = [](int mode, int at) { return mode == 2 ? at : mode == 1 ? (at - 1) / 2 : (at - 1) / 4; };
     // Pens along the character, one for each pixel of mode 2 the chip puts
     // out: the first is the one that goes a pixel early, the seventeenth
     // falls where the next character's first will.
@@ -586,12 +588,12 @@ void GateArray::drawModeSwitch(uint32_t* out, uint32_t* before, int was, int bla
     const uint8_t second = fetched_[1];
     const uint8_t* old = kPenTable.pens[was][first];
     pens[0] = was == 2 ? old[0] : 0;
-    for (int i = 1; i < kChange; ++i)
+    for (int i = 1; i < change; ++i)
         pens[i] = old[was == 2 ? i : i - 1];
-    const uint8_t* cooked = kPenTable.pens[mode_][static_cast<uint8_t>(first << kShifts[was])];
+    const int done = shifts(was, change) - shifts(mode_, change);
     const int end = mode_ == 2 ? 8 : 9;
-    for (int i = kChange; i < end; ++i)
-        pens[i] = cooked[i - kChange];
+    for (int i = change; i < end; ++i)
+        pens[i] = kPenTable.pens[mode_][static_cast<uint8_t>(first << (done + shifts(mode_, i)))][0];
     const uint8_t* rest = kPenTable.pens[mode_][second];
     for (int i = 0; i < 8; ++i)
         pens[end + i] = rest[i];

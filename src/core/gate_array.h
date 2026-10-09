@@ -159,7 +159,7 @@ private:
     bool lateBlanking_ = false;   // this HSYNC was started by an R2 write that came late
 
     void drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split);
-    void drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo);
+    void drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo, int change);
     void countHsync(Monitor& monitor);
     void rasterInterrupt(const Crtc& crtc, bool hsync);
 };
