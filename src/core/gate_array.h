@@ -148,12 +148,18 @@ private:
     bool soundRound_ = false;   // the Plus: the sound channels' round for this line is under way
     bool prevVsync_ = false;
     bool delayedHsync_ = false;  // the CRTC's HSYNC one microsecond ago
-    bool lastPixelBlack_ = false;  // the character drawn last ended blanked
+    int8_t switchedFrom_ = -1;  // the mode before, when a short HSYNC has just changed it
+    // The second byte of a blanked character, and whether it was picture:
+    // its last pixel shows on the Plus when the picture comes back.
+    uint8_t tailByte_ = 0;
+    bool tailShown_ = false;
+    uint32_t offScreen_ = 0;  // where a pixel that falls left of the screen is put
     bool hsync_ = false;         // HSYNC as the Gate Array sees it now
     bool blankedBefore_ = false;  // the previous character was blanked to its end
     bool lateBlanking_ = false;   // this HSYNC was started by an R2 write that came late
 
     void drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split);
+    void drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo);
     void countHsync(Monitor& monitor);
     void rasterInterrupt(const Crtc& crtc, bool hsync);
 };

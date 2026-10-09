@@ -245,6 +245,232 @@ void testModeTwoEarly()
     }
 }
 
+// Where an HSYNC's blanking starts and ends on the screen: a second pulse
+// is made on one line of the picture, at C0 = 20, by moving R2 there for
+// that line only. Returns the first black pixel of that line and the first
+// one after the black; the screen is a white paper in a white border.
+Edges hsyncBar(CrtcType type, int mode)
+{
+    Cpc cpc;
+    cpc.crtc().setType(type);
+    cpc.memory().setRomEnables(false, false);
+    const uint8_t crtc[] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7, 0, 0, 0x30, 0};
+    for (uint8_t r = 0; r < sizeof crtc; ++r) {
+        outPort(cpc, 0xBC00, r);
+        outPort(cpc, 0xBD00, crtc[r]);
+    }
+    outPort(cpc, 0x7F00, 0x00);
+    outPort(cpc, 0x7F00, 0x4B);
+    outPort(cpc, 0x7F00, 0x10);
+    outPort(cpc, 0x7F00, 0x4B);
+    outPort(cpc, 0x7F00, static_cast<uint8_t>(0x8C | mode));
+    outPort(cpc, 0xBC00, 2);
+    cpc.run(20 * Cpc::kFrameMicroseconds);
+    // Once this line's own HSYNC has begun, R2 goes to 20; it comes back
+    // once the next line has had its pulse there, in time for the usual
+    // one at 46.
+    const Crtc& c = cpc.crtc();
+    auto runTo = [&](int row, int line, int column) {
+        for (int guard = 0; guard < 4 * 312 * 64; ++guard) {
+            if (c.vcc() == row && c.vlc() == line && c.hcc() == column)
+                return;
+            cpc.run(1);
+        }
+        CHECK(false);
+    };
+    runTo(12, 3, 50);
+    outPort(cpc, 0xBD00, 20);
+    runTo(12, 4, 36);
+    outPort(cpc, 0xBD00, 46);
+    const uint64_t frame = cpc.monitor().frameNumber();
+    while (cpc.monitor().frameNumber() == frame)
+        cpc.run(1000);
+    const uint32_t* pixels = cpc.monitor().frame();
+    Edges edges;
+    for (int row = 40; row < 230 && edges.first < 0; ++row) {
+        const uint32_t* line = pixels + row * Monitor::kWidth;
+        for (int x = 100; x < 700 && edges.after < 0; ++x) {
+            if (edges.first < 0 && line[x] == kBlack)
+                edges.first = x;
+            else if (edges.first >= 0 && line[x] != kBlack)
+                edges.after = x;
+        }
+    }
+    return edges;
+}
+
+// The blanking, to the pixel (Compendium 9.3.4.2, "HSYNC under the
+// microscope", and 14.7.2 for CRTC 4; the Shaker's "R3 JIT" screens against
+// Amspirit-lite's captures for the Plus). A Gate Array blanks from the
+// character before the one R2 names: three pixels into it with the HD6845S,
+// four with the UM6845R, two with the MC6845, and the picture is back as
+// far into the character after the pulse, one pixel further with the
+// MC6845. The ASICs blank from the character R2 names: the Plus's a pixel
+// before it, for as many characters as the pulse has; the 40226 on it, and
+// for a pixel more. The screen mode changes none of it.
+void testBlanking()
+{
+    struct Expected {
+        CrtcType type;
+        int character;  // where the blanking starts: R2 - 1 or R2
+        int first, after;  // pixels from that character, and from the one 14 further
+    };
+    const Expected expected[] = {
+        {CrtcType::HD6845S, 19, 3, 3}, {CrtcType::UM6845R, 19, 4, 4}, {CrtcType::MC6845, 19, 2, 3},
+        {CrtcType::AsicPlus, 20, -1, -1}, {CrtcType::PreAsic, 20, 0, 1},
+    };
+    for (const Expected& e : expected) {
+        for (const int mode : {1, 2}) {
+            const Edges bar = hsyncBar(e.type, mode);
+            CHECK_EQ(bar.first, 64 + e.character * 16 + e.first);
+            CHECK_EQ(bar.after, 64 + (e.character + 14) * 16 + e.after);
+        }
+    }
+}
+
+// The pens a byte gives in each mode, one for each of its eight pixels of
+// mode 2, written out again here from the manual's description.
+void pensOf(int mode, uint8_t b, uint8_t out[8])
+{
+    auto bit = [b](int n) { return (b >> n) & 1; };
+    for (int x = 0; x < 8; ++x) {
+        switch (mode) {
+        case 0: out[x] = x < 4 ? bit(7) | bit(3) << 1 | bit(5) << 2 | bit(1) << 3 : bit(6) | bit(2) << 1 | bit(4) << 2 | bit(0) << 3; break;
+        case 1: out[x] = static_cast<uint8_t>(bit(7 - x / 2) | bit(3 - x / 2) << 1); break;
+        case 2: out[x] = static_cast<uint8_t>(bit(7 - x)); break;
+        default: out[x] = x < 4 ? bit(7) | bit(3) << 1 : bit(6) | bit(2) << 1; break;
+        }
+    }
+}
+
+// A line of the picture on which a pulse of two characters, at C0 = 20,
+// takes the screen from one mode to another: the 17 pixels the chip puts
+// out for the character that follows the pulse, the first of them where
+// the character before ended. The screen is filled with one byte, each pen
+// has a colour of its own, none of them black, and the border is white.
+struct ModeChange {
+    uint32_t pixels[17];
+    uint32_t colour[16];
+};
+
+ModeChange modeChange(CrtcType type, int from, int to, uint8_t byte)
+{
+    Cpc cpc;
+    cpc.crtc().setType(type);
+    cpc.memory().setRomEnables(false, false);
+    const uint8_t crtc[] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7, 0, 0, 0x30, 0};
+    for (uint8_t r = 0; r < sizeof crtc; ++r) {
+        outPort(cpc, 0xBC00, r);
+        outPort(cpc, 0xBD00, crtc[r]);
+    }
+    static const uint8_t inks[16] = {0x44, 0x55, 0x5C, 0x58, 0x5D, 0x4C, 0x45, 0x4D, 0x56, 0x46, 0x57, 0x5E, 0x40, 0x5F, 0x4E, 0x47};
+    ModeChange result{};
+    for (uint8_t pen = 0; pen < 16; ++pen) {
+        outPort(cpc, 0x7F00, pen);
+        outPort(cpc, 0x7F00, inks[pen]);
+        result.colour[pen] = cpc.gateArray().colour(inks[pen] & 31);
+    }
+    outPort(cpc, 0x7F00, 0x10);
+    outPort(cpc, 0x7F00, 0x4B);
+    outPort(cpc, 0x7F00, static_cast<uint8_t>(0x8C | from));
+    for (int i = 0xC000; i < 0x10000; ++i)
+        cpc.memory().baseRam()[i] = byte;
+    // The processor waits, a microsecond at a time, whatever the screen
+    // holds: DI, HALT.
+    cpc.memory().write(0x0000, 0xF3);
+    cpc.memory().write(0x0001, 0x76);
+    cpc.cpu().pc = 0x0000;
+    cpc.run(20 * Cpc::kFrameMicroseconds);
+    const Crtc& c = cpc.crtc();
+    auto runTo = [&](int row, int line, int column) {
+        for (int guard = 0; guard < 4 * 312 * 64; ++guard) {
+            if (c.vcc() == row && c.vlc() == line && c.hcc() == column)
+                return;
+            cpc.run(1);
+        }
+        CHECK(false);
+    };
+    // Once this line's own pulse is over: R2 to 20, R3 to two characters,
+    // and the new mode asked for, all of it for the next line.
+    runTo(12, 3, 62);
+    outPort(cpc, 0xBC00, 2);
+    outPort(cpc, 0xBD00, 20);
+    outPort(cpc, 0xBC00, 3);
+    outPort(cpc, 0xBD00, 0x82);
+    outPort(cpc, 0x7F00, static_cast<uint8_t>(0x8C | to));
+    CHECK(c.vlc() == 3 || c.hcc() < 18);
+    // After the short pulse: everything back for the usual one at 46.
+    runTo(12, 4, 26);
+    outPort(cpc, 0xBC00, 2);
+    outPort(cpc, 0xBD00, 46);
+    outPort(cpc, 0xBC00, 3);
+    outPort(cpc, 0xBD00, 0x8E);
+    outPort(cpc, 0x7F00, static_cast<uint8_t>(0x8C | from));
+    CHECK(c.vlc() == 4 && c.hcc() < 46);
+    const uint64_t frame = cpc.monitor().frameNumber();
+    while (cpc.monitor().frameNumber() == frame)
+        cpc.run(1000);
+    const uint32_t* pixels = cpc.monitor().frame();
+    // The line with a short black run in the middle of the picture; the
+    // character after the pulse is the 21st shown.
+    for (int row = 40; row < 230; ++row) {
+        const uint32_t* line = pixels + row * Monitor::kWidth;
+        int black = 0;
+        for (int x = 64 + 18 * 16; x < 64 + 23 * 16; ++x)
+            black += line[x] == kBlack;
+        if (black >= 24 && black <= 40) {
+            for (int i = 0; i < 17; ++i)
+                result.pixels[i] = line[64 + 21 * 16 + i - 1];
+            return result;
+        }
+    }
+    CHECK(false);
+    return result;
+}
+
+// What a Gate Array shows where it changes mode after a pulse of two
+// microseconds (Compendium 9.3.4.2 and 9.3.4.3, for the 40010). The black
+// lasts into the character after the pulse: four pixels of it with the
+// HD6845S and the MC6845, five with the UM6845R. The change comes on the
+// sixth: what is seen before it, one pixel on the first two chips, is
+// still in the old mode. From there the new mode takes the byte as the
+// old one left it, shifted five times by mode 2, twice by mode 1, once by
+// modes 0 and 3, with zeros coming in: four pixels of it, three if the new
+// mode is mode 2, whose next byte starts a pixel early.
+void testModeChangePixels()
+{
+    static const int shifts[4] = {1, 2, 5, 1};
+    for (const CrtcType type : {CrtcType::HD6845S, CrtcType::UM6845R, CrtcType::MC6845}) {
+        const int blackTo = type == CrtcType::UM6845R ? 5 : 4;
+        for (int from = 0; from < 4; ++from) {
+            for (int to = 0; to < 4; ++to) {
+                if (to == from)
+                    continue;
+                for (const uint8_t byte : {uint8_t(0xB5), uint8_t(0x4E), uint8_t(0xD3)}) {
+                    const ModeChange seen = modeChange(type, from, to, byte);
+                    uint8_t before[8], cooked[8], after[8];
+                    pensOf(from, byte, before);
+                    pensOf(to, static_cast<uint8_t>(byte << shifts[from]), cooked);
+                    pensOf(to, byte, after);
+                    const int second = to == 2 ? 8 : 9;
+                    for (int i = 0; i < 17; ++i) {
+                        uint32_t want;
+                        if (i < blackTo)
+                            want = kBlack;
+                        else if (i < 5)
+                            want = seen.colour[before[from == 2 ? i : i - 1]];
+                        else if (i < second)
+                            want = seen.colour[cooked[i - 5]];
+                        else
+                            want = seen.colour[after[(i - second) & 7]];
+                        CHECK_EQ(seen.pixels[i], want);
+                    }
+                }
+            }
+        }
+    }
+}
+
 // A CRTC register write, seen by turning the display off with R8 so that
 // the border colour replaces the picture.
 void testCrtcTiming(CrtcType type, int outCMicrosecond)
@@ -262,11 +488,13 @@ void testCrtcTiming(CrtcType type, int outCMicrosecond)
     CHECK_EQ(outi.x - outN.x, 2 * 16);
 }
 
-// The screen mode asked for is taken when the Gate Array's own HSYNC pulse
-// ends: six microseconds into a long HSYNC, at the end of a shorter one, and
-// not at all if the HSYNC lasts less than two microseconds (Compendium
-// 9.3.2; on a real machine the Shaker's "Gate Array moderisation" screen
-// shows the last write that is still in time).
+// The screen mode asked for is taken two microseconds into the HSYNC, and
+// not at all if the pulse lasts less than that; for as long as the Gate
+// Array's own pulse then lasts, six microseconds at most, a mode asked for
+// is taken at once (Compendium 9.3.1 and 9.3.2; on a real machine the
+// Shaker's "Gate Array moderisation" screen shows the last write that is
+// still in time, and its "R3 JIT" screens the picture already in the new
+// mode when it comes back after three characters).
 void testModeChange()
 {
     for (int width : {1, 2, 4, 6, 14}) {
@@ -294,7 +522,7 @@ void testModeChange()
             tick();
         // That tick was the first microsecond of the HSYNC.
         CHECK(crtc.hsync());
-        const int taken = width < 2 ? -1 : 46 + (width < 6 ? width : 6);  // character at which the mode shows
+        const int taken = width < 2 ? -1 : 48;  // character at which the mode is taken
         while (crtc.hcc() != 60) {
             CHECK_EQ(ga.mode(), taken >= 0 && crtc.hcc() >= taken ? 1 : 0);
             tick();
@@ -380,6 +608,8 @@ int main()
     testCrtcTiming(CrtcType::PreAsic, 4);
     testCentred();
     testModeTwoEarly();
+    testBlanking();
+    testModeChangePixels();
     testModeChange();
     return checkSummary("video_timing");
 }

@@ -89,7 +89,6 @@ void GateArray::reset()
     interrupt_ = false;
     prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
     rasterMatch_ = rasterDue_ = soundRound_ = false;
-    lastPixelBlack_ = false;
 }
 
 uint32_t GateArray::monitorColour(int hardwareColour, MonitorKind kind, bool linear, int brightness)
@@ -316,8 +315,16 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
             soundRound_ = asic_->soundTick();
         if (hsyncAge_ == 2)
             monitor.hsync(asic);
-        if (hsyncAge_ == kHsyncPulse)
+        // The mode asked for is taken two microseconds into the pulse,
+        // five pixels into the character that starts there, and from then
+        // on at once for as long as the Gate Array's own pulse lasts. The
+        // character where it is first taken shows the change, if R3 lets
+        // any of it be seen (see render).
+        if (hsyncAge_ >= 2 && hsyncAge_ <= kHsyncPulse && mode_ != (rmr_ & 3)) {
+            if (hsyncAge_ == 2)
+                switchedFrom_ = static_cast<int8_t>(mode_);
             mode_ = rmr_ & 3;
+        }
         if (hsyncAge_ < 0xFF)
             ++hsyncAge_;
     } else if (prevHsync_ && crtc.previousHsyncCut() == Crtc::HsyncCut::Never) {
@@ -328,8 +335,14 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         // microseconds; one that R3 cut short during its second character
         // does not (9.3.4.1).
         const bool longEnough = hsyncAge_ > 2 || (hsyncAge_ == 2 && crtc.previousHsyncCut() == Crtc::HsyncCut::None);
-        if (longEnough && hsyncAge_ <= kHsyncPulse)
+        if (longEnough && hsyncAge_ <= kHsyncPulse) {
+            // A pulse of two microseconds ends as the mode is taken: the
+            // picture is back before the change is through, and the
+            // character that follows shows both modes (see render).
+            if (hsyncAge_ == 2 && mode_ != (rmr_ & 3))
+                switchedFrom_ = static_cast<int8_t>(mode_);
             mode_ = rmr_ & 3;
+        }
         hsyncAge_ = 0;
         // The end of every HSYNC, however short, advances the interrupt
         // counter.
@@ -407,9 +420,20 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
     // 9.3.4.2 and 14.5.4; the Shaker's "R3 JIT" screens show each case).
     // Started by an R2 write that came after the chip had looked at the
     // character, the blanking begins three or four pixels further on.
-    const bool discrete = crtc.type() != CrtcType::AsicPlus && crtc.type() != CrtcType::PreAsic;
-    const int usualLag = !discrete ? 0 : crtc.type() == CrtcType::UM6845R ? 5 : crtc.type() == CrtcType::MC6845 ? 3 : 4;
-    const int lateLag = crtc.type() == CrtcType::MC6845 ? 7 : 8;
+    //
+    // These figures count the pixels of mode 2 as a Gate Array puts them
+    // out, the first of a character being the one it shows a pixel early
+    // (see below): on the screen, the blanking is one pixel to the left of
+    // them, on every chip. With the MC6845 the picture comes back a pixel
+    // later than it went (33 pixels of black for a pulse of two characters,
+    // 32 on the others), and so it does with the 40226 (CRTC 4), which
+    // blanks from its second pixel to the third of the character after the
+    // pulse. The Plus's ASIC blanks from the first to the first.
+    const bool preAsic = crtc.type() == CrtcType::PreAsic;
+    const bool discrete = !plusAsic && !preAsic;
+    const int usualLag = plusAsic ? 0 : preAsic ? 1 : crtc.type() == CrtcType::UM6845R ? 5 : crtc.type() == CrtcType::MC6845 ? 3 : 4;
+    const int endLag = preAsic ? 2 : crtc.type() == CrtcType::MC6845 ? 4 : usualLag;
+    const int lateLag = !discrete ? usualLag : crtc.type() == CrtcType::MC6845 ? 7 : 8;
     const int lag = lateBlanking_ ? lateLag : usualLag;
     const Crtc::HsyncCut cut = hsync_ ? crtc.hsyncCut() : Crtc::HsyncCut::None;
     int blackFrom = 0;
@@ -419,32 +443,58 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
         blackTo = Monitor::kCellWidth;
         switch (cut) {
         case Crtc::HsyncCut::None: break;
-        case Crtc::HsyncCut::AfterQuarter: blackTo = 8; break;
+        case Crtc::HsyncCut::AfterQuarter: blackTo = crtc.type() == CrtcType::MC6845 ? 7 : 8; break;
         case Crtc::HsyncCut::SecondHalf: blackTo = 8; break;
-        case Crtc::HsyncCut::AtStart: blackTo = blankedBefore_ ? usualLag : 0; break;
+        case Crtc::HsyncCut::AtStart: blackTo = blankedBefore_ ? endLag : 0; break;
         case Crtc::HsyncCut::Never: blackTo = 0; break;
         }
     } else if (blankedBefore_) {
-        blackTo = usualLag;
+        blackTo = endLag;
     }
+    const bool wasBlanked = blankedBefore_;
     blankedBefore_ = hsync_ && cut == Crtc::HsyncCut::None;
     lateBlanking_ = false;
     // A pulse that R3 ended during its third character or later has lasted
     // long enough to set the mode, and the picture that comes back within
     // that character is already in the new one (9.3.4.2).
+    int switched = switchedFrom_;
+    if (switched >= 0) [[unlikely]]
+        switchedFrom_ = -1;
     if ((cut == Crtc::HsyncCut::AfterQuarter || cut == Crtc::HsyncCut::AtStart) && hsyncAge_ >= 3
-        && hsyncAge_ <= kHsyncPulse)
+        && hsyncAge_ <= kHsyncPulse) {
+        // Ended on a character's edge, the pulse leaves the change to show
+        // in this character as any short pulse does in the one after it.
+        if (cut == Crtc::HsyncCut::AtStart && mode_ != (rmr_ & 3))
+            switched = mode_;
         mode_ = rmr_ & 3;
+    }
     if (vsyncBlack_) {
         blackFrom = 0;
         blackTo = Monitor::kCellWidth;
     }
 
     if (uint32_t* out = monitor.cell()) {
+        // The blanking is a pixel ahead of the picture, and so are, on a
+        // Gate Array, the pixels of mode 2, which it shows one sooner than
+        // those of the other modes (Compendium 9.1; the Plus's ASIC keeps
+        // its modes in line). What comes out early for a character starts
+        // where the character before it ended (`before`), unless that is
+        // off the screen.
+        auto before = [&]() -> uint32_t* { return monitor.beamColumn() > 0 ? out - 1 : &offScreen_; };
         if (blackFrom == 0 && blackTo == Monitor::kCellWidth) {
+            *before() = kBlack;
             for (int i = 0; i < Monitor::kCellWidth; ++i)
                 out[i] = kBlack;
+            // The character's own last pixel is not under its blanking.
+            // The Plus's ASIC, whose pulse ends with the character, shows
+            // it when the picture comes back.
+            tailByte_ = fetched_[1];
+            tailShown_ = fetchedDisplay_[1];
+        } else if (switched >= 0 && discrete && !plus_) [[unlikely]] {
+            drawModeSwitch(out, before(), switched, blackFrom, blackTo);
         } else {
+            if (wasBlanked && blackTo == 0 && plusAsic)
+                *before() = rgb_[tailShown_ ? kPenTable.pens[mode_][tailByte_][7] : kBorder];
             // An ink set during this microsecond shows from the middle of
             // the character on a Gate Array, five pixels into it on the
             // Plus's ASIC, whatever the mode: a pixel of mode 0 or 1 can
@@ -462,34 +512,29 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
                     out[i + 8] = (i + 8 < split ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
                 }
             } else {
-                // A Gate Array is a pixel early in mode 2: picture and
-                // border alike come out one pixel sooner than in the other
-                // modes (Compendium 9.1; the Plus's ASIC keeps its modes
-                // in line). The character's first pixel therefore goes
-                // where the one before it ended, unless that is off the
-                // screen or blanked, and its last place is filled again
-                // by the character that follows. An ink set during the
-                // microsecond still changes at the same place on the
-                // screen, a pixel further into the character, except on
-                // the 40226 (CRTC 4), where it moves with the pixels
+                // Mode 2, picture and border alike: the character's first
+                // pixel goes where the one before it ended, and its last
+                // place is filled again by the character that follows. An
+                // ink set during the microsecond still changes at the same
+                // place on the screen, a pixel further into the character,
+                // except on the 40226, where it moves with the pixels
                 // (9.2.2).
-                const int from = split == 0 || crtc.type() == CrtcType::PreAsic ? split : split + 1;
-                uint32_t pixels[16];
-                for (int i = 0; i < 8; ++i) {
-                    pixels[i] = (i < from ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[i] : kBorder];
-                    pixels[i + 8] = (i + 8 < from ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
-                }
-                if (!lastPixelBlack_ && monitor.beamColumn() > 0)
-                    out[-1] = pixels[0];
-                for (int i = 1; i < 16; ++i)
-                    out[i - 1] = pixels[i];
-                out[15] = pixels[15];
+                const int from = split == 0 || preAsic ? split : split + 1;
+                *before() = (0 < from ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[0] : kBorder];
+                for (int i = 1; i < 8; ++i)
+                    out[i - 1] = (i < from ? rgbBefore_ : rgb_)[fetchedDisplay_[0] ? left[i] : kBorder];
+                for (int i = 0; i < 8; ++i)
+                    out[i + 7] = (i + 8 < from ? rgbBefore_ : rgb_)[fetchedDisplay_[1] ? right[i] : kBorder];
+                out[15] = out[14];
             }
-            for (int i = blackFrom; i < blackTo; ++i)
-                out[i] = kBlack;
+            if (blackFrom < blackTo) {
+                if (blackFrom == 0)
+                    *before() = kBlack;
+                for (int i = blackFrom > 0 ? blackFrom - 1 : 0; i < blackTo - 1; ++i)
+                    out[i] = kBlack;
+            }
         }
     }
-    lastPixelBlack_ = blackFrom < blackTo && blackTo == Monitor::kCellWidth;
     inkChanged_ = false;
 
     // Fetch the character the CRTC is pointing at; it is drawn next time.
@@ -517,6 +562,45 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
     fetched_[1] = videoRam[addr | 1];
 
     monitor.advance();
+}
+
+// The character in which a Gate Array changes screen mode, after an HSYNC
+// too short to hide it (Compendium 9.3.4.3). The chip goes on shifting the
+// byte it was showing: the new mode takes it as the old one has left it.
+// By the sixth pixel of the character, where the change comes, mode 2 has
+// shifted five times, mode 1 twice, modes 0 and 3 once; the bits that come
+// in at the other end are zeros on a 40010. What the new mode makes of the
+// byte from there fills the rest of its place: four pixels, three if the
+// new mode is mode 2, whose next byte is a pixel early. Before the change,
+// whatever the blanking leaves is still in the old mode: one pixel with the
+// HD6845S and the MC6845, none with the UM6845R, which blanks a pixel more.
+void GateArray::drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo)
+{
+    static constexpr int kShifts[4] = {1, 2, 5, 1};
+    constexpr int kChange = 5;
+    // Pens along the character, one for each pixel of mode 2 the chip puts
+    // out: the first is the one that goes a pixel early, the seventeenth
+    // falls where the next character's first will.
+    uint8_t pens[17];
+    const uint8_t first = fetched_[0];
+    const uint8_t second = fetched_[1];
+    const uint8_t* old = kPenTable.pens[was][first];
+    pens[0] = was == 2 ? old[0] : 0;
+    for (int i = 1; i < kChange; ++i)
+        pens[i] = old[was == 2 ? i : i - 1];
+    const uint8_t* cooked = kPenTable.pens[mode_][static_cast<uint8_t>(first << kShifts[was])];
+    const int end = mode_ == 2 ? 8 : 9;
+    for (int i = kChange; i < end; ++i)
+        pens[i] = cooked[i - kChange];
+    const uint8_t* rest = kPenTable.pens[mode_][second];
+    for (int i = 0; i < 8; ++i)
+        pens[end + i] = rest[i];
+    if (mode_ == 2)
+        pens[16] = pens[15];
+    for (int i = 0; i < 17; ++i) {
+        const bool shown = fetchedDisplay_[i < end ? 0 : 1];
+        (i == 0 ? *before : out[i - 1]) = i >= blackFrom && i < blackTo ? kBlack : rgb_[shown ? pens[i] : kBorder];
+    }
 }
 
 // A character of a Plus's picture: the screen, moved to the right by the
