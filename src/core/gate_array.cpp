@@ -277,6 +277,7 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
     if (vsyncDue_ & 1) {
         vsyncLines_ = 0;
         vsyncSequence_ = true;
+        monitor.vsyncEnded();
     }
     if (countsDue_ & 1)
         countHsync(monitor);
@@ -301,6 +302,7 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         if (interruptDelay_ == 0) {
             vsyncLines_ = 0;
             vsyncSequence_ = true;
+            monitor.vsyncEnded();
         } else {
             vsyncDue_ |= 1u << (interruptDelay_ - 1);
         }
@@ -411,6 +413,8 @@ void GateArray::countHsync(Monitor& monitor)
             if (r52_ >= 32 && ownInterrupts)
                 interrupt_ = true;
             r52_ = 0;
+        } else if (vsyncLines_ == 6) {
+            monitor.vsyncEnded();
         } else if (vsyncLines_ == 26) {
             vsyncSequence_ = false;
         }

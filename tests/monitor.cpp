@@ -73,7 +73,10 @@ struct Tube {
         for (int n = 0; n < 300; ++n)
             line(at, pixels);
         monitor.vsync();
-        for (int n = 0; n < 60; ++n)
+        for (int n = 0; n < 4; ++n)
+            line(at, pixels);
+        monitor.vsyncEnded();
+        for (int n = 0; n < 56; ++n)
             line(at, pixels);
     }
 
@@ -261,14 +264,43 @@ void testOtherPace()
     }
 }
 
-// No pulse: the line runs on to 72 microseconds, and so do the next ones.
-// The first pulse to begin 56 microseconds or more into such a line starts
-// a new one there and then.
+// No pulse: the oscillator keeps its pace and the picture stays where it
+// was (the Shaker's "no HSYNC for xx lines"); when the pulses come back
+// where they were, nothing has happened.
 void testNoPulse()
 {
     Tube tube;
     tube.settle(48);
+    const int before = tube.monitor.beamY();
+    for (int n = 0; n < 40; ++n)
+        CHECK_EQ(tube.line(-1), kHome);
+    for (int n = 0; n < 5; ++n)
+        CHECK_EQ(tube.line(48), kHome);
+    CHECK_EQ(tube.monitor.beamY() - before, 45);
+
+    // They come back elsewhere, 20 microseconds later in the line: the
+    // tube has to look for them. Its lines last 72 microseconds until a
+    // pulse begins 56 microseconds or more into one, which starts a line
+    // there and then.
+    for (int n = 0; n < 10; ++n)
+        tube.line(-1);
+    for (int n = 0; n < 12; ++n)
+        tube.line(4);
+    const int moved = (64 - 4 + 30 - 13) * Monitor::kCellWidth - 64 * Monitor::kCellWidth;
+    for (int n = 0; n < 5; ++n)
+        CHECK_EQ(tube.line(4), moved);
+}
+
+// No pulse while the vertical sync is on: the line runs on to 72
+// microseconds, and so do the next ones; the first pulse to begin 56
+// microseconds or more into such a line starts a new one there and then
+// (the Shaker's "VSYNC Gate Array" J screens).
+void testNoPulseInVerticalSync()
+{
+    Tube tube;
+    tube.settle(48);
     CHECK_EQ(tube.line(48), kHome);
+    tube.monitor.vsync();
     const int before = tube.monitor.beamY();
     // Five lines of the machine without a pulse: the tube's lines last 72
     // microseconds, and the mark comes 8 microseconds sooner on each.
@@ -282,6 +314,7 @@ void testNoPulse()
     // The pulses are back. They begin 24, then 16, 8 and 0 microseconds
     // into the tube's lines, where it does not hear them; the next one
     // comes 64 microseconds into its line and is taken.
+    tube.monitor.vsyncEnded();
     for (int n = 0; n < 5; ++n)
         tube.line(48);
     for (int n = 0; n < 5; ++n)
@@ -301,5 +334,6 @@ int main()
     testTwoPlaces();
     testOtherPace();
     testNoPulse();
+    testNoPulseInVerticalSync();
     return checkSummary("monitor");
 }

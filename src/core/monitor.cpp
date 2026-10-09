@@ -22,7 +22,7 @@ void Monitor::reset()
     std::fill(bufferB_.begin(), bufferB_.end(), kBlack);
     beam_ = y_ = 0;
     limit_ = period_ = kFreeRun;
-    locked_ = nextLocked_ = awaited_ = pulse_ = stray_ = strayLine_ = false;
+    locked_ = nextLocked_ = awaited_ = coasting_ = vertical_ = pulse_ = stray_ = strayLine_ = false;
     strayMark_ = 0;
     owed_ = lastLack_ = sincePulse_ = lastInterval_ = 0;
     pace_ = kLine;
@@ -42,6 +42,7 @@ void Monitor::hsync(bool late)
     if (beam_ <= kWindow && awaited_) {
         // The line has just begun and waits for its pulse: this is it, on
         // time or late.
+        coasting_ = false;
         locked_ = true;
         countLine();
         pulse_ = true;
@@ -49,10 +50,13 @@ void Monitor::hsync(bool late)
         // starts nearer the mark, this one where it did.
         const int give = correction(beam_);
         limit_ = period_ = pace_ + give;
-    } else if (locked_ && beam_ >= period_ - kEarly) {
+        return;
+    }
+    if (locked_ && beam_ >= period_ - kEarly) {
         // Shortly before the line's end: the pulse of the next one, early.
         // The line in progress is cut short for it at once; if it is the
         // other way the pulse pushes, the line it belongs to gives.
+        coasting_ = false;
         nextLocked_ = true;
         pulse_ = true;
         const int give = correction(beam_ - period_);
@@ -60,7 +64,16 @@ void Monitor::hsync(bool late)
             limit_ = period_ += give;
         else
             owed_ = give;
-    } else if (!locked_ && !awaited_ && beam_ >= (kMinLine * kCellWidth) << kUnitShift) {
+        return;
+    }
+    if (coasting_ && !awaited_) {
+        // A pulse somewhere along a line that has had none of its own: the
+        // tube has lost the pulses' place, and runs free from this line on.
+        coasting_ = false;
+        locked_ = false;
+        limit_ = period_ = kFreeRun;
+    }
+    if (!locked_ && !awaited_ && beam_ >= (kMinLine * kCellWidth) << kUnitShift) {
         // Running free, the tube takes the pulse as it comes.
         newLine();
         beam_ = 0;
@@ -86,9 +99,25 @@ void Monitor::lineEvent()
         newLine();
         return;
     }
-    // No pulse: the line before is taken to have run on to here, as a tube
-    // left to itself lets it, and from here the oscillator runs free.
     countLine();
+    if (!vertical_) {
+        // No pulse: the oscillator keeps its pace, line after line, and the
+        // picture stays where it was (the Shaker's "no HSYNC for xx lines"
+        // on Amspirit-lite: nothing moves), until a pulse comes: at a
+        // line's start again, and the tube is on it as before; anywhere
+        // else, and it has to look for the pulses (see hsync).
+        coasting_ = true;
+        locked_ = true;
+        limit_ = period_ = pace_;
+        return;
+    }
+    // No pulse while the vertical sync holds the signal: the oscillator is
+    // left to itself. The line before is taken to have run on to here, 72
+    // microseconds, and so will the next ones, until a pulse begins late
+    // enough in one of them (the Shaker's "VSYNC Gate Array" J screens,
+    // which have no HSYNC for six lines around the vertical sync: the
+    // picture is a line higher than a tube that kept its pace would have
+    // it).
     beam_ -= kWindow;
     sincePulse_ -= kWindow;
     limit_ = period_ = kFreeRun;
@@ -183,6 +212,7 @@ void Monitor::strayPulse(int pixels)
 
 void Monitor::vsync()
 {
+    vertical_ = true;
     if (y_ >= kMinFrame)
         newFrame();
 }

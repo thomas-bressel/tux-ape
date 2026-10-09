@@ -62,6 +62,7 @@ public:
     // microseconds).
     void hsyncEnded(int pixels);
     void vsync();  // start of the vertical sync pulse
+    void vsyncEnded() { vertical_ = false; }  // ... and its end
 
     // Last complete picture, kWidth x kHeight, 0xAARRGGBB.
     const uint32_t* frame() const { return front_; }
@@ -128,6 +129,8 @@ private:
     int firstPixel_ = kFirstColumn * kCellWidth;
     int firstLine_ = kFirstLine;
     bool locked_ = false;      // the line in progress has had its pulse
+    bool coasting_ = false;    // the line in progress has had no pulse: the oscillator keeps its pace
+    bool vertical_ = false;    // the vertical sync pulse is on
     bool awaited_ = false;     // the line began on the oscillator's word: its pulse may still come
     bool nextLocked_ = false;  // the pulse of the line to come is already here
     bool pulse_ = false;       // a pulse the oscillator listens to is in progress
