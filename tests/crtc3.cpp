@@ -14,6 +14,10 @@ namespace {
 
 using namespace tuxape;
 
+// The chip under test: the Plus's first, then the one of the "cost down"
+// CPC, which the Compendium and the Shaker have the same in all of this.
+CrtcType asic = CrtcType::AsicPlus;
+
 int status1(Rig& rig)
 {
     rig.crtc.select(10);
@@ -70,7 +74,7 @@ void whatIsRead()
 // and &FC on C0 = 32 with R0 = 64.
 void statusOneAlongALine()
 {
-    Rig rig(CrtcType::AsicPlus);
+    Rig rig(asic);
     rig.set(12, 0x30);
     rig.seek(0, 0, 0);
     rig.seek(5, 2, 0);  // the row's lines start at &30C8
@@ -115,7 +119,7 @@ void statusOneAlongALine()
 // last line, R12/R13 as the frame ends.
 void statusOneAddress()
 {
-    Rig rig(CrtcType::AsicPlus);
+    Rig rig(asic);
     rig.set(12, 0x30);
     rig.seek(0, 0, 0);
     for (int line = 0; line < 8; ++line) {
@@ -165,7 +169,7 @@ void statusOneAddress()
 void statusOneVsync()
 {
     for (const int lines : {9, 7, 1, 0}) {
-        Rig rig(CrtcType::AsicPlus);
+        Rig rig(asic);
         rig.set(3, lines << 4 | 0x0D);
         rig.seek(29, 7, 20);
         const int rest = lines == 0 ? 0 : 1;
@@ -188,7 +192,7 @@ void statusOneVsync()
 // The second status over a frame (21.3.4.2).
 void statusTwoOverAFrame()
 {
-    Rig rig(CrtcType::AsicPlus);
+    Rig rig(asic);
     rig.seek(0, 0, 0);
     const int timer = status2(rig) & 0x08;
     for (int row = 0; row < 39; ++row) {
@@ -226,7 +230,7 @@ void statusTwoOverAFrame()
 // last of the lines of R5.
 void statusTwoAndR5()
 {
-    Rig rig(CrtcType::AsicPlus);
+    Rig rig(asic);
     rig.seek(1, 0, 0);
     rig.set(4, 37);
     rig.set(5, 8);
@@ -265,7 +269,7 @@ void statusTwoAndR5()
 // then &9F for sixteen.
 void statusTwoTimer()
 {
-    Rig rig(CrtcType::AsicPlus);
+    Rig rig(asic);
     rig.seek(1, 0, 0);
     rig.set(4, 0);
     rig.set(9, 0);
@@ -329,21 +333,21 @@ void interlaceSwitchedOn()
 {
     for (const bool odd : {false, true}) {
         {
-            Rig rig(CrtcType::AsicPlus);
+            Rig rig(asic);
             toFrame(rig, odd);
             rig.to(20);
             rig.set(8, 3);
             expectLines(rig, {{0, 2}, {0, 4}, {0, 6}, {0, 8}, {1, 1}, {1, 3}, {1, 5}, {1, 7}, {2, 0}, {2, 2}, {2, 4}, {2, 6}, {2, 8}});
         }
         {
-            Rig rig(CrtcType::AsicPlus);
+            Rig rig(asic);
             toFrame(rig, odd);
             rig.seek(0, 1, 20);
             rig.set(8, 3);
             expectLines(rig, {{0, 3}, {0, 5}, {0, 7}, {1, 0}, {1, 2}, {1, 4}, {1, 6}, {1, 8}, {2, 1}, {2, 3}, {2, 5}, {2, 7}});
         }
         {
-            Rig rig(CrtcType::AsicPlus);
+            Rig rig(asic);
             toFrame(rig, odd);
             rig.seek(0, 2, 20);
             rig.set(8, 3);
@@ -351,7 +355,7 @@ void interlaceSwitchedOn()
         }
         // R9 even: every row has the same lines.
         {
-            Rig rig(CrtcType::AsicPlus);
+            Rig rig(asic);
             rig.set(9, 6);
             toFrame(rig, odd);
             rig.to(20);
@@ -359,7 +363,7 @@ void interlaceSwitchedOn()
             expectLines(rig, {{0, 2}, {0, 4}, {0, 6}, {1, 0}, {1, 2}, {1, 4}, {1, 6}, {2, 0}, {2, 2}, {2, 4}, {2, 6}, {3, 0}, {3, 2}});
         }
         {
-            Rig rig(CrtcType::AsicPlus);
+            Rig rig(asic);
             rig.set(9, 6);
             toFrame(rig, odd);
             rig.seek(0, 1, 20);
@@ -367,7 +371,7 @@ void interlaceSwitchedOn()
             expectLines(rig, {{0, 3}, {0, 5}, {0, 7}, {1, 1}, {1, 3}, {1, 5}, {1, 7}, {2, 1}, {2, 3}, {2, 5}, {2, 7}, {3, 1}});
         }
         {
-            Rig rig(CrtcType::AsicPlus);
+            Rig rig(asic);
             rig.set(9, 6);
             toFrame(rig, odd);
             rig.seek(0, 2, 20);
@@ -377,7 +381,7 @@ void interlaceSwitchedOn()
     }
     // The mode left, C9 goes up one at a time again from where it is.
     {
-        Rig rig(CrtcType::AsicPlus);
+        Rig rig(asic);
         toFrame(rig, false);
         rig.seek(0, 1, 20);
         rig.set(8, 3);
@@ -395,7 +399,7 @@ void interlaceSwitchedOn()
 void interlaceFrames()
 {
     for (const bool odd : {false, true}) {
-        Rig rig(CrtcType::AsicPlus);
+        Rig rig(asic);
         rig.set(4, 9);
         rig.set(6, 8);
         rig.set(7, 30);
@@ -410,7 +414,7 @@ void interlaceFrames()
     }
     for (const bool odd : {false, true}) {
         for (const int row : {1, 2, 3, 4}) {
-            Rig rig(CrtcType::AsicPlus);
+            Rig rig(asic);
             rig.set(4, 9);
             rig.set(6, 8);
             rig.set(7, row);
@@ -455,7 +459,7 @@ void r3WrittenDuringHsync()
         int lasts;  // characters of HSYNC from C0 = R2 on, the one of the write included
     } const cases[] = {{0, 16}, {1, 17}, {2, 18}, {3, 19}, {4, 20}, {5, 6}, {6, 6}, {7, 7}, {10, 10}};
     for (const auto& c : cases) {
-        Rig rig(CrtcType::AsicPlus);
+        Rig rig(asic);
         rig.set(2, 11);
         rig.set(3, 0x8A);
         rig.seek(5, 2, 10);
@@ -480,7 +484,7 @@ void r3WrittenDuringHsync()
     // one, two and three characters, and R3 = 0 written on C0 = R2 one of
     // sixteen.
     for (const int width : {0, 1, 2, 3}) {
-        Rig rig(CrtcType::AsicPlus);
+        Rig rig(asic);
         rig.set(2, 14);
         rig.set(3, 0x8E);
         rig.seek(5, 2, 14 + width);
@@ -517,7 +521,7 @@ void r3WrittenDuringHsync()
 void pulseBegunWhereOneEnds()
 {
     for (const int second : {0x15, 0x16, 0x18}) {
-        Rig rig(CrtcType::AsicPlus);
+        Rig rig(asic);
         rig.set(2, 0x0B);
         rig.set(3, 0x8A);
         rig.seek(5, 2, 0x10);
@@ -555,15 +559,18 @@ void pulseBegunWhereOneEnds()
 int main()
 {
     whatIsRead();
-    statusOneAlongALine();
-    statusOneAddress();
-    statusOneVsync();
-    statusTwoOverAFrame();
-    statusTwoAndR5();
-    statusTwoTimer();
-    interlaceSwitchedOn();
-    interlaceFrames();
-    r3WrittenDuringHsync();
-    pulseBegunWhereOneEnds();
+    for (const CrtcType type : {CrtcType::AsicPlus, CrtcType::PreAsic}) {
+        asic = type;
+        statusOneAlongALine();
+        statusOneAddress();
+        statusOneVsync();
+        statusTwoOverAFrame();
+        statusTwoAndR5();
+        statusTwoTimer();
+        interlaceSwitchedOn();
+        interlaceFrames();
+        r3WrittenDuringHsync();
+        pulseBegunWhereOneEnds();
+    }
     return checkSummary("crtc3");
 }
