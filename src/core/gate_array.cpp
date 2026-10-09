@@ -315,7 +315,7 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         if (plus_ && (hsyncAge_ == 0 || crtc.hsyncJoinedJustNow()))
             soundRound_ = asic_->soundTick();
         if (hsyncAge_ == 2)
-            monitor.hsync();
+            monitor.hsync(asic);
         if (hsyncAge_ == kHsyncPulse)
             mode_ = rmr_ & 3;
         if (hsyncAge_ < 0xFF)

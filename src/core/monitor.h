@@ -23,7 +23,7 @@ public:
     // visible area.
     uint32_t* cell()
     {
-        const int col = x_ - kFirstColumn;
+        const int col = x_ - firstColumn_;
         const int row = y_ - firstLine_;
         if (col < 0 || col >= kColumns || row < 0 || row >= kHeight)
             return nullptr;
@@ -37,7 +37,10 @@ public:
             newLine();
     }
 
-    void hsync();  // start of the horizontal sync pulse
+    // Start of the horizontal sync pulse. `late` is for the machines whose
+    // ASIC sends it a microsecond later than a Gate Array does (CRTC 3 and
+    // 4): the monitor sold with them is set for that.
+    void hsync(bool late = false);
     void vsync();  // start of the vertical sync pulse
 
     // Last complete picture, kWidth x kHeight, 0xAARRGGBB.
@@ -57,12 +60,11 @@ public:
     int rasterLine() const { return y_ - firstLine_; }
     // And the pixel of that line the beam is at: 0 for its first, less
     // before it, kWidth or more after its last.
-    int beamColumn() const { return (x_ - kFirstColumn) * kCellWidth; }
+    int beamColumn() const { return (x_ - firstColumn_) * kCellWidth; }
 
 private:
     // Position of the visible area relative to the sync pulses, chosen so
-    // that the firmware's standard screen is centred on a CPC with a
-    // discrete Gate Array.
+    // that the firmware's standard screen is centred.
     static constexpr int kFirstColumn = 13;
     static constexpr int kFirstLine = 35;
     // How far the tube lets a line or a frame drift before it retraces on
@@ -78,6 +80,7 @@ private:
     uint32_t* front_;
     int x_ = 0;
     int y_ = 0;
+    int firstColumn_ = kFirstColumn;
     int firstLine_ = kFirstLine;
     uint64_t frameNumber_ = 0;
 

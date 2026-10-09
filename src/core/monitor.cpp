@@ -23,8 +23,16 @@ void Monitor::reset()
     x_ = y_ = 0;
 }
 
-void Monitor::hsync()
+void Monitor::hsync(bool late)
 {
+    // The ASICs (CRTC 3 and 4) keep the HSYNC in step with the picture,
+    // which a Gate Array draws a character behind it: their pulse reaches
+    // the monitor a microsecond later. On a CTM 640 or 644 the picture
+    // would sit a character to the left. But Amstrad set the monitors of
+    // those machines, the Plus's CM14 and the CTM sold with the last CPCs,
+    // so that the frame is centred all the same (Compendium 15.1): the
+    // visible area starts a character sooner after the pulse.
+    firstColumn_ = late ? kFirstColumn - 1 : kFirstColumn;
     if (x_ >= kMinLine)
         newLine();
 }

@@ -131,9 +131,8 @@ Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool all
     const uint32_t* pixels = cpc.monitor().frame();
 
     // Look only where the firmware's screen is: the 200 lines in the middle
-    // and, across, the characters that are picture on every machine (with
-    // an ASIC the picture sits one character further left). The rest is
-    // ordinary border.
+    // and, across, characters that are picture on every machine. The rest
+    // is ordinary border.
     for (int row = 35; row < 235 && probe.row < 0; ++row) {
         for (int x = 5 * 16; x < 43 * 16; ++x) {
             if (pixels[row * Monitor::kWidth + x] != before) {
@@ -197,6 +196,20 @@ Edges pictureEdges(CrtcType type, int mode)
             edges.after = x;
     }
     return edges;
+}
+
+// The firmware's screen is centred on every machine. The ASICs (CRTC 3 and
+// 4) send their HSYNC a microsecond later than a Gate Array, which on the
+// same monitor would put the picture a character to the left; the monitors
+// sold with those machines are set for it (Compendium 15.1).
+void testCentred()
+{
+    for (const CrtcType type : {CrtcType::HD6845S, CrtcType::UM6845R, CrtcType::MC6845, CrtcType::AsicPlus,
+                                CrtcType::PreAsic}) {
+        const Edges edges = pictureEdges(type, 1);
+        CHECK_EQ(edges.first, 64);
+        CHECK_EQ(edges.after, Monitor::kWidth - 64);
+    }
 }
 
 // A Gate Array is a pixel early in mode 2: the picture starts and ends one
@@ -365,6 +378,7 @@ int main()
     testCrtcTiming(CrtcType::HD6845S, 3);
     testCrtcTiming(CrtcType::AsicPlus, 4);
     testCrtcTiming(CrtcType::PreAsic, 4);
+    testCentred();
     testModeTwoEarly();
     testModeChange();
     return checkSummary("video_timing");

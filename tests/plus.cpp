@@ -466,6 +466,8 @@ void testSprites()
     const PlusMachine::Box screen = m.find(kBlue);
     CHECK_EQ(screen.width, 640);
     CHECK_EQ(screen.height, 200);
+    // Centred, as the Plus's own monitor shows it.
+    CHECK_EQ(screen.x, (Monitor::kWidth - 640) / 2);
     CHECK_EQ(m.find(kRed).width, 0);
     CHECK(m.find(kGreen).width > 640);
 
