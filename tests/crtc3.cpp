@@ -5,6 +5,7 @@
 // real machines (module D: "CRTC 3/4 status").
 
 #include <initializer_list>
+#include <string>
 
 #include "check.h"
 #include "crtc_rig.h"
@@ -507,6 +508,48 @@ void r3WrittenDuringHsync()
     }
 }
 
+// A pulse that begins on the very character where the one before ended
+// does not start its counter again, which is at R3: it lasts sixteen
+// characters whatever R3 says. The Shaker's "R2 update during HSYNC", with
+// a pulse of 10 begun at &0B, on real machines of types 3 and 4: R2
+// brought to &15 gives 26 characters of black, to &16 two bars of 10 a
+// character apart.
+void pulseBegunWhereOneEnds()
+{
+    for (const int second : {0x15, 0x16, 0x18}) {
+        Rig rig(CrtcType::AsicPlus);
+        rig.set(2, 0x0B);
+        rig.set(3, 0x8A);
+        rig.seek(5, 2, 0x10);
+        rig.set(2, second);
+        std::string line;
+        for (int c0 = 0x10; c0 < 0x30; ++c0) {
+            rig.to(c0);
+            line += rig.crtc.hsync() ? '#' : '.';
+        }
+        const char* expected = second == 0x15   ? "#####################..........."
+                               : second == 0x16 ? "#####.##########................"
+                                                : "#####...##########..............";
+        if (line != expected) {
+            std::printf("R2 = &%02X during the pulse: %s, want %s\n", second, line.c_str(), expected);
+            ++g_failures;
+        }
+    }
+    // A discrete chip starts counting again (and type 0 never joins two
+    // pulses at all, see crtc0).
+    {
+        Rig rig(CrtcType::UM6845R);
+        rig.set(2, 0x0B);
+        rig.set(3, 0x8A);
+        rig.seek(5, 2, 0x10);
+        rig.set(2, 0x15);
+        rig.to(0x1E);
+        CHECK(rig.crtc.hsync());
+        rig.to(0x1F);
+        CHECK(!rig.crtc.hsync());
+    }
+}
+
 }  // namespace
 
 int main()
@@ -521,5 +564,6 @@ int main()
     interlaceSwitchedOn();
     interlaceFrames();
     r3WrittenDuringHsync();
+    pulseBegunWhereOneEnds();
     return checkSummary("crtc3");
 }

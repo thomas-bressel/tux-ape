@@ -691,7 +691,15 @@ void Crtc::tick()
                           && (type_ == CrtcType::HD6845S || type_ == CrtcType::UM6845R);
         if (!none) {
             hsync_ = true;
-            hsc_ = 0;
+            // On the ASICs a pulse that begins on the very character where
+            // the one before ended does not start its counter again: the
+            // counter is at R3, and has to go all the way round, sixteen
+            // characters. (Shaker "R2 update during HSYNC": a pulse of 10
+            // begun at &0B, and R2 brought to &15 meanwhile, is 26
+            // characters of black on real machines of types 3 and 4, where
+            // R2 = &16 gives two pulses of 10.)
+            if (!(joined && asic()))
+                hsc_ = 0;
             hsyncJudged_ = false;
             // With R0 = 0 the counter never leaves R2 and there is nothing
             // new about the pulse that follows (Kevin Thacker's "dmatest":

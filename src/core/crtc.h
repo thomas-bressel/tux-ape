@@ -47,7 +47,12 @@ public:
     // The HSYNC in progress began, a character ago, on the very character
     // where the one before it ended: the signal has not moved, but the
     // ASIC's sound channels take it for a new one.
-    bool hsyncJoinedJustNow() const { return hsyncJoined_ && hsc_ == 1 && hsync_; }
+    bool hsyncJoinedJustNow() const
+    {
+        // (The ASICs' counter was at R3 as the two pulses met, and went on.)
+        const uint8_t next = asic() ? static_cast<uint8_t>((reg_[3] + 1) & 0x0F) : 1;
+        return hsyncJoined_ && hsc_ == next && hsync_;
+    }
     bool vsync() const { return vsync_ && !ghostVsync_; }
     // How a write to R3 cut the HSYNC short during the character in
     // progress, and during the one before it.
