@@ -351,6 +351,9 @@ void testPpi()
     cpc.out(0xF700, 0x80);  // all three ports asked to be outputs
     cpc.out(0xF500, 0x00);
     CHECK_EQ(cpc.in(0xF500) & 0x5E, 0x5E);  // port B still reads its links
+    // ... and, with no tape playing, the cassette line high: &DE where a
+    // CPC has &5E (the Shaker's "VSYNC conditions" on real machines).
+    CHECK_EQ(cpc.in(0xF500) & 0xDE, 0xDE);
     cpc.out(0xF700, 0x9B);  // all three asked to be inputs
     cpc.out(0xF600, 0x25);
     CHECK_EQ(cpc.in(0xF600), 0x25);  // port C still gives back what was written
@@ -377,6 +380,7 @@ void testPpi()
     plain.out(0xF500, 0x00);
     CHECK_EQ(plain.in(0xF500), 0x00);
     plain.out(0xF700, 0x9B);
+    CHECK_EQ(plain.in(0xF500) & 0xDE, 0x5E);
     plain.out(0xF600, 0x25);
     CHECK_EQ(plain.in(0xF600), 0xFF);
     CHECK_EQ(plain.in(0xF700), 0xFF);

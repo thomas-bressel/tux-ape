@@ -364,7 +364,10 @@ uint8_t Cpc::portB()
     if (tapeSound_ && tape_.playing() && tape_.motor())
         syncSound();
     tapeHeard_ = tape_.level(microseconds());
-    if (tapeHeard_)
+    // With no tape playing a Plus reads the line high, where a CPC reads it
+    // low (the Shaker's "VSYNC conditions" prints the port: &DE and &DF on
+    // a real 6128 Plus, &5E and &5F on real CPCs of every other type).
+    if (tapeHeard_ || (plus_ && !tape_.playing()))
         value |= 0x80;
     return value;
 }
