@@ -85,6 +85,7 @@ void GateArray::reset()
     vsyncLines_ = 0;
     vsyncSequence_ = vsyncBlack_ = false;
     blackLines_ = 0;
+    vsyncFrom_ = vsyncTail_ = 0;
     countsDue_ = vsyncDue_ = 0;
     interrupt_ = false;
     prevHsync_ = prevVsync_ = delayedHsync_ = hsync_ = false;
@@ -284,8 +285,18 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
 
     if (vsync && !prevVsync_) {
         // From here the Gate Array times the vertical sync itself, counting
-        // HSYNCs, whatever the CRTC's VSYNC does next.
-        vsyncBlack_ = true;
+        // HSYNCs, whatever the CRTC's VSYNC does next. The picture goes
+        // black part-way through the character on show, the last of the
+        // line before with a VSYNC that comes as its row begins: from its
+        // fifth pixel with an HD6845S or an MC6845, its sixth with a
+        // UM6845R, its second with the 40226, and its first with the
+        // Plus's ASIC (Compendium 16.2.1, which has nothing for the Plus:
+        // a photograph of the Shaker's "VSYNC story" on one). Pixels are
+        // counted as in render.
+        if (!vsyncBlack_) {
+            vsyncBlack_ = true;
+            vsyncFrom_ = crtc.type() == CrtcType::UM6845R ? 5 : crtc.type() == CrtcType::PreAsic ? 1 : asic ? 0 : 4;
+        }
         blackLines_ = 0;
         if (interruptDelay_ == 0) {
             vsyncLines_ = 0;
@@ -351,9 +362,13 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         else
             countsDue_ |= 1u << (interruptDelay_ - 1);
         // The black of the vertical sync is the picture's affair and ends
-        // with the 26th HSYNC itself.
-        if (vsyncBlack_ && ++blackLines_ == 26)
+        // with the 26th HSYNC itself: with its blanking on the MC6845 and
+        // the ASICs, a pixel after it on the HD6845S and the UM6845R
+        // (16.2.1).
+        if (vsyncBlack_ && ++blackLines_ == 26) {
             vsyncBlack_ = false;
+            vsyncTail_ = crtc.type() == CrtcType::HD6845S || crtc.type() == CrtcType::UM6845R;
+        }
     }
     prevHsync_ = hsync;
     prevVsync_ = vsync;
@@ -410,6 +425,22 @@ void GateArray::hsyncEndedByWrite(const Crtc& crtc)
         delayedHsync_ = false;
 }
 
+void GateArray::vsyncStartedByWrite(const Crtc& crtc, bool early)
+{
+    // R7 made equal to C4 in mid-line (Compendium 16.2.1). The UM6845R and
+    // the MC6845 raise their VSYNC within the microsecond, and the picture
+    // goes black in the character then on show: from its fifth pixel after
+    // a write of the OUTI kind, from its ninth after OUT (C),r. The HD6845S
+    // is a microsecond slower, and the black starts in the next character
+    // as it does at the start of a row: sync sees to it.
+    if (crtc.type() != CrtcType::UM6845R && crtc.type() != CrtcType::MC6845)
+        return;
+    if (vsyncBlack_)
+        return;
+    vsyncBlack_ = true;
+    vsyncFrom_ = early ? 4 : 8;
+}
+
 void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monitor)
 {
     const bool plusAsic = crtc.type() == CrtcType::AsicPlus;
@@ -449,11 +480,12 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
         case Crtc::HsyncCut::Never: blackTo = 0; break;
         }
     } else if (blankedBefore_) {
-        blackTo = endLag;
+        blackTo = endLag + vsyncTail_;
     }
     const bool wasBlanked = blankedBefore_;
     blankedBefore_ = hsync_ && cut == Crtc::HsyncCut::None;
     lateBlanking_ = false;
+    vsyncTail_ = 0;
     // A pulse that R3 ended during its third character or later has lasted
     // long enough to set the mode, and the picture that comes back within
     // that character is already in the new one (9.3.4.2).
@@ -469,7 +501,12 @@ void GateArray::render(const Crtc& crtc, const uint8_t* videoRam, Monitor& monit
         mode_ = rmr_ & 3;
     }
     if (vsyncBlack_) {
-        blackFrom = 0;
+        // The first character of the vertical sync's black is black from
+        // where the Gate Array heard of the VSYNC (see sync), or from where
+        // the HSYNC's blanking has it, if that is sooner.
+        const int from = vsyncFrom_;
+        vsyncFrom_ = 0;
+        blackFrom = blackFrom < blackTo && blackFrom < from ? blackFrom : from;
         blackTo = Monitor::kCellWidth;
     }
 

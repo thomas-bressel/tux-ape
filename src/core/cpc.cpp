@@ -266,11 +266,14 @@ void Cpc::crtcWrite(uint16_t port, uint8_t value, bool early)
         break;
     case 1: {
         const bool hsync = crtc_.hsync();
+        const bool vsync = crtc_.vsync();
         crtc_.write(value, early);
         if (crtc_.hsync() && !hsync)
             gateArray_.hsyncStartedByWrite(crtc_, !early);
         else if (hsync && !crtc_.hsync())
             gateArray_.hsyncEndedByWrite(crtc_);
+        if (crtc_.vsync() && !vsync)
+            gateArray_.vsyncStartedByWrite(crtc_, early);
         break;
     }
     }

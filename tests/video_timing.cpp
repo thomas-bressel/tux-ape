@@ -37,7 +37,8 @@ void outPort(Cpc& cpc, uint16_t port, uint8_t value)
 // microseconds, then writes `data` to the port whose high address byte is
 // `portHigh`, with the given form of instruction. Returns where a pixel
 // first differs from `before`, the colour the area had until then.
-Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool allBorder, uint32_t before, int mode = 0)
+Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool allBorder, uint32_t before, int mode = 0,
+              uint8_t paper = 0x54, uint8_t selected = 8)
 {
     Cpc cpc;
     cpc.crtc().setType(type);
@@ -50,14 +51,15 @@ Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool all
         outPort(cpc, 0xBC00, r);
         outPort(cpc, 0xBD00, crtc[r]);
     }
-    // Pen 0 black (video memory is all zeros), border black or white.
+    // Pen 0 black unless another paper is asked for (video memory is all
+    // zeros), border black or white.
     outPort(cpc, 0x7F00, 0x00);
-    outPort(cpc, 0x7F00, 0x54);
+    outPort(cpc, 0x7F00, paper);
     outPort(cpc, 0x7F00, 0x10);
     outPort(cpc, 0x7F00, allBorder ? 0x54 : 0x4B);
     outPort(cpc, 0x7F00, static_cast<uint8_t>(0x8C | mode));  // no ROM
     // Leave the right register selected for the write under test.
-    outPort(cpc, 0xBC00, 8);
+    outPort(cpc, 0xBC00, selected);
     outPort(cpc, 0x7F00, 0x10);
 
     // Like a real one, the monitor needs a few frames to lock on to the
@@ -129,6 +131,9 @@ Probe measure(CrtcType type, Form form, uint8_t portHigh, uint8_t data, bool all
 
     Probe probe;
     const uint32_t* pixels = cpc.monitor().frame();
+    // No colour given: the one the picture has above the event.
+    if (before == 0)
+        before = pixels[40 * Monitor::kWidth + 400];
 
     // Look only where the firmware's screen is: the 200 lines in the middle
     // and, across, characters that are picture on every machine. The rest
@@ -324,6 +329,123 @@ void testBlanking()
             const Edges bar = hsyncBar(e.type, mode);
             CHECK_EQ(bar.first, 64 + e.character * 16 + e.first);
             CHECK_EQ(bar.after, 64 + (e.character + 14) * 16 + e.after);
+        }
+    }
+}
+
+// The black of a vertical sync on the screen: a VSYNC is made in the middle
+// of the picture, where the monitor takes no notice of it, by setting R7 to
+// row 12 for one frame. The screen is white, border and all, and the HSYNC
+// lasts 15 characters so that its end shows at the picture's left edge.
+struct VsyncBlack {
+    int first = -1;  // the first black pixel of the line on which the VSYNC begins
+    int after = -1;  // the first pixel of the picture on the line where the black ends
+    int usual = -1;  // ... and on a line like any other: where the HSYNC's blanking ends
+};
+
+VsyncBlack vsyncBlack(CrtcType type)
+{
+    Cpc cpc;
+    cpc.crtc().setType(type);
+    cpc.memory().setRomEnables(false, false);
+    const uint8_t crtc[] = {63, 40, 46, 0x8F, 38, 0, 25, 30, 0, 7, 0, 0, 0x30, 0};
+    for (uint8_t r = 0; r < sizeof crtc; ++r) {
+        outPort(cpc, 0xBC00, r);
+        outPort(cpc, 0xBD00, crtc[r]);
+    }
+    outPort(cpc, 0x7F00, 0x00);
+    outPort(cpc, 0x7F00, 0x4B);
+    outPort(cpc, 0x7F00, 0x10);
+    outPort(cpc, 0x7F00, 0x4B);
+    outPort(cpc, 0x7F00, 0x8D);
+    outPort(cpc, 0xBC00, 7);
+    cpc.run(20 * Cpc::kFrameMicroseconds);
+    const Crtc& c = cpc.crtc();
+    auto runTo = [&](int row, int line, int column) {
+        for (int guard = 0; guard < 4 * 312 * 64; ++guard) {
+            if (c.vcc() == row && c.vlc() == line && c.hcc() == column)
+                return;
+            cpc.run(1);
+        }
+        CHECK(false);
+    };
+    runTo(10, 0, 50);
+    outPort(cpc, 0xBD00, 12);
+    runTo(12, 2, 0);
+    outPort(cpc, 0xBD00, 30);
+    const uint64_t frame = cpc.monitor().frameNumber();
+    while (cpc.monitor().frameNumber() == frame)
+        cpc.run(1000);
+    const uint32_t* pixels = cpc.monitor().frame();
+    VsyncBlack black;
+    int row = 100;
+    while (row < 200 && pixels[row * Monitor::kWidth + 700] != kBlack)
+        ++row;
+    CHECK(row < 200);
+    auto firstOf = [&](int line, int from, bool wantBlack) {
+        for (int x = from; x < Monitor::kWidth; ++x)
+            if ((pixels[line * Monitor::kWidth + x] == kBlack) == wantBlack)
+                return x;
+        return -1;
+    };
+    black.first = firstOf(row, 20, true);
+    // Black from there to the line's end, and for 25 lines more.
+    CHECK_EQ(firstOf(row, black.first, false), -1);
+    CHECK_EQ(firstOf(row + 25, 0, false), -1);
+    black.after = firstOf(row + 26, 0, false);
+    black.usual = firstOf(row - 10, 0, false);
+    return black;
+}
+
+// The vertical sync's black, to the pixel (Compendium 16.2.1). It begins as
+// C4 reaches R7, in the last character of the line before, which is on show
+// then: from that character's fifth pixel with the HD6845S and the MC6845,
+// its sixth with the UM6845R, its second with the 40226; the Plus's ASIC,
+// of which the Compendium says nothing, blanks from the first, as it does
+// for an HSYNC (a photograph of the Shaker's "VSYNC story" on a Plus has it
+// a pixel or so before the 40226's). Pixels are those a Gate Array puts
+// out, the first of a character a pixel before its place on the screen.
+// The black ends with the 26th HSYNC: where that pulse's blanking ends on
+// the MC6845 and the ASICs, a pixel later on the HD6845S and the UM6845R.
+void testVsyncBlack()
+{
+    struct Expected {
+        CrtcType type;
+        int first;  // pixels into character 63, which is 16 pixels left of the paper
+        int usual;  // where the blanking of an HSYNC of 15 characters ends
+        int later;  // what the vertical sync's black adds to it
+    };
+    const Expected expected[] = {
+        {CrtcType::HD6845S, 3, 3, 1}, {CrtcType::UM6845R, 4, 4, 1}, {CrtcType::MC6845, 3, 3, 0},
+        {CrtcType::AsicPlus, -1, 15, 0}, {CrtcType::PreAsic, 0, 17, 0},
+    };
+    for (const Expected& e : expected) {
+        const VsyncBlack black = vsyncBlack(e.type);
+        CHECK_EQ(black.first, 64 - 16 + e.first);
+        CHECK_EQ(black.usual, e.usual);
+        CHECK_EQ(black.after, e.usual + e.later);
+    }
+
+    // R7 made equal to C4 in the middle of a line. The UM6845R and the
+    // MC6845 raise their VSYNC within the microsecond: the black starts in
+    // the character on show, on its ninth pixel after OUT (C),r and its
+    // fifth after OUTI, whose write comes a quarter of a microsecond
+    // sooner. The HD6845S takes a microsecond more, and the black starts on
+    // the fifth pixel of the next character whatever the instruction. The
+    // character is found with an ink set by the same instruction, which
+    // shows from its ninth pixel on the screen.
+    for (const CrtcType type : {CrtcType::HD6845S, CrtcType::UM6845R, CrtcType::MC6845}) {
+        for (const Form form : {Form::OutC, Form::Outi}) {
+            const Probe ink = measure(type, form, 0x7F, 0x5F, true, kBlack, 1);
+            // The interrupt the write waits for falls on row 4.
+            const Probe black = measure(type, form, 0xBD, 4, false, 0, 1, 0x4B, 7);
+            CHECK(ink.row > 0 && ink.x % 16 == 8);
+            CHECK_EQ(black.row, ink.row);
+            const int character = ink.x - 8;
+            if (type == CrtcType::HD6845S)
+                CHECK_EQ(black.x, character + 16 + 3);
+            else
+                CHECK_EQ(black.x, character + (form == Form::Outi ? 3 : 7));
         }
     }
 }
@@ -621,6 +743,7 @@ int main()
     testCentred();
     testModeTwoEarly();
     testBlanking();
+    testVsyncBlack();
     testModeChangePixels();
     testModeChange();
     return checkSummary("video_timing");

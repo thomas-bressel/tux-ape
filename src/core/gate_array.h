@@ -42,6 +42,9 @@ public:
     void hsyncStartedByWrite(const Crtc& crtc, bool late);
     // An R3 write has just ended the HSYNC in progress.
     void hsyncEndedByWrite(const Crtc& crtc);
+    // An R7 write has just started a VSYNC in the middle of a line. `early`
+    // is for the OUTI kind of write, after which the black comes sooner.
+    void vsyncStartedByWrite(const Crtc& crtc, bool early);
     void acknowledgeInterrupt();
     // The Plus: a line has just been set for the raster interrupt where
     // there was none. The interrupt of the CPC kind still waiting to be
@@ -136,6 +139,8 @@ private:
     bool vsyncSequence_ = false;  // the Gate Array is timing a vertical sync
     bool vsyncBlack_ = false;
     uint8_t blackLines_ = 0;    // HSYNCs since VSYNC rose, as the blanking counts them
+    uint8_t vsyncFrom_ = 0;     // the black has just begun: where in the character on show
+    uint8_t vsyncTail_ = 0;     // ... has just ended: pixels it outlasts the HSYNC's by
     // With a delay set: what the interrupt counter has still to hear of,
     // bit n for what is due in n + 1 microseconds.
     int interruptDelay_ = kInterruptDelay;
