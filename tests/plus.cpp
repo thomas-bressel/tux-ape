@@ -678,10 +678,10 @@ void testRasterInterrupt()
     cpc.irqAck();
     CHECK(second >= 0 && second != first);
 
-    // Until the vector register is written to, every bit of it is set: the
-    // raster's interrupt puts &FE on the bus. In interrupt mode 0, where a
-    // cartridge starts, that is a harmless CP n.
-    CHECK_EQ(cpc.asic().interruptVector(), 0xFF);
+    // Until the vector register is written to, every bit of it is set but
+    // the lowest: the raster's interrupt puts &FE on the bus. In interrupt
+    // mode 0, where a cartridge starts, that is a harmless CP n.
+    CHECK_EQ(cpc.asic().interruptVector(), 0xFE);
     nextInterrupt();
     CHECK_EQ(cpc.irqAck(), 0xFE);
 
@@ -776,6 +776,23 @@ void testSoundChannels()
         if (cpc.gateArray().interruptRequested())
             cpc.irqAck();
     };
+    // A machine starts with bit 0 of the vector register clear: a
+    // channel's interrupt goes by itself once taken. (The "CRTC 3" demo
+    // never writes the register and answers such an interrupt with EI,
+    // RET.)
+    list(0xA000, {0x4030});
+    m.write(0x6C08, 0x00);
+    m.write(0x6C09, 0xA0);
+    m.write(0x6C0A, 0x00);
+    m.write(0x6C0F, 0x04);
+    lines(1);
+    CHECK_EQ(cpc.memory().read(0x6C0F) & 0x7F, 0x10);
+    settle();
+    CHECK(cpc.irq());
+    CHECK_EQ(cpc.irqAck(), 0xF8);  // channel 2's vector
+    CHECK_EQ(cpc.memory().read(0x6C0F) & 0x7F, 0x00);
+    CHECK(!cpc.irq());
+
     // Volume 15 on channel A, a tone, a pause of two lines, then a loop of
     // two instructions gone through twice, another register, an interrupt,
     // and the end.

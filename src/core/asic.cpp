@@ -59,14 +59,23 @@ void Asic::reset()
     sprites_.fill(Sprite());
     spritesShown_ = false;
     pri_ = splt_ = sscr_ = 0;
-    // The vector register starts with every bit set: the raster's
-    // interrupt then puts FE on the bus (what Kevin Thacker's "pritest"
-    // notes it saw on a real machine before any write to the register),
-    // and a program left in interrupt mode 0, as the Z80 is after a reset,
-    // runs a harmless CP n where a CPC would run RST &38. With 0 it ran
-    // LD B,n: Pro Tennis Tour then waited for the frame flyback on the
-    // wrong port, for ever.
-    ivr_ = 0xFF;
+    // The vector register starts with every bit set but the lowest. The
+    // raster's interrupt then puts FE on the bus (what Kevin Thacker's
+    // "pritest" notes it saw on a real machine before any write to the
+    // register), and a program left in interrupt mode 0, as the Z80 is
+    // after a reset, runs a harmless CP n where a CPC would run RST &38.
+    // With 0 it ran LD B,n: Pro Tennis Tour then waited for the frame
+    // flyback on the wrong port, for ever.
+    //
+    // The lowest bit never shows on the bus. Clear, it lets a sound
+    // channel's interrupt go by itself once taken (see
+    // acknowledgeInterrupt), and so a machine must start: the "CRTC 3"
+    // demo (2017) never writes the register, lets its third channel run
+    // into an "interrupt and stop", and answers interrupts there with EI,
+    // RET. With the bit set the interrupt came back after every
+    // instruction, and the demo, which runs on real machines, stopped a
+    // minute and a quarter in.
+    ivr_ = 0xFE;
     ssa_ = 0;
     dcsr_ = 0;
     channels_.fill(Channel());
