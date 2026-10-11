@@ -215,7 +215,10 @@ void MainWindow::createMenus()
     // ---- File ----
     QMenu* file = menuBar()->addMenu(tr("&File"));
     // TuxAPE's own: WinAPE has no library.
-    libraryAction_ = addItem(file, tr("Li&brary..."), CTRL | Qt::Key_L, [this] { showLibrary(); });
+    // TuxAPE's own entries have function keys too, as all of WinAPE's do:
+    // the other keys are the CPC's, with CONTROL or without (see
+    // ScreenWidget::isCpcKey).
+    libraryAction_ = addItem(file, tr("Li&brary..."), Qt::Key_F4, [this] { showLibrary(); });
     file->addSeparator();
     // C: and D: are there with "Enable Four Drives", and have no keys.
     const char* driveNames[DiscManager::kDrives] = {QT_TR_NOOP("Drive &A:"), QT_TR_NOOP("Drive &B:"),
@@ -281,9 +284,10 @@ void MainWindow::createMenus()
     // the Library's thumbnail of the program in the machine. A desktop
     // that keeps that key for itself leaves it with Ctrl.
     thumbnailAction_ = addItem(file, tr("Screen to &Thumbnail"), Qt::Key_Print, [this] { thumbnailFromScreen(); });
-    // Ctrl+T as well: a key no desktop holds back.
+    // Ctrl+F8 as well, beside the screenshot's Ctrl+F7: a key no desktop
+    // holds back.
     thumbnailAction_->setShortcuts(
-        {QKeySequence(CTRL | Qt::Key_T), QKeySequence(Qt::Key_Print), QKeySequence(CTRL | Qt::Key_Print)});
+        {QKeySequence(CTRL | Qt::Key_F8), QKeySequence(Qt::Key_Print), QKeySequence(CTRL | Qt::Key_Print)});
     recordAviAction_ = addItem(file, tr("R&ecord AVI..."), {}, [this] { toggleAviRecording(); });
     recordAviAction_->setCheckable(true);
     recordWavAction_ = addItem(file, tr("Record &WAV..."), {}, [this] { toggleWavRecording(); });
@@ -413,13 +417,13 @@ void MainWindow::createControlPanel()
     addButton(IconId::Registers, tr("Registers"), registersAction_);
     addButton(IconId::Assembler, tr("Assembler (F3)"), assemblerAction_);
     row->addWidget(separator(controlPanel_));
-    addButton(IconId::Library, tr("Library (CTRL+L)"), libraryAction_);
+    addButton(IconId::Library, tr("Library (F4)"), libraryAction_);
     addButton(IconId::Disc, tr("Change Disc (F2)"), driveSetupAction_);
     addButton(IconId::Cartridge, tr("Change Cartridge (CTRL+F3)"), cartridgeAction_);
     addButton(IconId::Tape, tr("Tape Control"), tapeControlAction_);
     addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
     addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
-    addButton(IconId::Photo, tr("Screen to Thumbnail (CTRL+T)"), thumbnailAction_);
+    addButton(IconId::Photo, tr("Screen to Thumbnail (CTRL+F8)"), thumbnailAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Settings, tr("Settings (F12)"), setupAction_);
     addButton(IconId::FullScreen, tr("Toggle Full Screen (F10)"), fullScreenAction_);

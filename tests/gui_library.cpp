@@ -438,10 +438,10 @@ int main(int argc, char* argv[])
     // From the main window: the menu entry and the toolbar's button.
     QAction* action = actionNamed(window, "Library...");
     CHECK(action && action->isEnabled());
-    CHECK(action && action->shortcut() == QKeySequence(Qt::CTRL | Qt::Key_L));
+    CHECK(action && action->shortcut() == QKeySequence(Qt::Key_F4));
     QToolButton* toolButton = nullptr;
     for (QToolButton* candidate : window.findChildren<QToolButton*>())
-        if (candidate->toolTip() == "Library (CTRL+L)")
+        if (candidate->toolTip() == "Library (F4)")
             toolButton = candidate;
     CHECK(toolButton && toolButton->isEnabled());
     if (!action || !toolButton)
@@ -1377,9 +1377,9 @@ int main(int argc, char* argv[])
         CHECK(shot != nullptr);
         if (!shot)
             return checkSummary("gui_library");
-        // Ctrl+T, the Print Screen key itself and with Ctrl, for what a
+        // Ctrl+F8, the Print Screen key itself and with Ctrl, for what a
         // desktop lets through; and a button of the control panel.
-        CHECK(shot->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_T)));
+        CHECK(shot->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_F8)));
         CHECK(shot->shortcuts().contains(QKeySequence(Qt::Key_Print)));
         CHECK(shot->shortcuts().contains(QKeySequence(Qt::CTRL | Qt::Key_Print)));
         QToolButton* camera = nullptr;
@@ -1419,7 +1419,7 @@ int main(int argc, char* argv[])
         window.activateWindow();
         window.screen()->setFocus();
         CHECK(QTest::qWaitForWindowActive(&window, 3000));
-        QTest::keyClick(window.screen(), Qt::Key_T, Qt::ControlModifier);
+        QTest::keyClick(window.screen(), Qt::Key_F8, Qt::ControlModifier);
         CHECK(QFile::exists(thumbnail));
         // The Print Screen key does the same when the desktop lets it
         // through, with Ctrl or without.

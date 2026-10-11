@@ -459,7 +459,11 @@ int main(int argc, char* argv[])
         CHECK(text && text->isVisible());
         const QString shown = text ? text->toPlainText() : QString();
         CHECK(shown.contains("TuxAPE") && shown.contains("Getting started"));
-        CHECK(shown.contains("File > Library") && shown.contains("Ctrl+L"));
+        CHECK(shown.contains("File > Library") && shown.contains("F4"));
+        // Function keys for TuxAPE's own entries too: the letters are the
+        // CPC's, with CONTROL as without.
+        CHECK(shown.contains("File > Screen to Thumbnail") && shown.contains("Ctrl+F8"));
+        CHECK(!shown.contains("Ctrl+L") && !shown.contains("Ctrl+T,") && !shown.contains("Ctrl+T "));
         CHECK(shown.contains("Assembler > Show Assembler") && shown.contains("F3"));
         CHECK(shown.contains("Debug > Find Graphics"));
         CHECK(shown.contains("Amstrad CPC CRTC Compendium") && shown.contains("Longshot") && shown.contains("CC BY-NC-ND"));

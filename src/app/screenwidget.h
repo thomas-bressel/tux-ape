@@ -113,4 +113,5 @@ private:
 
     void fetchFrame();
     void handleKey(QKeyEvent* event, bool pressed);
+    bool isCpcKey(const QKeyEvent* event) const;
 };

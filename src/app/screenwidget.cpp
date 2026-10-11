@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QWindow>
 
+#include "core/keymap.h"
 #include "crtview.h"
 #include "emulator.h"
 #include "hostkeys.h"
@@ -352,8 +353,36 @@ void ScreenWidget::paintDriveLight(QPainter& painter, const QRect& light) const
                      driveCylinderShown_ ? QString("%1:%2").arg(letter).arg(driveLight_ & 0xFF, 2, 10, QLatin1Char('0')) : QString(letter));
 }
 
+// Whether a key pressed, with what is held down with it, is the CPC's and
+// not the interface's. The function keys are the interface's whatever the
+// layout: WinAPE's keys are all of that kind, which is why a program's own
+// CONTROL+L never opened a window there. Any other key the layout gives to
+// the CPC is the CPC's, unless it comes with a key that is not: Alt and a
+// letter is a menu, as long as no layout has put COPY on Alt.
+bool ScreenWidget::isCpcKey(const QKeyEvent* event) const
+{
+    if (event->key() >= Qt::Key_F1 && event->key() <= Qt::Key_F35)
+        return false;
+    const tuxape::KeyMap map = emulator_->keyMap();
+    const auto given = [&](uint8_t pcKey) { return pcKey != 0 && !map.cpcKeys(pcKey, numLock_).empty(); };
+    const Qt::KeyboardModifiers held = event->modifiers();
+    if (held & Qt::MetaModifier)
+        return false;
+    if ((held & Qt::AltModifier) && !given(tuxape::PcLeftAlt))
+        return false;
+    if ((held & Qt::ControlModifier) && !given(tuxape::PcLeftControl) && !given(tuxape::PcRightControl))
+        return false;
+    return given(pcKeyFromEvent(event));
+}
+
 bool ScreenWidget::event(QEvent* event)
 {
+    // A shortcut made of the CPC's keys does not take them from it while
+    // the screen has the keyboard: the key press comes here instead.
+    if (event->type() == QEvent::ShortcutOverride && isCpcKey(static_cast<QKeyEvent*>(event))) {
+        event->accept();
+        return true;
+    }
     // Tab belongs to the CPC; Qt would otherwise use it to move the focus
     // and never deliver it as a key press.
     if (event->type() == QEvent::KeyPress) {

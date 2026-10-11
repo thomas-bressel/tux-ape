@@ -2,10 +2,13 @@
 // emulated keyboard through Qt key events, and checks the CPC's screen.
 // Runs without a display (QT_QPA_PLATFORM=offscreen).
 
+#include <QAction>
 #include <QApplication>
 #include <QCheckBox>
 #include <QElapsedTimer>
 #include <QKeyEvent>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPointer>
 #include <QSplashScreen>
 #include <QTemporaryDir>
@@ -81,6 +84,67 @@ int main(int argc, char* argv[])
     press(Qt::Key_7);
     press(Qt::Key_Return);
     CHECK(waitForText(emulator, " 42", 5000));
+
+    // The CPC's keys are the CPC's, with CONTROL as without: a program's
+    // own CONTROL+L (IMP Draw has one) is not a shortcut of the interface,
+    // were there one on those keys, as a plugin may ask for. The function
+    // keys are the interface's, as all of WinAPE's keys are, and so is a
+    // letter with Alt, for the menus.
+    {
+        using tuxape::CpcKey;
+        int letters = 0, function = 0, menu = 0;
+        const auto shortcut = [&](const QKeySequence& keys, int* count) {
+            auto* action = new QAction(&window);
+            action->setShortcut(keys);
+            QObject::connect(action, &QAction::triggered, [count] { ++*count; });
+            window.addAction(action);
+            return action;
+        };
+        QAction* onLetters = shortcut(Qt::CTRL | Qt::Key_L, &letters);
+        QAction* onFunction = shortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_F10, &function);
+        QAction* onAlt = shortcut(Qt::ALT | Qt::Key_L, &menu);
+        const auto down = [&](CpcKey key) {
+            return emulator.withMachine([&](tuxape::Cpc& cpc) { return cpc.keyboard().pressed(key); });
+        };
+        window.activateWindow();
+        screen->setFocus();
+        CHECK(QTest::qWaitForWindowActive(&window, 3000));
+        QTest::keyPress(screen, Qt::Key_Control, Qt::ControlModifier);
+        QTest::keyPress(screen, Qt::Key_L, Qt::ControlModifier);
+        CHECK(QTest::qWaitFor([&] { return down(CpcKey::Control) && down(CpcKey::L); }, 2000));
+        CHECK_EQ(letters, 0);
+        QTest::keyRelease(screen, Qt::Key_L, Qt::ControlModifier);
+        QTest::keyRelease(screen, Qt::Key_Control);
+        CHECK(QTest::qWaitFor([&] { return !down(CpcKey::Control) && !down(CpcKey::L); }, 2000));
+        QTest::keyClick(screen, Qt::Key_F10, Qt::ControlModifier | Qt::ShiftModifier);
+        CHECK_EQ(function, 1);
+        QTest::keyClick(screen, Qt::Key_L, Qt::AltModifier);
+        CHECK_EQ(menu, 1);
+        CHECK(!down(CpcKey::L));
+        CHECK_EQ(letters, 0);
+        for (QAction* action : {onLetters, onFunction, onAlt}) {
+            window.removeAction(action);
+            delete action;
+        }
+
+        // So the menus' own keys are function keys, every one, or keys the
+        // CPC has not got.
+        QList<QAction*> entries = window.menuBar()->actions();
+        int withKeys = 0;
+        for (qsizetype i = 0; i < entries.size(); ++i) {
+            if (entries[i]->menu())
+                entries += entries[i]->menu()->actions();
+            for (const QKeySequence& keys : entries[i]->shortcuts()) {
+                const Qt::Key key = keys[0].key();
+                const bool interfaceKey = (key >= Qt::Key_F1 && key <= Qt::Key_F35) || key == Qt::Key_Print;
+                if (!interfaceKey)
+                    std::printf("%s: %s\n", qPrintable(entries[i]->text()), qPrintable(keys.toString()));
+                CHECK(interfaceKey);
+                ++withKeys;
+            }
+        }
+        CHECK(withKeys > 30);
+    }
 
     // Pausing stops the machine; the same picture stays up.
     QTest::keyClick(&window, Qt::Key_F7);
