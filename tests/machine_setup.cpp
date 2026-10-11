@@ -6,10 +6,14 @@
 // reports as "skipped", when they are not available.
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 #include "check.h"
 #include "core/cpc.h"
+#include "core/discfiles.h"
+#include "core/files.h"
 #include "core/screen_text.h"
 #include "core/setup.h"
 
@@ -180,6 +184,59 @@ void testRomChoices(const std::filesystem::path& romDir)
 
 }  // namespace
 
+// A ROM image kept as a file on a CPC disc, as those burnt from BASIC are,
+// comes with AMSDOS's header: the machine gets the image without it.
+void testRomWithHeader(const std::filesystem::path& romDir)
+{
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "tuxape_machine_setup_test";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+
+    const auto amsdos = readFile(romDir / "AMSDOS.ROM");
+    CHECK(amsdos && amsdos->size() == Memory::kBankSize);
+    if (!amsdos)
+        return;
+    AmsdosHeader header;
+    header.loadAddress = 0xC000;
+    header.length = static_cast<int>(amsdos->size());
+    std::vector<uint8_t> file = makeAmsdosHeader("AMSDOS.ROM", header);
+    CHECK_EQ(file.size(), 128u);
+    file.insert(file.end(), amsdos->begin(), amsdos->end());
+    CHECK(writeFile(dir / "Headed.rom", file));
+    CHECK(readRom(dir / "Headed.rom") == amsdos);
+    CHECK(readRom(romDir / "AMSDOS.ROM") == amsdos);  // as it is without one
+    CHECK(!readRom(dir / "Gone.rom"));
+
+    // A header that speaks of another length is not this file's: such
+    // bytes are the image's own.
+    std::vector<uint8_t> odd = file;
+    odd.resize(odd.size() - 256);
+    CHECK(writeFile(dir / "Odd.rom", odd));
+    CHECK(readRom(dir / "Odd.rom") == odd);
+
+    // In the machine: the ROM answers where it should, and the firmware
+    // takes it for the ROM it is.
+    Cpc cpc;
+    MachineConfig config = stockMachine(CpcModel::Cpc6128);
+    config.upperRoms[7] = (dir / "Headed.rom").string();
+    std::string error;
+    CHECK(applyMachine(cpc, config, romDir, &error));
+    CHECK(error.empty());
+    Memory& memory = cpc.memory();
+    memory.reset();
+    memory.selectUpperRom(7);
+    memory.setRomEnables(false, true);
+    bool same = true;
+    for (int at = 0; at < Memory::kBankSize; ++at)
+        same = same && memory.read(static_cast<uint16_t>(0xC000 + at)) == (*amsdos)[static_cast<size_t>(at)];
+    CHECK(same);
+    CHECK(contains(screenAfterBoot(cpc), "Ready"));
+    // BASIC's HIMEM (&AE5E): below the room AMSDOS took for itself.
+    CHECK_EQ(memory.readRam(0xAE5E) | memory.readRam(0xAE5F) << 8, 0xA67B);
+
+    std::filesystem::remove_all(dir);
+}
+
 int main()
 {
     const std::filesystem::path romDir = defaultRomDir();
@@ -192,5 +249,6 @@ int main()
     testStockMachines(romDir);
     testRam();
     testRomChoices(romDir);
+    testRomWithHeader(romDir);
     return checkSummary("machine_setup");
 }

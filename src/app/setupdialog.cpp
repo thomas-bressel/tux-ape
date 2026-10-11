@@ -116,17 +116,17 @@ public:
         if (!listed)
             combo->addItem(QDir::toNativeSeparators(current), current);
         combo->addItem(SetupDialog::tr("Select File..."), kSelectFile);
-        // The choice is taken as soon as it is made.
+        // The choice is taken as soon as it is made. A file is asked for
+        // once the list is closed, and not by the list: the file window
+        // takes the focus, the table deletes a list that has lost it, and
+        // the list would be gone when the window returns.
         connect(combo, &QComboBox::activated, this, [this, combo, row](int choice) {
-            QString name = combo->itemData(choice).toString();
-            if (name == kSelectFile) {
-                name = QFileDialog::getOpenFileName(dialog_, SetupDialog::tr("Select File..."),
-                                                    QString::fromStdString(tuxape::defaultRomDir().string()),
-                                                    SetupDialog::tr("ROM files (*.rom *.ROM);;All files (*)"));
-                if (name.isEmpty())
-                    name = dialog_->rom(row);  // cancelled: as it was
-            }
-            dialog_->setRom(row, name);
+            const QString name = combo->itemData(choice).toString();
+            if (name == kSelectFile)
+                QMetaObject::invokeMethod(dialog_, [dialog = dialog_, row] { dialog->chooseRom(row); },
+                                          Qt::QueuedConnection);
+            else
+                dialog_->setRom(row, name);
             emit const_cast<RomDelegate*>(this)->closeEditor(combo);
         });
         return combo;
@@ -1224,13 +1224,34 @@ void SetupDialog::setRom(int row, const QString& name)
     if (row < 0 || row > tuxape::Memory::kRomSlots)
         return;
     // An image of the ROM folder goes by its bare name, as in WinAPE.ini.
+    // So does one of the user's own folder, when that name finds it.
     const QFileInfo file(name);
-    const QString romDir = QDir::cleanPath(QString::fromStdString(tuxape::defaultRomDir().string()));
-    const bool inRomDir = file.isAbsolute() && QDir::cleanPath(file.absolutePath()) == romDir
-                          && file.suffix().compare("rom", Qt::CaseInsensitive) == 0;
-    romNames_[row] = inRomDir ? file.completeBaseName() : name;
+    bool byName = false;
+    if (file.isAbsolute() && file.suffix().compare("rom", Qt::CaseInsensitive) == 0) {
+        const std::filesystem::path found =
+            tuxape::findRom(file.completeBaseName().toStdString(), tuxape::defaultRomDir());
+        std::error_code ignored;
+        byName = !found.empty() && std::filesystem::equivalent(found, file.filesystemAbsoluteFilePath(), ignored);
+    }
+    romNames_[row] = byName ? file.completeBaseName() : name;
     if (roms_ && row < roms_->rowCount())
         roms_->viewport()->update();
+}
+
+void SetupDialog::chooseRom(int row)
+{
+    // The user's own ROM folder, if there is one, is where the file is
+    // likely to be; then where the last one was.
+    const QString own = QDir::cleanPath(QString::fromStdString(tuxape::userRomDir().string()));
+    const QString romDir = QDir::cleanPath(QString::fromStdString(tuxape::defaultRomDir().string()));
+    const bool again = !romFolder_.isEmpty() && QDir(romFolder_).exists();
+    const QString folder = again ? romFolder_ : QDir(own).exists() ? own : romDir;
+    const QString path = QFileDialog::getOpenFileName(this, tr("Select File..."), folder,
+                                                      tr("ROM files (*.rom *.ROM);;All files (*)"));
+    if (path.isEmpty())
+        return;
+    romFolder_ = QFileInfo(path).absolutePath();
+    setRom(row, path);
 }
 
 // The speed slider or the frame count: whichever "Display Every" leaves in

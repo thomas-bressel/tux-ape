@@ -71,6 +71,9 @@ public:
     // firmware ROM, row 1 upper ROM 0, and so on. Empty for none.
     QString rom(int row) const;
     void setRom(int row, const QString& name);
+    // Asks for the file of a row's ROM ("Select File..."). No file, no
+    // change.
+    void chooseRom(int row);
     // What the list shows for a row without a ROM.
     static QString emptyRomText(int row);
 
@@ -155,6 +158,7 @@ private:
     QCheckBox* onlyLower0And7_ = nullptr;
     // The names of all 33 ROMs, shown or not.
     QString romNames_[1 + tuxape::Memory::kRomSlots];
+    QString romFolder_;  // where a ROM's file was last taken
 
     QWidget* createGeneralPage();
     QWidget* createDisplayPage();

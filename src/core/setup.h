@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include <array>
@@ -67,6 +68,10 @@ std::filesystem::path defaultProfileDir();
 std::vector<std::string> romNames(const std::filesystem::path& romDir);
 // The file a ROM name stands for; an empty path if there is none.
 std::filesystem::path findRom(std::string_view name, const std::filesystem::path& romDir);
+// A ROM image as the machine has it. One kept as a file on a CPC disc, to
+// be burnt from there, has AMSDOS's 128 bytes ahead of it: they are left
+// out. Nothing if the file cannot be read.
+std::optional<std::vector<uint8_t>> readRom(const std::filesystem::path& file);
 
 // Fits the RAM and the ROM images. The machine is not reset: as in WinAPE,
 // the firmware only finds out about new ROMs at the next reset. A ROM image

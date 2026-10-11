@@ -245,7 +245,7 @@ bool CslRunner::execute(const std::string& command, const std::vector<std::strin
         if (!parseNumber(arg(1), number) || (type != "u" && type != "l"))
             return fail("ROM type '" + arg(0) + "' is not supported");
         const auto path = find(romDir_.empty() ? defaultRomDir() : romDir_, arg(2));
-        const auto image = path.empty() ? std::nullopt : readFile(path);
+        const auto image = path.empty() ? std::nullopt : readRom(path);
         if (!image)
             return fail("cannot read ROM image '" + arg(2) + "'");
         if (type == "l")

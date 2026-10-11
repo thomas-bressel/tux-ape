@@ -6,6 +6,7 @@
 
 #include "core/cartridge.h"
 #include "core/cpc.h"
+#include "core/discfiles.h"
 #include "core/files.h"
 
 namespace tuxape {
@@ -146,6 +147,19 @@ std::filesystem::path findRom(std::string_view name, const std::filesystem::path
     return found;
 }
 
+std::optional<std::vector<uint8_t>> readRom(const std::filesystem::path& file)
+{
+    auto image = readFile(file);
+    // The header says how long the file after it is: taken for one only
+    // when that is so.
+    constexpr size_t kHeader = 128;
+    if (image)
+        if (const auto header = amsdosHeader(*image);
+            header && static_cast<size_t>(header->length) == image->size() - kHeader)
+            image->erase(image->begin(), image->begin() + kHeader);
+    return image;
+}
+
 bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::path& romDir, std::string* error)
 {
     std::string missing;
@@ -153,7 +167,7 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
         if (name.empty())
             return {};
         const std::filesystem::path file = findRom(name, romDir);
-        auto image = file.empty() ? std::nullopt : readFile(file);
+        auto image = file.empty() ? std::nullopt : readRom(file);
         if (!image) {
             if (!missing.empty())
                 missing += ", ";

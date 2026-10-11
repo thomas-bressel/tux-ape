@@ -14,10 +14,12 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
+#include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QSlider>
@@ -27,6 +29,7 @@
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QWheelEvent>
 
@@ -670,6 +673,99 @@ void testSoundPage(const QString& picture)
     }
 }
 
+// A ROM image from a file of the user's choosing ("Select File..."). The
+// file window takes the focus from the cell's list, and the table closes
+// and deletes a list that has lost it: the window must not be opened by
+// the list, which would not be there any more when it returns.
+void testRomFile(const QString& folder)
+{
+    const QString file = folder + "/Chosen.rom";
+    {
+        QFile image(file);
+        CHECK(image.open(QIODevice::WriteOnly));
+        image.write(QByteArray(16384, '\xFF'));
+    }
+    // The user's own ROM folder, when there is one, is where the window
+    // starts; then where a file was last taken.
+    const QString own = folder + "/own";
+    CHECK(QDir().mkpath(own + "/drawing"));
+    const QByteArray ownBefore = qgetenv("TUXAPE_USER_ROM_DIR");
+    qputenv("TUXAPE_USER_ROM_DIR", own.toLocal8Bit());
+
+    SetupDialog dialog{Settings()};
+    dialog.showPage(SetupDialog::Memory);
+    dialog.show();
+    auto* roms = dialog.findChild<QTableWidget*>("ogROMs");
+    CHECK(roms != nullptr);
+    if (!roms)
+        return;
+
+    // What the file window is asked when it comes: nothing (it is closed)
+    // or the file named.
+    QString answer, startedIn;
+    int windows = 0;
+    QTimer watch;
+    QObject::connect(&watch, &QTimer::timeout, [&] {
+        auto* files = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+        if (!files)
+            return;
+        watch.stop();
+        ++windows;
+        startedIn = files->directory().absolutePath();
+        auto* name = files->findChild<QLineEdit*>("fileNameEdit");
+        if (answer.isEmpty() || !name)
+            return files->close(), void();
+        name->setText(answer);
+        static_cast<QDialog*>(files)->accept();
+    });
+    const auto choose = [&](int row, const QString& what) {
+        answer = what;
+        dialog.activateWindow();  // back from the file window
+        CHECK(QTest::qWaitForWindowActive(&dialog));
+        roms->setCurrentCell(row, 1);  // going to a cell opens its list
+        QPointer<QComboBox> list = roms->findChild<QComboBox*>();
+        CHECK(list != nullptr);
+        if (!list)
+            return;
+        CHECK(list->hasFocus());
+        watch.start(20);
+        QTest::keyClick(list, Qt::Key_End);  // the last of the list, as from the keyboard
+        CHECK(QTest::qWaitFor([&] { return !watch.isActive(); }, 5000));
+        watch.stop();
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        CHECK(list.isNull());  // the list is closed either way
+        roms->setCurrentCell(row, 0);
+    };
+
+    choose(3, file);
+    CHECK_EQ(windows, 1);
+    CHECK(startedIn == own);
+    CHECK(dialog.rom(3) == file);
+
+    // No file chosen: the place keeps what it had.
+    choose(3, QString());
+    CHECK_EQ(windows, 2);
+    CHECK(startedIn == folder);  // where the last one was
+    CHECK(dialog.rom(3) == file);
+    choose(4, QString());
+    CHECK_EQ(windows, 3);
+    CHECK(dialog.rom(4).isEmpty());
+
+    // A file of the user's folder that its name finds goes by that name,
+    // as those of the list do.
+    const QString drawing = own + "/drawing/Draw.ROM";
+    CHECK(QFile::copy(file, drawing));
+    choose(5, drawing);
+    CHECK_EQ(windows, 4);
+    CHECK(dialog.rom(5) == "Draw");
+    CHECK(dialog.rom(3) == file);
+
+    if (ownBefore.isNull())
+        qunsetenv("TUXAPE_USER_ROM_DIR");
+    else
+        qputenv("TUXAPE_USER_ROM_DIR", ownBefore);
+}
+
 // The Input page: the CPC's keyboard to click on, the PC keys of the key
 // clicked, the joystick, and layouts in WinAPE's .kbd files.
 void testInputPage(const QString& folder, const QString& picture)
@@ -1002,6 +1098,7 @@ int main(int argc, char* argv[])
     testDialog(prefix.isEmpty() ? QString() : prefix + "general.png");
     testSoundPage(prefix.isEmpty() ? QString() : prefix + "sound.png");
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");
+    testRomFile(folder.path());
     testInputPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "input.png");
     testProfiles(folder.path(), prefix.isEmpty() ? QString() : prefix + "profile.png");
 
