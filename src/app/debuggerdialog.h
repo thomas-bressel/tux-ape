@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <set>
 #include <vector>
 
@@ -215,6 +216,11 @@ public:
     // number, #80 and up being the banks of a Plus's cartridge.
     void setAnyView(bool lowerRom, bool upperRom, int upperRomNumber, int ramBank);
     bool anyView() const;
+    // Calls `use` with the machine's memory mapped as the Any view has it,
+    // then puts the machine's own mapping back: how another window looks
+    // at what this one shows. False, and nothing done, while the view is
+    // not Any. To be called with the machine held (Emulator::withMachine).
+    bool throughAnyView(tuxape::Memory& memory, const std::function<void()>& use) const;
     // With it, the Plus's secondary mapping: where the lower ROM shows (0:
     // #0000, 1: #4000, 2: #8000, 3: #0000 with the ASIC's registers at
     // #4000) and which of the cartridge's first eight banks it is.
@@ -234,6 +240,9 @@ public:
 signals:
     // Memory breakpoints were set from here.
     void breakpointsChanged();
+    // The memory shown is no longer the same: another view of it was
+    // chosen, or bytes were written from here.
+    void memoryViewChanged();
     // A disassembly meant for a new tab of the assembler.
     void sourceProduced(const QString& source);
     // The user set the machine running from here.
@@ -291,6 +300,7 @@ private:
     using Mapping = tuxape::Memory::Mapping;
     Mapping applyView(tuxape::Memory& memory) const;
     void restoreView(tuxape::Memory& memory, const Mapping& saved) const;
+    void viewChosen();
     // What is fitted, for the list of upper ROMs.
     struct Fitted {
         int count = 16;  // ROM slots: 16, or 32 with the larger board

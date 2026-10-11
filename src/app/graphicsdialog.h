@@ -2,12 +2,18 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 #include <QDialog>
 #include <QImage>
 #include <QList>
 #include <QRgb>
+#include <QSize>
+
+namespace tuxape {
+class Memory;
+}
 
 class Emulator;
 class QAction;
@@ -35,11 +41,21 @@ public:
         Reverse,  // the same, the leftmost pixel in the low bits
     };
     // The screen mode pixels are read in: -1 for the one the machine is
-    // in, 0 to 2, or 3 for a Plus's sprites, a byte to a pixel.
+    // in, 0 to 2, or 3 for a Plus's sprites, a byte to a pixel. That last
+    // one, when chosen, comes with a sprite's size, sixteen bytes by
+    // sixteen lines; the size there was comes back with another mode.
     static constexpr int kCurrentMode = -1;
     static constexpr int kSpriteMode = 3;
+    static constexpr int kSpriteSize = 16;
 
     explicit GraphicsDialog(Emulator* emulator, QWidget* parent = nullptr);
+
+    // The memory looked at, and drawn in, is the RAM the machine has
+    // mapped; unless a view is given and takes over: it calls `use` with
+    // the memory mapped some other way and returns true, as the debugger
+    // does for its Any view. ROMs then show where that has them.
+    using MemoryView = std::function<bool(tuxape::Memory& memory, const std::function<void()>& use)>;
+    void setMemoryView(MemoryView view);
 
     void setView(int mode, int zoom, unsigned address, int width, int height, Encoding encoding);
     int mode() const;  // 0 to 3: what kCurrentMode stands for, if that is chosen
@@ -107,6 +123,8 @@ protected:
 
 private:
     unsigned byteAddress(int tile, int column, int line) const;
+    void readMemory(tuxape::Memory& memory);
+    void modeChosen(int index);
     int pensInMode() const;
     void setPixel(int tile, int x, int y, int pen);
     void flush();
@@ -135,6 +153,8 @@ private:
     QList<QAction*> actions_;
     QWidget* swatches_;
 
+    MemoryView memoryView_;
+    QSize sizeBefore_;  // the tiles' size before the Sprite mode gave its own
     std::array<uint8_t, 0x10000> memory_ = {};
     std::array<QRgb, 16> colours_ = {};
     int machineMode_ = 1;

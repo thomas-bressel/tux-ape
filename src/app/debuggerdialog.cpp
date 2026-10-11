@@ -660,13 +660,13 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
 
     connect(writeViewButton_, &QRadioButton::toggled, this, [this](bool write) {
         writeView_ = write;
-        refresh();
+        viewChosen();
     });
-    connect(anyView_, &QRadioButton::toggled, this, &DebuggerDialog::refresh);
-    connect(anyLower_, &QCheckBox::toggled, this, &DebuggerDialog::refresh);
-    connect(anyUpper_, &QCheckBox::toggled, this, &DebuggerDialog::refresh);
+    connect(anyView_, &QRadioButton::toggled, this, &DebuggerDialog::viewChosen);
+    connect(anyLower_, &QCheckBox::toggled, this, &DebuggerDialog::viewChosen);
+    connect(anyUpper_, &QCheckBox::toggled, this, &DebuggerDialog::viewChosen);
     for (QComboBox* box : {upperRom_, ramBank_, romBase_, cartridgeBank_})
-        connect(box, &QComboBox::activated, this, &DebuggerDialog::refresh);
+        connect(box, &QComboBox::activated, this, &DebuggerDialog::viewChosen);
 
     // The buttons, with WinAPE's names and hints.
     const auto button = [this](IconId icon, const char* name, const QString& hint) {
@@ -1036,7 +1036,7 @@ void DebuggerDialog::writeBytes(int start, const QByteArray& bytes)
             cpc.memory().write(static_cast<uint16_t>(start + n), static_cast<uint8_t>(bytes[n]));
         restoreView(cpc.memory(), saved);
     });
-    refresh();
+    viewChosen();
 }
 
 // With the Any view, memory is looked at, and written to, as the boxes
@@ -1062,6 +1062,24 @@ void DebuggerDialog::restoreView(tuxape::Memory& memory, const Mapping& saved) c
 {
     if (anyView_->isChecked())
         memory.setMapping(saved);
+}
+
+bool DebuggerDialog::throughAnyView(tuxape::Memory& memory, const std::function<void()>& use) const
+{
+    if (!anyView_->isChecked())
+        return false;
+    const Mapping saved = applyView(memory);
+    use();
+    restoreView(memory, saved);
+    return true;
+}
+
+// Another view of memory: the panes show it, and so do the windows that
+// look through this one's.
+void DebuggerDialog::viewChosen()
+{
+    refresh();
+    emit memoryViewChanged();
 }
 
 // The three boxes: the machine's own mapping while its memory is shown as
@@ -1137,20 +1155,20 @@ void DebuggerDialog::setAnyView(bool lowerRom, bool upperRom, int upperRomNumber
     upperRom_->setCurrentIndex(qMax(0, upperRom_->findData(upperRomNumber)));
     ramBank_->setCurrentIndex(qMax(0, ramBank_->findData(ramBank)));
     writeView_ = false;
-    refresh();
+    viewChosen();
 }
 
 void DebuggerDialog::setSecondaryMapping(int lowerRomBase, int cartridgeBank)
 {
     romBase_->setCurrentIndex(qBound(0, lowerRomBase, 3));
     cartridgeBank_->setCurrentIndex(qBound(0, cartridgeBank, 7));
-    refresh();
+    viewChosen();
 }
 
 void DebuggerDialog::setMachineView(bool write)
 {
     (write ? writeViewButton_ : readView_)->setChecked(true);
-    refresh();
+    viewChosen();
 }
 
 bool DebuggerDialog::anyView() const

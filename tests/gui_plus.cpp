@@ -20,6 +20,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
@@ -31,6 +32,7 @@
 #include "core/setup.h"
 #include "debuggerdialog.h"
 #include "emulator.h"
+#include "graphicsdialog.h"
 #include "librarydialog.h"
 #include "mainwindow.h"
 #include "settings.h"
@@ -296,6 +298,104 @@ int main(int argc, char* argv[])
         CHECK(after.lowerRom == before.lowerRom && after.upperRom == before.upperRom);
         CHECK(after.upperSelected == before.upperSelected && after.ramConfig == before.ramConfig);
         CHECK(after.ramPage == before.ramPage && after.rmr2 == before.rmr2);
+
+        // The Graphics Finder looks where the Any view does, and looks
+        // again each time that changes: a cartridge's pictures are in its
+        // banks, which the RAM it otherwise shows knows nothing of.
+        if (QAction* find = actionNamed(window, "Find Graphics"))
+            find->trigger();
+        GraphicsDialog* graphics = window.graphics();
+        CHECK(graphics && graphics->isVisible());
+        auto* romList = debugger->findChild<QComboBox*>("cbROM");
+        auto* bankList = debugger->findChild<QComboBox*>("cbBankSelect");
+        auto* baseList = debugger->findChild<QComboBox*>("cbROMAddress");
+        auto* readButton = debugger->findChild<QRadioButton*>("rbRead");
+        auto* anyButton = debugger->findChild<QRadioButton*>("rbAny");
+        CHECK(romList && bankList && baseList && readButton && anyButton);
+        if (graphics && romList && bankList && baseList && readButton && anyButton) {
+            using G = GraphicsDialog;
+            // A tile of one line of sixteen bytes: what the window has at
+            // an address, as it gives it for the assembler.
+            const auto line = [](const QByteArray& bytes) {
+                QStringList text;
+                for (const char byte : bytes)
+                    text << QString("#%1").arg(static_cast<uchar>(byte), 2, 16, QLatin1Char('0')).toUpper();
+                return "db " + text.join(',') + '\n';
+            };
+            const auto found = [&] { return graphics->selectionText().section('\n', 1); };
+            const auto ram = [&](unsigned address) {
+                return emulator.withMachine([&](tuxape::Cpc& cpc) {
+                    QByteArray bytes;
+                    for (unsigned i = 0; i < 16; ++i)
+                        bytes += static_cast<char>(cpc.memory().readRam(static_cast<uint16_t>(address + i)));
+                    return bytes;
+                });
+            };
+            debugger->setMachineView(false);
+            graphics->setView(G::kSpriteMode, 1, 0xC000, 16, 1, G::Cpc);
+            graphics->select(0);
+            CHECK(found() == line(ram(0xC000)));
+            CHECK(ram(0xC000) != bankStart(3) && ram(0xC000) != bankStart(5));
+            // From here the window is left alone: it follows the debugger.
+            debugger->setAnyView(false, true, 0x83, 0xC0);
+            CHECK(found() == line(bankStart(3)));
+            // As the user does it: another bank in the list of ROMs...
+            romList->setCurrentIndex(romList->findData(0x85));
+            emit romList->activated(romList->currentIndex());
+            CHECK(found() == line(bankStart(5)));
+            // ... the machine's own view, which is the RAM again; and Any
+            // once more, whose boxes have followed the machine meanwhile:
+            // what it reads there itself.
+            readButton->click();
+            CHECK(found() == line(ram(0xC000)));
+            anyButton->click();
+            const QByteArray read = emulator.withMachine([](tuxape::Cpc& cpc) {
+                QByteArray bytes;
+                for (int i = 0; i < 16; ++i)
+                    bytes += static_cast<char>(cpc.memory().read(static_cast<uint16_t>(0xC000 + i)));
+                return bytes;
+            });
+            CHECK(found() == line(read));
+            // The lower ROM moved to #8000, with a bank of its own.
+            graphics->setView(G::kSpriteMode, 1, 0x8000, 16, 1, G::Cpc);
+            graphics->select(0);
+            debugger->setAnyView(true, true, 0x85, 0xC0);
+            baseList->setCurrentIndex(2);
+            emit baseList->activated(2);
+            bankList->setCurrentIndex(6);
+            emit bankList->activated(6);
+            CHECK(found() == line(bankStart(6)));
+
+            // The brush writes where the machine would with that mapping. On
+            // a ROM that is the RAM under it: the ROM still shows, as it is.
+            const uchar under = static_cast<uchar>(ram(0x8000)[0]);
+            graphics->setCurrentPen((under & 15) ^ 9);
+            graphics->paintPixel(0, 0, 0);
+            CHECK(found() == line(bankStart(6)));
+            CHECK_EQ(static_cast<uchar>(ram(0x8000)[0]) & 15, (under & 15) ^ 9);
+            emulator.withMachine([&](tuxape::Cpc& cpc) { cpc.memory().write(0x8000, under); });
+            // On the ASIC's page it is a sprite's pixel, there for the
+            // machine to show.
+            debugger->setSecondaryMapping(3, 0);
+            graphics->setView(G::kSpriteMode, 3, 0x4000, 16, 16, G::Cpc);
+            const int was = graphics->pen(1, 2, 3);
+            graphics->setCurrentPen(was ^ 6);
+            graphics->paintPixel(1, 2, 3);
+            CHECK_EQ(graphics->pen(1, 2, 3), was ^ 6);
+            const int sprite = emulator.withMachine([](tuxape::Cpc& cpc) {
+                const tuxape::Memory::Mapping saved = cpc.memory().mapping();
+                cpc.memory().setRmr2(0x18);
+                const int pixel = cpc.memory().read(0x4000 + 0x100 + 3 * 16 + 2) & 15;
+                cpc.memory().setMapping(saved);
+                return pixel;
+            });
+            CHECK_EQ(sprite, was ^ 6);
+            // The machine's own mapping has not moved for all that.
+            const Mapping now = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().mapping(); });
+            CHECK(now.lowerRom == before.lowerRom && now.upperRom == before.upperRom);
+            CHECK(now.upperSelected == before.upperSelected && now.rmr2 == before.rmr2);
+            graphics->close();
+        }
         if (argc > 1) {
             debugger->setAnyView(false, true, 0, 0xC0);
             QApplication::processEvents();

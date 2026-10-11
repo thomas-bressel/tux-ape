@@ -523,6 +523,11 @@ void MainWindow::showGraphics()
             }
             debugger_->addDataArea(address, size);
         });
+        // With the debugger's Any view, the tiles are looked for in the
+        // memory that shows there: a cartridge's banks, a ROM, a RAM bank.
+        graphics_->setMemoryView([this](tuxape::Memory& memory, const std::function<void()>& use) {
+            return debugger_ && debugger_->throughAnyView(memory, use);
+        });
     }
     graphics_->show();
     graphics_->raise();
@@ -686,6 +691,10 @@ void MainWindow::showDebugger()
         connect(debugger_, &DebuggerDialog::breakpointsChanged, this, [this] {
             if (breakpoints_ && breakpoints_->isVisible())
                 breakpoints_->refresh();
+        });
+        connect(debugger_, &DebuggerDialog::memoryViewChanged, this, [this] {
+            if (graphics_ && graphics_->isVisible())
+                graphics_->refresh();
         });
         // A disassembly asked for as a source goes to a new tab of the
         // assembler.

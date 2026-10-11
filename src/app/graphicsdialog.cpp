@@ -233,6 +233,7 @@ GraphicsDialog::GraphicsDialog(Emulator* emulator, QWidget* parent)
             selected_ = -1;
         refresh();
     };
+    connect(modeBox_, &QComboBox::currentIndexChanged, this, &GraphicsDialog::modeChosen);
     connect(modeBox_, &QComboBox::currentIndexChanged, this, changed);
     connect(encodingBox_, &QComboBox::currentIndexChanged, this, changed);
     for (QSpinBox* box : {zoomBox_, addressBox_, widthBox_, heightBox_})
@@ -247,6 +248,27 @@ GraphicsDialog::GraphicsDialog(Emulator* emulator, QWidget* parent)
     });
     timer->start(250);
     changed();
+}
+
+// A Plus's sprites are sixteen pixels each way, a byte to a pixel: the
+// tiles take that size with their mode, and with another the size they had.
+void GraphicsDialog::modeChosen(int index)
+{
+    const bool sprites = index - 1 == kSpriteMode;
+    if (sprites == sizeBefore_.isValid())
+        return;
+    const QSize size = sprites ? QSize(kSpriteSize, kSpriteSize) : sizeBefore_;
+    sizeBefore_ = sprites ? QSize(tileWidth(), tileHeight()) : QSize();
+    // The view is drawn once, by what follows the mode's change.
+    const QSignalBlocker blockWidth(widthBox_), blockHeight(heightBox_);
+    widthBox_->setValue(size.width());
+    heightBox_->setValue(size.height());
+}
+
+void GraphicsDialog::setMemoryView(MemoryView view)
+{
+    memoryView_ = std::move(view);
+    refresh();
 }
 
 void GraphicsDialog::setView(int mode, int zoom, unsigned address, int width, int height, Encoding encoding)
@@ -335,12 +357,25 @@ void GraphicsDialog::showEvent(QShowEvent* event)
     refresh();
 }
 
+// The 64K looked at: the RAM, whatever ROM the machine has over it, or
+// what a view of memory shows.
+void GraphicsDialog::readMemory(tuxape::Memory& memory)
+{
+    const auto shown = [&] {
+        for (int a = 0; a < 0x10000; ++a)
+            memory_[static_cast<size_t>(a)] = memory.read(static_cast<uint16_t>(a));
+    };
+    if (memoryView_ && memoryView_(memory, shown))
+        return;
+    for (int a = 0; a < 0x10000; ++a)
+        memory_[static_cast<size_t>(a)] = memory.readRam(static_cast<uint16_t>(a));
+}
+
 void GraphicsDialog::refresh()
 {
     const bool sprites = modeBox_->currentIndex() - 1 == kSpriteMode;
     emulator_->withMachine([&](tuxape::Cpc& cpc) {
-        for (int a = 0; a < 0x10000; ++a)
-            memory_[static_cast<size_t>(a)] = cpc.memory().readRam(static_cast<uint16_t>(a));
+        readMemory(cpc.memory());
         machineMode_ = cpc.gateArray().mode() & 3;
         if (machineMode_ == 3)
             machineMode_ = 0;
@@ -467,8 +502,18 @@ void GraphicsDialog::setPixel(int tile, int x, int y, int pen)
 void GraphicsDialog::flush()
 {
     emulator_->withMachine([&](tuxape::Cpc& cpc) {
-        for (const unsigned at : written_)
-            cpc.memory().write(static_cast<uint16_t>(at), memory_[at]);
+        tuxape::Memory& memory = cpc.memory();
+        const auto write = [&] {
+            for (const unsigned at : written_)
+                memory.write(static_cast<uint16_t>(at), memory_[at]);
+        };
+        // Through a view the bytes go where the machine would put them
+        // with that mapping, and a ROM that shows there has not changed:
+        // the memory is looked at again.
+        if (memoryView_ && memoryView_(memory, write))
+            readMemory(memory);
+        else
+            write();
     });
     written_.clear();
 }

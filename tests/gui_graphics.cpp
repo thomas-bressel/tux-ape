@@ -109,6 +109,26 @@ int main(int argc, char* argv[])
     graphics->setView(G::kSpriteMode, 3, 0x9000, 16, 16, G::Cpc);
     CHECK(graphics->mode() == G::kSpriteMode && graphics->pixelsWide() == 16);
     CHECK(graphics->pen(0, 0, 0) == 0 && graphics->pen(0, 1, 0) == 15 && graphics->pen(0, 4, 0) == 10);
+    // Chosen in the list, the Sprite mode comes with a sprite's size,
+    // sixteen pixels each way; the size there was comes back after it.
+    graphics->setView(1, 3, 0x9000, 3, 5, G::Cpc);
+    if (modes) {
+        modes->setCurrentIndex(4);
+        CHECK(graphics->mode() == G::kSpriteMode);
+        CHECK(graphics->tileWidth() == 16 && graphics->tileHeight() == 16 && graphics->pixelsWide() == 16);
+        CHECK(graphics->pen(0, 1, 0) == 15 && graphics->pen(0, 4, 0) == 10);  // and the view is drawn with it
+        // Another size may be asked for there; it does not outlive the mode.
+        graphics->setView(G::kSpriteMode, 3, 0x9000, 8, 4, G::Cpc);
+        CHECK(graphics->tileWidth() == 8 && graphics->tileHeight() == 4);
+        modes->setCurrentIndex(1);
+        CHECK(graphics->mode() == 0 && graphics->tileWidth() == 3 && graphics->tileHeight() == 5);
+        modes->setCurrentIndex(3);
+        CHECK(graphics->tileWidth() == 3 && graphics->tileHeight() == 5);
+        modes->setCurrentIndex(4);
+        CHECK(graphics->tileWidth() == 16 && graphics->tileHeight() == 16);
+        modes->setCurrentIndex(0);
+        CHECK(graphics->tileWidth() == 3 && graphics->tileHeight() == 5);
+    }
     // The machine's own mode.
     graphics->setView(G::kCurrentMode, 3, 0x9000, 2, 2, G::Cpc);
     const int machineMode = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.gateArray().mode() & 3; });
