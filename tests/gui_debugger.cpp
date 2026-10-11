@@ -9,10 +9,14 @@
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QFontMetricsF>
+#include <QInputDialog>
+#include <QKeyEvent>
 #include <QRadioButton>
 #include <QScrollBar>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 #include <QToolButton>
 
 #include "check.h"
@@ -246,6 +250,110 @@ int main(int argc, char* argv[])
     CHECK_EQ(dump->cursor(), 0x9002);
     CHECK_EQ(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().read(0x9001); }), 0xA5);
     CHECK(dump->lineText(0x9000 / 16 - dump->verticalScrollBar()->value()).startsWith("9000 11 A5 33"));
+
+    // The same as the user does it: a click on a byte, and the digits
+    // typed at the window, which gives them to the pane that has the keys.
+    {
+        debugger->activateWindow();
+        CHECK(QTest::qWaitForWindowActive(debugger));
+        const auto peek = [&](unsigned address) {
+            return emulator.withMachine([&](tuxape::Cpc& cpc) { return cpc.memory().read(static_cast<uint16_t>(address)); });
+        };
+        // Where a byte of the line of &9000 is: among the digits, or among
+        // the characters after them.
+        const qreal character = QFontMetricsF(dump->font()).horizontalAdvance('0');
+        const auto place = [&](int index, bool characters) {
+            const int row = 0x9000 / 16 - dump->verticalScrollBar()->value();
+            const int column = characters ? 53 + index : 5 + index * 3;
+            return QPointF(4 + character * (column + 0.5), row * dump->fontMetrics().height() + 3).toPoint();
+        };
+        QTest::mouseClick(dump->viewport(), Qt::LeftButton, {}, place(3, false));
+        CHECK(dump->hasFocus());
+        CHECK_EQ(dump->cursor(), 0x9003);
+        CHECK(!dump->editsCharacters());
+        QTest::keyClick(debugger->windowHandle(), Qt::Key_7);
+        // The line under the digit the next key changes.
+        if (!prefix.isEmpty())
+            dump->grab().save(prefix + "debugger_dump.png");
+        QTest::keyClick(debugger->windowHandle(), Qt::Key_E);
+        CHECK_EQ(peek(0x9003), 0x7E);
+        CHECK_EQ(dump->cursor(), 0x9004);
+#ifdef Q_OS_LINUX
+        // The row of digits without Shift, on a keyboard that has other
+        // signs there: the second key of the row is still a 1.
+        {
+            QKeyEvent press(QEvent::KeyPress, Qt::Key_Ampersand, Qt::NoModifier, 2 + 8, 0, 0, "&");
+            QApplication::sendEvent(dump, &press);
+            QKeyEvent again(QEvent::KeyPress, Qt::Key_Eacute, Qt::NoModifier, 3 + 8, 0, 0, QString(QChar(0xE9)));
+            QApplication::sendEvent(dump, &again);
+            CHECK_EQ(peek(0x9004), 0x12);
+            CHECK_EQ(dump->cursor(), 0x9005);
+        }
+#endif
+        // A click among the characters: what is typed is put there as it
+        // is, letters that are no digits and digits too.
+        QTest::mouseClick(dump->viewport(), Qt::LeftButton, {}, place(6, true));
+        CHECK_EQ(dump->cursor(), 0x9006);
+        CHECK(dump->editsCharacters());
+        QTest::keyClicks(dump, "Hi 4");
+        CHECK(peek(0x9006) == 'H' && peek(0x9007) == 'i' && peek(0x9008) == ' ' && peek(0x9009) == '4');
+        CHECK_EQ(dump->cursor(), 0x900A);
+        CHECK(dump->lineText(0x9000 / 16 - dump->verticalScrollBar()->value()).endsWith("Hi 4......"));
+        // Ctrl+Tab goes from one column to the other.
+        QTest::keyClick(dump, Qt::Key_Tab, Qt::ControlModifier);
+        CHECK(!dump->editsCharacters() && dump->hasFocus());
+        QTest::keyClicks(dump, "c9");
+        CHECK_EQ(peek(0x900A), 0xC9);
+        QTest::keyClick(dump, Qt::Key_Tab, Qt::ControlModifier);
+        CHECK(dump->editsCharacters());
+        dump->setEditsCharacters(false);
+
+        // Going to an address. Ctrl+G is for the pane that has the keys,
+        // Ctrl+Shift+G for the lower one wherever they are. The box that
+        // asks says which.
+        QString asked;
+        const auto goTo = [&](Qt::KeyboardModifiers keys, const QString& address) {
+            asked.clear();
+            QTimer::singleShot(100, [&] {
+                if (auto* box = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
+                    asked = box->labelText();
+                    box->setTextValue(address);
+                    box->accept();
+                }
+            });
+            QTest::keyClick(debugger->windowHandle(), Qt::Key_G, keys);
+        };
+        const uint16_t line = code->selected();
+        dump->setFocus();
+        goTo(Qt::ControlModifier, "4321");
+        CHECK(asked == "Memory address:");
+        CHECK_EQ(dump->cursor(), 0x4321);
+        CHECK_EQ(code->selected(), line);
+        debugger->activateWindow();
+        CHECK(QTest::qWaitForWindowActive(debugger));
+        code->setFocus();
+        goTo(Qt::ControlModifier, "#8003");
+        CHECK(asked == "Address:");
+        CHECK_EQ(code->selected(), 0x8003);
+        CHECK_EQ(dump->cursor(), 0x4321);
+        debugger->activateWindow();
+        CHECK(QTest::qWaitForWindowActive(debugger));
+        code->setFocus();
+        goTo(Qt::ControlModifier | Qt::ShiftModifier, "&9002");
+        CHECK(asked == "Memory address:");
+        CHECK_EQ(dump->cursor(), 0x9002);
+        CHECK_EQ(code->selected(), 0x8003);
+        // The keys are in the lower pane now, to type there.
+        debugger->activateWindow();
+        CHECK(QTest::qWaitForWindowActive(debugger));
+        CHECK(dump->hasFocus());
+        // No address given: nothing moves.
+        goTo(Qt::ControlModifier | Qt::ShiftModifier, "nowhere");
+        CHECK_EQ(dump->cursor(), 0x9002);
+        code->select(line);
+        debugger->goToMemory(0x9001);
+        CHECK_EQ(dump->cursor(), 0x9001);
+    }
 
     // Breakpoints switched off all together are run through.
     debugger->toggleBreakpoint(0x8008);

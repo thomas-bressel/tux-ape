@@ -93,7 +93,10 @@ private:
 };
 
 // The lower pane: memory sixteen bytes to a line, in hexadecimal and as
-// characters. Typing hexadecimal digits changes the byte under the cursor.
+// characters. Typing changes the byte under the cursor, in the column that
+// was clicked: hexadecimal digits in the first, characters in the second.
+// Ctrl+Tab goes from one to the other. A line under the cursor shows where
+// what is typed will go.
 class MemoryDumpView : public QAbstractScrollArea {
     Q_OBJECT
 
@@ -110,6 +113,11 @@ public:
     int visibleLines() const;
     // A digit typed on the byte under the cursor, as the keyboard would.
     void typeDigit(int digit);
+    // The column that takes what is typed: the characters, or the digits.
+    bool editsCharacters() const { return characters_; }
+    void setEditsCharacters(bool characters);
+    // A character typed there: the byte takes its code.
+    void typeCharacter(char character);
 
     // The bytes chosen, by dragging the mouse or moving the cursor with
     // Shift held: the cursor's alone when none are.
@@ -135,6 +143,8 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void focusInEvent(QFocusEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
 
 private:
     const DebugMemory* memory_ = nullptr;
@@ -142,11 +152,13 @@ private:
     uint16_t cursor_ = 0;
     int anchor_ = -1;  // the other end of the selection, or -1
     bool lowNibble_ = false;
+    bool characters_ = false;  // typing goes to the characters' column
     int limit_ = 0x10000;
     std::vector<Mark> marks_;
 
     int lineHeight() const;
-    int byteAt(const QPointF& position) const;
+    qreal characterWidth() const;
+    int byteAt(const QPointF& position, bool* characters = nullptr) const;
     void moveTo(int address, bool extend);
 };
 
@@ -180,7 +192,11 @@ public:
     void runToSelection();
     void toggleBreakpoint(uint16_t address);
     void run();
+    // Takes a pane to an address: the lower one if it has the keys, the
+    // upper one otherwise. Or the lower one whatever has them, which then
+    // gets them: Ctrl+Shift+G, where Ctrl+G is for the pane one is in.
     void goTo(uint16_t address);
+    void goToMemory(uint16_t address);
 
     // ---- The tools of the memory dump's menu, on its selection ----
     enum class FindKind { Text, Hex, Assembler };
@@ -292,6 +308,8 @@ private:
 
     void registerEdited(const QString& name);
     void askGoTo();
+    void askGoToMemory();
+    void askGoToIn(bool memory);
     void dumpMenu(const QPoint& at);
     void showSelectBlock();
     void showFill();

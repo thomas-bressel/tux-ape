@@ -1,12 +1,14 @@
 #include "debuggerdialog.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFontMetricsF>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QFormLayout>
@@ -35,6 +37,7 @@
 
 #include "contrast.h"
 #include "emulator.h"
+#include "hostkeys.h"
 #include "icons.h"
 
 #include "core/disasm.h"
@@ -306,6 +309,13 @@ int MemoryDumpView::lineHeight() const
     return fontMetrics().height();
 }
 
+// A character's width as the line is drawn with it: not always a whole
+// number of pixels, and over sixty characters the fraction is two of them.
+qreal MemoryDumpView::characterWidth() const
+{
+    return QFontMetricsF(font()).horizontalAdvance(QLatin1Char('0'));
+}
+
 int MemoryDumpView::visibleLines() const
 {
     return std::max(1, viewport()->height() / lineHeight());
@@ -411,13 +421,28 @@ void MemoryDumpView::typeDigit(int digit)
     viewport()->update();
 }
 
+void MemoryDumpView::setEditsCharacters(bool characters)
+{
+    characters_ = characters;
+    lowNibble_ = false;
+    viewport()->update();
+}
+
+void MemoryDumpView::typeCharacter(char character)
+{
+    if (!memory_)
+        return;
+    emit byteEdited(cursor_, static_cast<uint8_t>(character));
+    setCursor(static_cast<uint16_t>(cursor_ + 1));
+}
+
 void MemoryDumpView::paintEvent(QPaintEvent*)
 {
     QPainter painter(viewport());
     painter.fillRect(viewport()->rect(), palette().base());
     const int height = lineHeight();
     const int ascent = fontMetrics().ascent();
-    const int character = fontMetrics().horizontalAdvance('0');
+    const qreal character = characterWidth();
     for (int row = 0; row <= visibleLines(); ++row) {
         const uint16_t address = static_cast<uint16_t>(top_ + row * 16);
         const int y = row * height;
@@ -443,36 +468,54 @@ void MemoryDumpView::paintEvent(QPaintEvent*)
             // The text goes over these in its usual colour: each is taken
             // as far from it as it has to be for the text to read.
             back = readable(back, ink);
-            painter.fillRect(4 + character * (5 + index * 3), y, character * 2, height, back);
-            painter.fillRect(4 + character * (5 + 48 + index), y, character, height,
-                             at == cursor_ ? readable(back.lighter(150), ink) : back);
+            // Of the cursor's two places, the fainter is the column that
+            // does not take the typing.
+            const QColor faint = at == cursor_ ? readable(back.lighter(150), ink) : back;
+            const QRectF digits(4 + character * (5 + index * 3), y, character * 2, height);
+            const QRectF letter(4 + character * (5 + 48 + index), y, character, height);
+            painter.fillRect(digits, characters_ ? faint : back);
+            painter.fillRect(letter, characters_ ? back : faint);
+            // And a line under what the next key changes: a digit of the
+            // byte, or its character.
+            if (at == cursor_ && hasFocus()) {
+                const QRectF typed = characters_ ? letter
+                                                 : QRectF(digits.x() + (lowNibble_ ? character : 0), y, character, height);
+                painter.fillRect(QRectF(typed.x(), typed.bottom() - 2, typed.width(), 2), ink);
+            }
         }
         painter.setPen(ink);
         painter.drawText(4, y + ascent, lineText(row));
     }
 }
 
-// The byte at a place of the view, or -1.
-int MemoryDumpView::byteAt(const QPointF& position) const
+// The byte at a place of the view, or -1; and which of its two columns
+// that place is in.
+int MemoryDumpView::byteAt(const QPointF& position, bool* characters) const
 {
-    const int character = fontMetrics().horizontalAdvance('0');
     const int row = static_cast<int>(position.y()) / lineHeight();
-    const int column = (static_cast<int>(position.x()) - 4) / character;
+    const int column = static_cast<int>(std::floor((position.x() - 4) / characterWidth()));
     int index = -1;
     if (column >= 5 && column < 5 + 48)
         index = (column - 5) / 3;
     else if (column >= 53 && column < 69)
         index = column - 53;
+    if (characters)
+        *characters = column >= 53;
     return index >= 0 && row >= 0 && top_ + row * 16 + index < limit_ ? top_ + row * 16 + index : -1;
 }
 
 void MemoryDumpView::mousePressEvent(QMouseEvent* event)
 {
-    const int at = byteAt(event->position());
+    bool characters = false;
+    const int at = byteAt(event->position(), &characters);
     // A right click inside the selection leaves it be, for the menu.
     const bool inside = at >= selectionStart() && at < selectionStart() + selectionLength();
-    if (at >= 0 && !(event->button() == Qt::RightButton && inside))
+    if (at >= 0 && !(event->button() == Qt::RightButton && inside)) {
+        // The column clicked is the one that takes the typing.
+        if (event->button() == Qt::LeftButton)
+            characters_ = characters;
         moveTo(at, (event->modifiers() & Qt::ShiftModifier) != 0);
+    }
 }
 
 void MemoryDumpView::mouseMoveEvent(QMouseEvent* event)
@@ -484,11 +527,31 @@ void MemoryDumpView::mouseMoveEvent(QMouseEvent* event)
 
 void MemoryDumpView::keyPressEvent(QKeyEvent* event)
 {
-    const QString text = event->text().toUpper();
-    const int digit = text.size() == 1 ? QStringLiteral("0123456789ABCDEF").indexOf(text[0]) : -1;
-    if (digit >= 0 && !(event->modifiers() & (Qt::ControlModifier | Qt::AltModifier))) {
-        typeDigit(digit);
+    const bool command = (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier)) != 0;
+    if (event->key() == Qt::Key_Tab && (event->modifiers() & Qt::ControlModifier)) {
+        setEditsCharacters(!characters_);
         return;
+    }
+    if (characters_) {
+        // A character of the CPC's own set, which is ASCII's.
+        const QString text = event->text();
+        if (!command && text.size() == 1 && text[0].unicode() >= 0x20 && text[0].unicode() < 0x7F) {
+            typeCharacter(static_cast<char>(text[0].unicode()));
+            return;
+        }
+    } else if (!command) {
+        const QString text = event->text().toUpper();
+        int digit = text.size() == 1 ? QStringLiteral("0123456789ABCDEF").indexOf(text[0]) : -1;
+        // The row of digits gives them without Shift too, on keyboards
+        // that have other signs there (a French one, say): no other sign
+        // means anything here.
+        const uint8_t pcKey = pcKeyFromEvent(event);
+        if (digit < 0 && pcKey >= 0x02 && pcKey <= 0x0B)
+            digit = (pcKey - 1) % 10;
+        if (digit >= 0) {
+            typeDigit(digit);
+            return;
+        }
     }
     const bool extend = (event->modifiers() & Qt::ShiftModifier) != 0;
     const auto move = [&](int by) { moveTo(static_cast<uint16_t>(cursor_ + by), extend); };
@@ -511,6 +574,19 @@ void MemoryDumpView::wheelEvent(QWheelEvent* event)
 void MemoryDumpView::resizeEvent(QResizeEvent*)
 {
     verticalScrollBar()->setPageStep(visibleLines());
+}
+
+// The line under the cursor is there while the pane has the keys.
+void MemoryDumpView::focusInEvent(QFocusEvent* event)
+{
+    QAbstractScrollArea::focusInEvent(event);
+    viewport()->update();
+}
+
+void MemoryDumpView::focusOutEvent(QFocusEvent* event)
+{
+    QAbstractScrollArea::focusOutEvent(event);
+    viewport()->update();
 }
 
 // ---- The window ---------------------------------------------------------------
@@ -764,6 +840,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     key(Qt::Key_F4, &DebuggerDialog::runToSelection);
     key(Qt::Key_F9, &DebuggerDialog::run);
     key(Qt::CTRL | Qt::Key_G, &DebuggerDialog::askGoTo);
+    key(Qt::CTRL | Qt::SHIFT | Qt::Key_G, &DebuggerDialog::askGoToMemory);
     key(Qt::CTRL | Qt::Key_F, &DebuggerDialog::showFind);
     connect(new QShortcut(Qt::Key_F3, this), &QShortcut::activated, this, [this] { findAgain(); });
     dump_->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -969,13 +1046,40 @@ void DebuggerDialog::goTo(uint16_t address)
     disassembly_->select(address);
 }
 
+void DebuggerDialog::goToMemory(uint16_t address)
+{
+    dump_->setCursor(address);
+    dump_->setFocus();
+}
+
+// Ctrl+G is for the pane one is in, Ctrl+Shift+G for the lower one from
+// anywhere.
 void DebuggerDialog::askGoTo()
 {
+    askGoToIn(dump_->hasFocus());
+}
+
+void DebuggerDialog::askGoToMemory()
+{
+    askGoToIn(true);
+}
+
+// The pane is settled before the question is put: the box that asks takes
+// the keys, and they are not back where they were the moment it closes.
+void DebuggerDialog::askGoToIn(bool memory)
+{
     bool ok = false;
-    const QString text = QInputDialog::getText(this, tr("Goto"), tr("Address:"), QLineEdit::Normal, QString(), &ok);
+    const QString text = QInputDialog::getText(this, tr("Goto"), memory ? tr("Memory address:") : tr("Address:"),
+                                               QLineEdit::Normal, QString(), &ok);
     const unsigned address = text.trimmed().remove('#').remove('&').toUInt(&ok, 16);
-    if (ok && address <= 0xFFFF)
-        goTo(static_cast<uint16_t>(address));
+    if (!ok || address > 0xFFFF)
+        return;
+    if (memory) {
+        goToMemory(static_cast<uint16_t>(address));
+    } else {
+        disassembly_->setTop(static_cast<uint16_t>(address));
+        disassembly_->select(static_cast<uint16_t>(address));
+    }
 }
 
 // ---- The memory dump's tools ------------------------------------------------
@@ -984,7 +1088,7 @@ void DebuggerDialog::dumpMenu(const QPoint& at)
 {
     QMenu menu(this);
     menu.addAction(tr("Find"), Qt::CTRL | Qt::Key_F, this, &DebuggerDialog::showFind);
-    menu.addAction(tr("Goto"), Qt::CTRL | Qt::Key_G, this, &DebuggerDialog::askGoTo);
+    menu.addAction(tr("Goto"), Qt::CTRL | Qt::SHIFT | Qt::Key_G, this, &DebuggerDialog::askGoToMemory);
     menu.addAction(tr("Select Block"), this, &DebuggerDialog::showSelectBlock);
     menu.addSeparator();
     menu.addAction(tr("Load"), this, &DebuggerDialog::askLoad);
