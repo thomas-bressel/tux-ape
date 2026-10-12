@@ -116,6 +116,14 @@ int main(int argc, char* argv[])
         QTest::keyRelease(screen, Qt::Key_L, Qt::ControlModifier);
         QTest::keyRelease(screen, Qt::Key_Control);
         CHECK(QTest::qWaitFor([&] { return !down(CpcKey::Control) && !down(CpcKey::L); }, 2000));
+        // CONTROL and ESC too, which IMP Draw has for its sprites: both
+        // down in the CPC's keyboard.
+        QTest::keyPress(screen, Qt::Key_Control, Qt::ControlModifier);
+        QTest::keyPress(screen, Qt::Key_Escape, Qt::ControlModifier);
+        CHECK(QTest::qWaitFor([&] { return down(CpcKey::Control) && down(CpcKey::Escape); }, 2000));
+        QTest::keyRelease(screen, Qt::Key_Escape, Qt::ControlModifier);
+        QTest::keyRelease(screen, Qt::Key_Control);
+        CHECK(QTest::qWaitFor([&] { return !down(CpcKey::Control) && !down(CpcKey::Escape); }, 2000));
         QTest::keyClick(screen, Qt::Key_F10, Qt::ControlModifier | Qt::ShiftModifier);
         CHECK_EQ(function, 1);
         QTest::keyClick(screen, Qt::Key_L, Qt::AltModifier);
