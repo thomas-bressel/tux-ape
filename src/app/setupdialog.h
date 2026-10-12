@@ -89,6 +89,9 @@ public:
     void setXmemSwitches(const tuxape::Xmem::Switches& switches);
     QString xmemFlash() const { return xmemFlash_; }
     void setXmemFlash(const QString& file);
+    // The file that is the X-MASS's disc.
+    QString xmassDisc() const { return xmassDisc_; }
+    void setXmassDisc(const QString& file);
 
 private:
     QComboBox* profile_ = nullptr;
@@ -193,6 +196,7 @@ private:
 
     QWidget* createExpansionsPage();
     void updateCards();
+    QString chooseCardFile(const QString& title, const QString& now, const QString& kinds);
     void chooseXmemFlash();
     QComboBox* cards_[tuxape::kCardPlaces] = {};
     QGroupBox* xmemBox_ = nullptr;
@@ -203,6 +207,10 @@ private:
     QRadioButton* xmemReadYes_ = nullptr;
     QLabel* xmemFile_ = nullptr;
     QString xmemFlash_;
+    void chooseXmassDisc();
+    QGroupBox* xmassBox_ = nullptr;
+    QLabel* xmassFile_ = nullptr;
+    QString xmassDisc_;
 };
 
 // Which settings go into a profile: WinAPE's "Select Profile Settings"

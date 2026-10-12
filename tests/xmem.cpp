@@ -6,7 +6,9 @@
 //                   xmem/xmem_side-A.dsk, the card's own disc. With it,
 //                   and the machine's ROM images, the disc's INSTALL is
 //                   run on a 6128 and the machine then started from the
-//                   card. Without, that part is left out.
+//                   card. With xmem/xmass_xmem-install.dsk an X-MASS
+//                   card's disc is formatted and used too. Without them
+//                   those parts are left out.
 
 #include <cstdio>
 #include <filesystem>
@@ -397,6 +399,79 @@ void testInstall(const std::filesystem::path& folder)
     CHECK(contains(readScreenText(m.cpc), "Amstrad 128K Microcomputer"));
 }
 
+// The X-MASS with it, from the two cards' own disc: its INSTALL puts
+// CubeMDOS in ROM 2, its FORMAT makes the IDE disc a FAT16 volume, and
+// BASIC then saves a program there and finds it again.
+void testXmass(const std::filesystem::path& folder)
+{
+    const auto image = readFile(folder / "xmem" / "xmass_xmem-install.dsk");
+    auto disc = image ? Disc::fromDsk(*image) : std::nullopt;
+    const auto dir = std::filesystem::temp_directory_path() / "tuxape_xmass_test";
+    std::filesystem::remove_all(dir);
+    Machine m;
+    MachineConfig config = stockMachine(CpcModel::Cpc6128);
+    config.cards[0] = Card::Xmem;
+    config.cards[3] = Card::Xmass;
+    config.xmem.romFree = true;
+    config.xmassDisc = (dir / "xmass.img").string();
+    if (!disc || !applyMachine(m.cpc, config, defaultRomDir(), nullptr)) {
+        std::printf("the X-MASS's disc or the ROM images were not found: its FORMAT is not run\n");
+        return;
+    }
+    m.cpc.coldReset();
+    m.cpc.fdc().setFast(true);
+    m.cpc.fdc().drive(0).disc = std::make_unique<Disc>(std::move(*disc));
+    CHECK(m.waitFor("Ready", 10));
+    m.frames(50);
+    // The English keymap: what is typed here is typed on a British CPC.
+    m.keys.type("RUN\"INSTALL\n");
+    CHECK(m.waitFor("3- Spanish keymap", 30));
+    m.keys.type("1");
+    CHECK(m.waitFor("2- No extra install", 10));
+    m.keys.type("2");
+    CHECK(m.waitFor("CUBEMDOS     :", 200));
+    m.frames(25);
+    CHECK(contains(readScreenText(m.cpc), "CUBEMDOS     : PASSED"));
+    CHECK(!contains(readScreenText(m.cpc), "FAILED"));
+
+    config.xmem.bootRom = true;
+    CHECK(applyMachine(m.cpc, config, defaultRomDir(), nullptr));
+    m.cpc.coldReset();
+    CHECK(m.waitFor("Ready", 20));
+    m.frames(50);
+    // The disc is CubeMDOS's own at first: FORMAT is on the floppy.
+    m.keys.type("|A\n");
+    m.frames(100);
+    m.keys.type("RUN\"FORMAT\n");
+    CHECK(m.waitFor("Choose 1,2 or 3", 60));
+    CHECK(contains(readScreenText(m.cpc), "Controller Model: X-MASS DOM"));
+    m.keys.type("2");
+    CHECK(m.waitFor("Success", 300));
+    CHECK(m.cpc.ide() && m.cpc.ide()->good());
+    // A partition of 400 MB in the first sector, as a PC would have it:
+    // its kind (6: FAT16), its first sector and its length.
+    const auto written = readFile(config.xmassDisc);
+    CHECK(written && written->size() > 2048 * 512);
+    if (written && written->size() > 2048 * 512) {
+        const std::vector<uint8_t>& w = *written;
+        CHECK(w[510] == 0x55 && w[511] == 0xAA && w[0x1BE + 4] == 0x06);
+        CHECK_EQ(w[0x1BE + 8] | w[0x1BE + 9] << 8, 2048);
+        CHECK_EQ(w[0x1BE + 12] | w[0x1BE + 13] << 8 | w[0x1BE + 14] << 16, 817152);
+        CHECK(w[2048 * 512 + 510] == 0x55 && w[2048 * 512 + 511] == 0xAA);
+    }
+
+    m.keys.type(" ");  // "Press any key to reboot"
+    CHECK(m.waitFor("BASIC 1.1", 20));
+    m.frames(100);
+    m.keys.type("|D\n|FREE\n");
+    CHECK(m.waitFor("Free   398 MB", 20));
+    m.keys.type("10 PRINT \"kept on the X-MASS\"\nSAVE\"HELLO\"\nNEW\nCAT\n");
+    CHECK(m.waitFor("HELLO   .BAS", 30));
+    m.keys.type("RUN\"HELLO\"\n");
+    CHECK(m.waitFor("\nkept on the X-MASS", 30));
+    std::filesystem::remove_all(dir);
+}
+
 }  // namespace
 
 int main(int argc, char* argv[])
@@ -404,7 +479,9 @@ int main(int argc, char* argv[])
     testPlaces();
     testFlash();
     testMachine();
-    if (argc > 1)
+    if (argc > 1) {
         testInstall(argv[1]);
+        testXmass(argv[1]);
+    }
     return checkSummary("xmem");
 }

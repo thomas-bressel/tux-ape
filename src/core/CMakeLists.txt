@@ -14,6 +14,7 @@ add_library(tuxape_core STATIC
     fdc.cpp
     files.cpp
     gate_array.cpp
+    ide.cpp
     inifile.cpp
     keymap.cpp
     memory.cpp

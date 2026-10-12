@@ -23,7 +23,8 @@ enum class CpcModel { Cpc464, Cpc664, Cpc6128, Plus464, Plus6128 };
 // machine.
 enum class Card : uint8_t {
     None,
-    Xmem,  // ACME's X-MEM: 512K of RAM and 32 ROMs in flash memory (see xmem.h)
+    Xmem,   // ACME's X-MEM: 512K of RAM and 32 ROMs in flash memory (see xmem.h)
+    Xmass,  // ACME's X-MASS: an IDE disc of 512 MB (see ide.h)
 };
 constexpr int kCardPlaces = 4;
 
@@ -61,6 +62,9 @@ struct MachineConfig {
     // erased.
     Xmem::Switches xmem;
     std::string xmemFlash;
+    // The file that is the X-MASS's disc. Without a name the card has no
+    // disc, and is as good as out.
+    std::string xmassDisc;
 
     bool operator==(const MachineConfig&) const = default;
 };

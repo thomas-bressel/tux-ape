@@ -134,6 +134,8 @@ void Settings::read(const tuxape::IniFile& ini)
     machine.xmem.readRom = position("X-MEM READ ROM", "YES", machine.xmem.readRom);
     if (ini.has(kExpansions, "X-MEM Flash"))
         machine.xmemFlash = ini.get(kExpansions, "X-MEM Flash");
+    if (ini.has(kExpansions, "X-MASS Disc"))
+        machine.xmassDisc = ini.get(kExpansions, "X-MASS Disc");
 
     monitorType = std::clamp(ini.getInt(kConfiguration, "Monitor Type", monitorType), 0, 2);
     brightness = std::clamp(ini.getInt(kConfiguration, "Monitor Brightness", brightness), -100, 100);
@@ -248,6 +250,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.set(kExpansions, "X-MEM ROM", machine.xmem.romFree ? "FREE" : "LOCK");
         ini.set(kExpansions, "X-MEM READ ROM", machine.xmem.readRom ? "YES" : "NO");
         ini.set(kExpansions, "X-MEM Flash", machine.xmemFlash);
+        ini.set(kExpansions, "X-MASS Disc", machine.xmassDisc);
     }
     if (parts & MonitorPart) {
         ini.setInt(kConfiguration, "Monitor Type", monitorType);
@@ -344,17 +347,30 @@ QString Settings::userProfileFolder()
 
 QString Settings::cardName(tuxape::Card card)
 {
-    return card == tuxape::Card::Xmem ? QStringLiteral("X-MEM") : QString();
+    switch (card) {
+    case tuxape::Card::Xmem: return QStringLiteral("X-MEM");
+    case tuxape::Card::Xmass: return QStringLiteral("X-MASS");
+    case tuxape::Card::None: break;
+    }
+    return QString();
 }
 
 tuxape::Card Settings::cardNamed(const QString& name)
 {
-    return name.compare("X-MEM", Qt::CaseInsensitive) == 0 ? tuxape::Card::Xmem : tuxape::Card::None;
+    for (const tuxape::Card card : {tuxape::Card::Xmem, tuxape::Card::Xmass})
+        if (name.compare(cardName(card), Qt::CaseInsensitive) == 0)
+            return card;
+    return tuxape::Card::None;
 }
 
 QString Settings::xmemFlashFile()
 {
     return QFileInfo(file()).absolutePath() + "/xmem.flash";
+}
+
+QString Settings::xmassDiscFile()
+{
+    return QFileInfo(file()).absolutePath() + "/xmass.img";
 }
 
 QString Settings::keyMapFile()

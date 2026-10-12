@@ -33,6 +33,8 @@ void Cpc::reset()
     fdc_.reset();
     tape_.setMotor(false, microseconds());
     asic_.reset();
+    if (ide_)
+        ide_->reset();
 }
 
 void Cpc::coldReset()
@@ -164,6 +166,14 @@ void Cpc::fitXmem(bool fitted, const std::string& file)
     memory_.setXmem(xmem_.get());
 }
 
+void Cpc::fitIde(const std::string& file)
+{
+    if (file.empty())
+        ide_.reset();
+    else if (!ide_ || ide_->file() != file)
+        ide_ = std::make_unique<IdeDisc>(file);
+}
+
 void Cpc::multifaceStop()
 {
     if (!memory_.hasMultiface() || memory_.multifacePaged())
@@ -247,6 +257,13 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
             fdc_.writeMotor(value, microseconds());
         else if (port & 1)
             fdc_.writeData(value, microseconds());
+    }
+    // An X-MASS's disc: its registers at &FD08-&FD0F, its control at &FD06.
+    if (ide_ && (port & 0xFFF0) == 0xFD00) {
+        if (port & 8)
+            ide_->write(port & 7, value);
+        else if ((port & 0x0F) == 6)
+            ide_->writeControl(value);
     }
 }
 
@@ -335,6 +352,12 @@ uint8_t Cpc::ioRead(uint16_t port)
     // it, the disc interface's included.
     if (!(port & 0x0480) && (port & 0x0100) && (port & 0x0800))
         value &= (port & 1) ? fdc_.readData(microseconds()) : fdc_.readStatus(microseconds());
+    if (ide_ && (port & 0xFFF0) == 0xFD00) {
+        if (port & 8)
+            value &= ide_->read(port & 7);
+        else if ((port & 0x0F) == 6)
+            value &= ide_->readStatus();
+    }
     return value;
 }
 

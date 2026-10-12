@@ -193,6 +193,7 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
     if (xmem)
         cpc.xmem()->setSwitches(config.xmem);
     const uint8_t cardBanks = xmem ? cpc.xmem()->ramBanks() : 0;
+    cpc.fitIde(config.hasCard(Card::Xmass) ? config.xmassDisc : std::string());
 
     Memory& memory = cpc.memory();
     if (memory.ramExpansion() != config.ram || memory.siliconDisc() != config.siliconDisc

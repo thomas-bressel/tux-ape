@@ -13,6 +13,7 @@
 #include "core/crtc.h"
 #include "core/fdc.h"
 #include "core/gate_array.h"
+#include "core/ide.h"
 #include "core/keyboard.h"
 #include "core/memory.h"
 #include "core/monitor.h"
@@ -142,6 +143,10 @@ public:
     void fitXmem(bool fitted, const std::string& file = {});
     Xmem* xmem() { return xmem_.get(); }
     const std::string& xmemFile() const { return xmemFile_; }
+    // An X-MASS card (see ide.h): an IDE disc that is a file, put in or,
+    // without a file's name, taken out. Null without one.
+    void fitIde(const std::string& file);
+    IdeDisc* ide() { return ide_.get(); }
     bool plus() const { return plus_; }
     Asic& asic() { return asic_; }
     // The AMX mouse, on the joystick's port. The host says how far it has
@@ -378,6 +383,7 @@ private:
     Asic asic_;
     std::unique_ptr<Xmem> xmem_;
     std::string xmemFile_;
+    std::unique_ptr<IdeDisc> ide_;
     bool plus_ = false;
     AudioMixer audio_;
 

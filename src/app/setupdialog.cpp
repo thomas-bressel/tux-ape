@@ -1344,6 +1344,7 @@ void SetupDialog::setSettings(const Settings& settings)
         setCard(place, machine.cards[static_cast<size_t>(place)]);
     setXmemSwitches(machine.xmem);
     setXmemFlash(QString::fromStdString(machine.xmemFlash));
+    setXmassDisc(QString::fromStdString(machine.xmassDisc));
     updateCards();
     updateTotalRam();
     updateRomRows();
@@ -1541,6 +1542,7 @@ Settings SetupDialog::settings() const
         machine.cards[static_cast<size_t>(place)] = card(place);
     machine.xmem = xmemSwitches();
     machine.xmemFlash = xmemFlash_.toStdString();
+    machine.xmassDisc = xmassDisc_.toStdString();
 
     settings.monitorType = chosenMonitor();
     settings.verticalHold = verticalHold_->value();
@@ -1600,6 +1602,7 @@ QWidget* SetupDialog::createExpansionsPage()
         box->setObjectName(QString("cbCard%1").arg(place + 1));
         box->addItem(tr("(Empty)"), static_cast<int>(tuxape::Card::None));
         box->addItem(tr("X-MEM - 512K RAM, 32 ROMs in flash memory"), static_cast<int>(tuxape::Card::Xmem));
+        box->addItem(tr("X-MASS - IDE interface, disc of 512 MB"), static_cast<int>(tuxape::Card::Xmass));
         cards_[place] = box;
         places->addWidget(new QLabel(tr("Slot %1:").arg(place + 1)), place, 0);
         places->addWidget(box, place, 1);
@@ -1673,9 +1676,33 @@ QWidget* SetupDialog::createExpansionsPage()
     xmemLayout->addLayout(file);
     xmemLayout->addWidget(about);
 
+    // The X-MASS: its disc is a file.
+    xmassBox_ = new QGroupBox(tr("X-MASS"));
+    xmassBox_->setObjectName("gbXMASS");
+    xmassFile_ = new QLabel;
+    xmassFile_->setObjectName("lXmassDisc");
+    xmassFile_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto* chooseDisc = new QPushButton(tr("Select File..."));
+    chooseDisc->setObjectName("bXmassDisc");
+    connect(chooseDisc, &QPushButton::clicked, this, &SetupDialog::chooseXmassDisc);
+    auto* disc = new QHBoxLayout;
+    disc->addWidget(new QLabel(tr("Disc:")));
+    disc->addWidget(xmassFile_, 1);
+    disc->addWidget(chooseDisc);
+    auto* aboutDisc = new QLabel(
+        tr("An IDE disc at the SYMBiFACE II's addresses (&FD06-&FD0F). The file grows as the disc is written; it "
+           "is made a FAT volume from the machine, by the X-MASS disc's FORMAT, and can then be read on a PC. The "
+           "machine needs a DOS that knows such a disc, in a ROM: CubeMDOS or UniDOS, in the X-MEM or on the "
+           "Memory page."));
+    aboutDisc->setWordWrap(true);
+    auto* xmassLayout = new QVBoxLayout(xmassBox_);
+    xmassLayout->addLayout(disc);
+    xmassLayout->addWidget(aboutDisc);
+
     auto* layout = new QVBoxLayout(page);
     layout->addWidget(board);
     layout->addWidget(xmemBox_);
+    layout->addWidget(xmassBox_);
     layout->addStretch(1);
     return page;
 }
@@ -1717,6 +1744,13 @@ void SetupDialog::setXmemSwitches(const tuxape::Xmem::Switches& switches)
     set(xmemReadYes_, switches.readRom);
 }
 
+void SetupDialog::setXmassDisc(const QString& file)
+{
+    xmassDisc_ = file;
+    xmassFile_->setText(QDir::toNativeSeparators(file));
+    xmassFile_->setToolTip(QDir::toNativeSeparators(file));
+}
+
 void SetupDialog::setXmemFlash(const QString& file)
 {
     xmemFlash_ = file;
@@ -1729,25 +1763,46 @@ void SetupDialog::setXmemFlash(const QString& file)
 // usual one, beside the settings.
 void SetupDialog::updateCards()
 {
-    bool xmem = false;
-    for (int place = 0; place < tuxape::kCardPlaces; ++place)
+    bool xmem = false, xmass = false;
+    for (int place = 0; place < tuxape::kCardPlaces; ++place) {
         xmem = xmem || card(place) == tuxape::Card::Xmem;
+        xmass = xmass || card(place) == tuxape::Card::Xmass;
+    }
     xmemBox_->setEnabled(xmem);
     if (xmem && xmemFlash_.isEmpty())
         setXmemFlash(Settings::xmemFlashFile());
+    // And an X-MASS its disc.
+    xmassBox_->setEnabled(xmass);
+    if (xmass && xmassDisc_.isEmpty())
+        setXmassDisc(Settings::xmassDiscFile());
     updateTotalRam();
 }
 
-// The file may be one that is not there yet: the card then starts erased,
-// and the file is made when its flash memory is first written.
-void SetupDialog::chooseXmemFlash()
+// A card's file may be one that is not there yet: the card then starts
+// with nothing in it, and the file is made when it is first written.
+QString SetupDialog::chooseCardFile(const QString& title, const QString& now, const QString& kinds)
 {
-    const QString start = xmemFlash_.isEmpty() ? Settings::xmemFlashFile() : xmemFlash_;
-    QFileDialog dialog(this, tr("X-MEM Flash Memory"), QFileInfo(start).absolutePath(),
-                       tr("Flash memory (*.flash *.rom *.bin);;All files (*)"));
+    QFileDialog dialog(this, title, QFileInfo(now).absolutePath(), kinds);
     dialog.setAcceptMode(QFileDialog::AcceptOpen);
     dialog.setFileMode(QFileDialog::AnyFile);
-    dialog.selectFile(QFileInfo(start).fileName());
-    if (dialog.exec() == QDialog::Accepted && !dialog.selectedFiles().isEmpty())
-        setXmemFlash(dialog.selectedFiles().first());
+    dialog.selectFile(QFileInfo(now).fileName());
+    if (dialog.exec() != QDialog::Accepted || dialog.selectedFiles().isEmpty())
+        return {};
+    return dialog.selectedFiles().first();
+}
+
+void SetupDialog::chooseXmemFlash()
+{
+    const QString file = chooseCardFile(tr("X-MEM Flash Memory"), xmemFlash_.isEmpty() ? Settings::xmemFlashFile() : xmemFlash_,
+                                        tr("Flash memory (*.flash *.rom *.bin);;All files (*)"));
+    if (!file.isEmpty())
+        setXmemFlash(file);
+}
+
+void SetupDialog::chooseXmassDisc()
+{
+    const QString file = chooseCardFile(tr("X-MASS Disc"), xmassDisc_.isEmpty() ? Settings::xmassDiscFile() : xmassDisc_,
+                                        tr("Disc images (*.img *.ima *.dsk *.bin);;All files (*)"));
+    if (!file.isEmpty())
+        setXmassDisc(file);
 }

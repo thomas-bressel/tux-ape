@@ -799,7 +799,10 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     // Nothing on the port to begin with, and nothing of the card to set.
     for (QComboBox* place : places)
         CHECK(place->count() >= 2 && place->currentIndex() == 0 && place->itemText(0) == "(Empty)");
-    CHECK(places[0]->itemText(1).startsWith("X-MEM"));
+    CHECK(places[0]->itemText(1).startsWith("X-MEM") && places[0]->itemText(2).startsWith("X-MASS"));
+    auto* discBox = dialog.findChild<QGroupBox*>("gbXMASS");
+    auto* discFile = dialog.findChild<QLabel*>("lXmassDisc");
+    CHECK(discBox && discFile && !discBox->isEnabled() && dialog.xmassDisc().isEmpty());
     CHECK(!box->isEnabled());
     CHECK(total->text() == "128K");
     CHECK(dialog.xmemFlash().isEmpty());
@@ -831,6 +834,14 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     CHECK(dialog.card(3) == Card::Xmem && dialog.card(1) == Card::None && box->isEnabled());
     dialog.setCard(0, Card::Xmem);
     CHECK(dialog.card(0) == Card::Xmem && dialog.card(3) == Card::None);
+    // An X-MASS beside it: its disc is a file beside the settings too.
+    places[2]->setCurrentIndex(2);
+    emit places[2]->activated(2);
+    CHECK(dialog.card(2) == Card::Xmass && dialog.card(0) == Card::Xmem);
+    CHECK(discBox && discBox->isEnabled() && box->isEnabled());
+    CHECK(dialog.xmassDisc() == Settings::xmassDiscFile() && Settings::xmassDiscFile() == folder + "/sub/xmass.img");
+    CHECK(discFile && discFile->text() == QDir::toNativeSeparators(dialog.xmassDisc()));
+    CHECK(total->text() == "512K");  // it brings no RAM
     if (!picture.isEmpty())
         dialog.grab().save(picture);
 
@@ -850,6 +861,8 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     ini.close();
     CHECK(text.contains("\r\n[Expansions]\r\n"));
     CHECK(text.contains("\r\nCard1=X-MEM\r\n") && text.contains("\r\nCard2=\r\n"));
+    CHECK(text.contains("\r\nCard3=X-MASS\r\n"));
+    CHECK(text.contains(QByteArray("\r\nX-MASS Disc=") + Settings::xmassDiscFile().toUtf8() + "\r\n"));
     CHECK(text.contains("\r\nX-MEM CPC=6128\r\n") && text.contains("\r\nX-MEM BOOT=ROM\r\n"));
     CHECK(text.contains("\r\nX-MEM ROM=FREE\r\n") && text.contains("\r\nX-MEM READ ROM=YES\r\n"));
     Settings loaded;
@@ -859,6 +872,7 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     // when it comes back.
     SetupDialog again(loaded);
     CHECK(again.card(0) == Card::Xmem && again.xmemSwitches() == shown.machine.xmem);
+    CHECK(again.card(2) == Card::Xmass && again.xmassDisc() == Settings::xmassDiscFile());
     CHECK(again.xmemFlash() == folder + "/mine.flash");
     again.setCard(0, Card::None);
     CHECK(!again.settings().machine.hasCard(Card::Xmem));
@@ -875,6 +889,7 @@ void testExpansionsPage(const QString& folder, const QString& picture)
         CHECK(emulator.machine().hasCard(Card::Xmem));
         const std::vector<uint8_t> rom(tuxape::Xmem::kRomSize, 0x5A);
         emulator.withMachine([&](tuxape::Cpc& cpc) {
+            CHECK(cpc.ide() != nullptr && cpc.in(0xFD0F) == 0x50);
             CHECK(cpc.xmem() != nullptr);
             CHECK_EQ(cpc.memory().ramSizeKb(), 512);
             if (cpc.xmem())

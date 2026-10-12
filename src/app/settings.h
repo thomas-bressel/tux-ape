@@ -143,9 +143,10 @@ struct Settings {
     // the file by its name.
     static QString cardName(tuxape::Card card);
     static tuxape::Card cardNamed(const QString& name);
-    // Where an X-MEM's flash memory is kept unless another file is chosen:
-    // beside the settings file.
+    // Where an X-MEM's flash memory is kept unless another file is chosen,
+    // and the file that is an X-MASS's disc: beside the settings file.
     static QString xmemFlashFile();
+    static QString xmassDiscFile();
 
     bool operator==(const Settings&) const = default;
 
