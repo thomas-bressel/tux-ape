@@ -137,6 +137,9 @@ public:
     // The Multiface's red button, if the machine has one.
     void multifaceStop();
     bool hasMultiface();
+    // What the cards keep goes to their files now, if it has changed (an
+    // X-MEM's flash memory): for whoever is about to read those files.
+    void saveCards();
 
     // A key of the PC keyboard went down or up. `pcKey` is a DirectInput
     // scan code (see keymap.h).

@@ -842,6 +842,8 @@ void MainWindow::showSetup(int page)
     // A snapshot may have brought its own CRTC and RAM with it.
     settings_.crtcType = static_cast<int>(emulator_->crtcType());
     settings_.machine = emulator_->machine();
+    // The window reads the cards' files: an X-MEM's ROMs as they now are.
+    emulator_->saveCards();
     SetupDialog dialog(settings_, this);
     dialog.setPreview(emulator_->frame());
     const tuxape::KeyMap keysBefore = emulator_->keyMap();

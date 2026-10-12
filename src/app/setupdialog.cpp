@@ -18,6 +18,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
@@ -1662,9 +1663,14 @@ QWidget* SetupDialog::createExpansionsPage()
     auto* chooseFile = new QPushButton(tr("Select File..."));
     chooseFile->setObjectName("bXmemFlash");
     connect(chooseFile, &QPushButton::clicked, this, &SetupDialog::chooseXmemFlash);
+    auto* showRoms = new QPushButton(tr("ROMs..."));
+    showRoms->setObjectName("bXmemRoms");
+    showRoms->setToolTip(tr("What the flash memory holds"));
+    connect(showRoms, &QPushButton::clicked, this, &SetupDialog::showXmemRoms);
     auto* file = new QHBoxLayout;
     file->addWidget(new QLabel(tr("Flash memory:")));
     file->addWidget(xmemFile_, 1);
+    file->addWidget(showRoms);
     file->addWidget(chooseFile);
     auto* about = new QLabel(
         tr("The card's flash memory holds ROMs 1 to 31, in place of those of the Memory page; ROM 7 stays the "
@@ -1742,6 +1748,59 @@ void SetupDialog::setXmemSwitches(const tuxape::Xmem::Switches& switches)
     set(xmemBootRom_, switches.bootRom);
     set(xmemFree_, switches.romFree);
     set(xmemReadYes_, switches.readRom);
+}
+
+QStringList SetupDialog::xmemRoms() const
+{
+    const auto flash = tuxape::readFile(xmemFlash_.toStdString());
+    const auto line = [&](const QString& title, int place) {
+        tuxape::Xmem::RomInfo info;
+        const size_t start = static_cast<size_t>(place) * tuxape::Xmem::kRomSize;
+        if (flash && flash->size() >= start + tuxape::Xmem::kRomSize)
+            info = tuxape::Xmem::romInfo(std::span<const uint8_t>(*flash).subspan(start, tuxape::Xmem::kRomSize));
+        if (!info.present)
+            return tr("%1: (empty)").arg(title);
+        if (info.firmware)
+            return tr("%1: a firmware").arg(title);
+        const QString kind = info.kind == 0x80 ? tr("BASIC")
+                             : info.kind == 0  ? tr("foreground")
+                             : info.kind == 1  ? tr("background")
+                                               : tr("extension");
+        return tr("%1: %2  %3.%4%5 (%6)")
+            .arg(title, QString::fromStdString(info.name).trimmed())
+            .arg(info.mark)
+            .arg(info.version)
+            .arg(info.modification)
+            .arg(kind);
+    };
+    // The two places the card keeps for the ROMs it boots with, then the
+    // ROMs by their numbers; ROM 7 is the machine's.
+    QStringList lines = {line(tr("Lower"), tuxape::Xmem::kLowerPlace), line(tr("0"), tuxape::Xmem::kBasicPlace)};
+    for (int rom = 1; rom < tuxape::Xmem::kRoms; ++rom)
+        if (rom != tuxape::Xmem::kLowerPlace)
+            lines << line(QString::number(rom), rom);
+    return lines;
+}
+
+void SetupDialog::showXmemRoms()
+{
+    QDialog window(this);
+    window.setObjectName("XmemRoms");
+    window.setWindowTitle(tr("X-MEM ROMs"));
+    auto* list = new QListWidget;
+    list->setObjectName("lbXmemRoms");
+    list->addItems(xmemRoms());
+    auto* about = new QLabel(tr("The flash memory as its file has it. Lower and 0 are the ROMs the card boots with; ROM 7 "
+                                "is always the machine's own."));
+    about->setWordWrap(true);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(buttons, &QDialogButtonBox::rejected, &window, &QDialog::reject);
+    auto* layout = new QVBoxLayout(&window);
+    layout->addWidget(about);
+    layout->addWidget(list, 1);
+    layout->addWidget(buttons);
+    window.resize(380, 520);
+    window.exec();
 }
 
 void SetupDialog::setXmassDisc(const QString& file)

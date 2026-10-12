@@ -843,6 +843,11 @@ void Emulator::multifaceStop()
     withMachine([](Cpc& cpc) { cpc.multifaceStop(); });
 }
 
+void Emulator::saveCards()
+{
+    withMachine([](Cpc& cpc) { tuxape::saveCards(cpc); });
+}
+
 bool Emulator::hasMultiface()
 {
     return withMachine([](Cpc& cpc) { return cpc.hasMultiface(); });

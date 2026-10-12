@@ -89,6 +89,11 @@ public:
     void setXmemSwitches(const tuxape::Xmem::Switches& switches);
     QString xmemFlash() const { return xmemFlash_; }
     void setXmemFlash(const QString& file);
+    // What that flash memory holds, as its file has it: a line for the
+    // lower ROM and one for each of ROMs 0 to 31 but 7, "5: UNIDOS  1.40
+    // (background)" or "5: (empty)". The button "ROMs..." shows them.
+    QStringList xmemRoms() const;
+    void showXmemRoms();
     // The file that is the X-MASS's disc.
     QString xmassDisc() const { return xmassDisc_; }
     void setXmassDisc(const QString& file);

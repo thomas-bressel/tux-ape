@@ -19,6 +19,7 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMenuBar>
 #include <QPointer>
 #include <QPushButton>
@@ -899,8 +900,48 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     }
     QFile flash(folder + "/mine.flash");
     CHECK(flash.open(QIODevice::ReadOnly));
-    const QByteArray kept = flash.readAll();
+    QByteArray kept = flash.readAll();
+    flash.close();
     CHECK(kept.size() == 512 * 1024 && kept[12 * 16384] == 0x5A && kept[11 * 16384] == char(0xFF));
+
+    // "ROMs...": what the flash memory holds, as its file has it. A ROM
+    // tells its kind, its version and its name; a firmware is known by how
+    // it starts.
+    const QByteArray unidos = QByteArray::fromHex("01010400" "10C0") + QByteArray(10, '\0') + "UNIDO" + '\xD3';
+    kept.replace(5 * 16384, unidos.size(), unidos);
+    kept.replace(7 * 16384, 3, QByteArray::fromHex("01897F"));
+    kept.replace(0 * 16384, 6, QByteArray::fromHex("80010200" "06C0"));
+    kept.replace(0 * 16384 + 6, 5, QByteArray("BASI") + '\xC3');
+    CHECK(flash.open(QIODevice::WriteOnly));
+    flash.write(kept);
+    flash.close();
+    SetupDialog card(shown);
+    const QStringList roms = card.xmemRoms();
+    CHECK_EQ(roms.size(), 32);  // the lower ROM, and ROMs 0 to 31 but 7
+    CHECK(roms.value(0) == "Lower: a firmware");
+    CHECK(roms.value(1) == "0: BASIC  1.20 (BASIC)");
+    CHECK(roms.value(2) == "1: (empty)");
+    CHECK(roms.value(6) == "5: UNIDOS  1.40 (background)");
+    CHECK(roms.value(7) == "6: (empty)" && roms.value(8) == "8: (empty)" && roms.value(31) == "31: (empty)");
+    CHECK(roms.value(12) == "12: (empty)");  // &5A all through is no ROM
+    auto* showRoms = card.findChild<QPushButton*>("bXmemRoms");
+    CHECK(showRoms != nullptr);
+    if (showRoms) {
+        int listed = -1;
+        QTimer::singleShot(100, [&] {
+            QWidget* modal = QApplication::activeModalWidget();
+            if (modal && modal->objectName() == "XmemRoms") {
+                if (auto* list = modal->findChild<QListWidget*>("lbXmemRoms"))
+                    listed = list->count();
+                modal->close();
+            }
+        });
+        showRoms->click();
+        CHECK_EQ(listed, 32);
+    }
+    // No file yet: an erased card.
+    card.setXmemFlash(folder + "/none.flash");
+    CHECK(card.xmemRoms().value(0) == "Lower: (empty)" && card.xmemRoms().size() == 32);
 }
 
 // The Input page: the CPC's keyboard to click on, the PC keys of the key

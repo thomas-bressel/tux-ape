@@ -18,6 +18,7 @@
 
 #include "check.h"
 #include "core/autotype.h"
+#include "core/cartridge.h"
 #include "core/cpc.h"
 #include "core/disc.h"
 #include "core/files.h"
@@ -184,6 +185,84 @@ void testFlash()
     flasher.command(0x90);
     card.reset();
     CHECK(card.upperRom(2)[0] == 0xFF);
+}
+
+// What a place holds, as a ROM tells of itself.
+void testRomInfo()
+{
+    Xmem card;
+    CHECK(!card.romInfo(3).present);
+    // A background ROM, version 1.40, its name the first of its commands.
+    std::vector<uint8_t> rom(Xmem::kRomSize, 0);
+    const uint8_t header[] = {0x01, 1, 4, 0, 0x10, 0xC0};
+    std::copy(header, header + 6, rom.begin());
+    const char name[] = "UNIDOS";
+    for (int i = 0; i < 6; ++i)
+        rom[0x10 + static_cast<size_t>(i)] = static_cast<uint8_t>(name[i] | (i == 5 ? 0x80 : 0));
+    card.setRom(5, rom);
+    const Xmem::RomInfo info = card.romInfo(5);
+    CHECK(info.present && !info.firmware && info.kind == 1 && info.name == "UNIDOS");
+    CHECK(info.mark == 1 && info.version == 4 && info.modification == 0);
+    // The BASIC's kind; a firmware, which has no such header; and what is
+    // no ROM at all.
+    rom[0] = 0x80;
+    CHECK(Xmem::romInfo(rom).kind == 0x80);
+    rom[0] = 0x01;
+    rom[1] = 0x89;
+    rom[2] = 0x7F;
+    CHECK(Xmem::romInfo(rom).firmware && Xmem::romInfo(rom).name.empty());
+    rom[0] = 0x55;
+    CHECK(!Xmem::romInfo(rom).present);
+    rom[0] = 0x02;
+    rom[1] = 3;
+    rom[4] = 0x00;
+    rom[5] = 0x10;  // a table outside the ROM
+    CHECK(!Xmem::romInfo(rom).present);
+    CHECK(!card.romInfo(-1).present && !card.romInfo(32).present);
+}
+
+// On a Plus the card takes the lower ROM's place as on a CPC, when it
+// boots; the cartridge's pages stay everywhere else.
+void testPlus()
+{
+    Cartridge cartridge;
+    cartridge.data.assign(4 * Cartridge::kPageSize, 0);
+    for (int page = 0; page < 4; ++page)
+        cartridge.data[static_cast<size_t>(page) * Cartridge::kPageSize] = static_cast<uint8_t>(0xC0 + page);
+    Cpc cpc;
+    cpc.setCartridge(&cartridge);
+    cpc.fitXmem(true);
+    for (int place = 0; place < Xmem::kRoms; ++place)
+        cpc.xmem()->setRom(place, pattern(place));
+    Memory& memory = cpc.memory();
+    const auto fit = [&](bool boot) {
+        Xmem::Switches switches;
+        switches.bootRom = boot;
+        cpc.xmem()->setSwitches(switches);
+        memory.setXmem(cpc.xmem());
+        memory.reset();
+    };
+    fit(false);
+    memory.selectUpperRom(0);
+    CHECK(memory.read(0x0000) == 0xC0 && memory.read(0xC000) == 0xC1);  // the cartridge's firmware and BASIC
+    memory.selectUpperRom(7);
+    CHECK_EQ(memory.read(0xC000), 0xC3);  // its AMSDOS
+    memory.selectUpperRom(9);
+    CHECK_EQ(memory.read(0xC000), 0x80 | 9);  // the card's ROMs are there all the same
+    fit(true);
+    memory.selectUpperRom(0);
+    CHECK(memory.read(0x0000) == (0x80 | 7) && memory.read(0xC000) == 0x80);
+    memory.selectUpperRom(7);
+    CHECK_EQ(memory.read(0xC000), 0xC3);
+    // The lower ROM moved to &4000 by the Plus's own register: that is the
+    // cartridge's page there, and RAM at the bottom.
+    memory.setRmr2(0x08 | 2);
+    memory.write(0x0000, 0x11);
+    CHECK(memory.read(0x4000) == 0xC2 && memory.read(0x0000) == 0x11);
+    memory.setRmr2(0x00);
+    CHECK_EQ(memory.read(0x0000), 0x80 | 7);
+    memory.setRomEnables(false, false);
+    CHECK_EQ(memory.read(0x0000), 0x11);
 }
 
 // In the machine: the RAM as the card's own example counts it, the ROMs
@@ -472,16 +551,114 @@ void testXmass(const std::filesystem::path& folder)
     std::filesystem::remove_all(dir);
 }
 
+// A program's own installer, which flashes its ROMs from BASIC with the
+// firmware's |FLASH: the iMPsuite's, as its owner runs it on the real
+// card. Then IMP Draw on a Plus started from that card, and the keys that
+// take it to its load screen, which is UniDOS's doing, in ROM 5.
+void testSuite(const std::filesystem::path& folder)
+{
+    const auto first = readFile(folder / "xmem" / "xmem_side-A.dsk");
+    const auto second = readFile(folder / "xmem" / "iMPsuite_230807.hfe");
+    auto disc = first ? Disc::fromImage(*first) : std::nullopt;
+    auto suite = second ? Disc::fromImage(*second) : std::nullopt;
+    Machine m;
+    MachineConfig config = stockMachine(CpcModel::Cpc6128);
+    config.cards[0] = Card::Xmem;
+    config.xmem.romFree = true;
+    if (!disc || !suite || !applyMachine(m.cpc, config, defaultRomDir(), nullptr)) {
+        std::printf("the iMPsuite's disc was not found: its installer is not run\n");
+        return;
+    }
+    m.cpc.coldReset();
+    m.cpc.fdc().setFast(true);
+    m.cpc.fdc().drive(0).disc = std::make_unique<Disc>(std::move(*disc));
+    CHECK(m.waitFor("Ready", 10));
+    m.frames(50);
+    m.keys.type("RUN\"INSTALL\n");
+    CHECK(m.waitFor("3- Spanish keymap", 30));
+    m.keys.type("1");
+    CHECK(m.waitFor("3- 448K RAM drive", 10));
+    m.keys.type("1");
+    CHECK(m.waitFor("2- No extra install", 10));
+    m.keys.type("2");
+    CHECK(m.waitFor("BASIC 1.1    :", 200));
+    m.frames(25);
+
+    config.xmem.bootRom = true;
+    CHECK(applyMachine(m.cpc, config, defaultRomDir(), nullptr));
+    m.cpc.coldReset();
+    CHECK(m.waitFor("Ready", 20));
+    m.frames(50);
+    m.cpc.fdc().drive(0).disc = std::make_unique<Disc>(std::move(*suite));
+    m.keys.type("RUN\"#INSTALL\n");
+    for (const char* question : {"Install iMPdraw", "Install rom addON", "Install JarvisOS", "Install Unidos", "Install iMPtiles"}) {
+        CHECK(m.waitFor(question, 300));
+        m.keys.type("Y\n");
+    }
+    CHECK(m.waitFor("iMPsuite Ready", 300));
+    Xmem& card = *m.cpc.xmem();
+    CHECK(card.romInfo(Xmem::kLowerPlace).firmware);
+    CHECK(card.romInfo(0).kind == 0x80 && card.romInfo(0).name == "BASIC");
+    CHECK(card.romInfo(1).name == "FW315 EXP");
+    CHECK(card.romInfo(2).present && card.romInfo(2).kind == 1);     // IMP Draw
+    CHECK(card.romInfo(3).present && card.romInfo(4).present && card.romInfo(6).present);
+    CHECK(card.romInfo(5).name.rfind("UNIDOS", 0) == 0);
+    CHECK(card.romInfo(23).kind == 2 && card.romInfo(24).kind == 2 && card.romInfo(25).kind == 2);
+    CHECK(!card.romInfo(8).present && !card.romInfo(22).present);
+
+    // The same card in a Plus: it starts from the card's firmware.
+    MachineConfig plus = stockMachine(CpcModel::Plus6128);
+    plus.cards = config.cards;
+    plus.xmem = config.xmem;
+    const std::vector<uint8_t> flash(card.flash().begin(), card.flash().end());
+    Machine p;
+    if (!applyMachine(p.cpc, plus, defaultRomDir(), nullptr)) {
+        std::printf("no Plus cartridge: the card is not tried in a Plus\n");
+        return;
+    }
+    p.cpc.xmem()->setFlash(flash);
+    p.cpc.crtc().setType(CrtcType::AsicPlus);
+    p.cpc.coldReset();
+    CHECK(p.waitFor("Ready", 20));
+    CHECK(contains(readScreenText(p.cpc), "AMSTRAD Colour Personal Computer"));
+    p.frames(50);
+    p.keys.type("|i\n");
+    p.frames(300);
+    CHECK(p.cpc.asic().unlocked());
+    const auto press = [&](std::initializer_list<CpcKey> keys) {
+        for (const CpcKey key : keys) {
+            p.cpc.keyboard().set(key, true);
+            p.frames(3);
+        }
+        p.frames(6);
+        for (const CpcKey key : keys)
+            p.cpc.keyboard().set(key, false);
+        p.frames(150);
+    };
+    press({CpcKey::Copy});
+    press({CpcKey::Control, CpcKey::Escape});  // its hardware sprites
+    press({CpcKey::Control, CpcKey::L});       // "Sprites - Load .spr"
+    p.frames(250);
+    int drawn = 0;
+    for (int at = 0xC000; at < 0x10000; ++at)
+        drawn += p.cpc.memory().readRam(static_cast<uint16_t>(at)) != 0;
+    CHECK_EQ(p.cpc.gateArray().mode(), 1);
+    CHECK(drawn > 1000);  // a black screen in mode 2 is what it is without UniDOS in ROM 5
+}
+
 }  // namespace
 
 int main(int argc, char* argv[])
 {
     testPlaces();
     testFlash();
+    testRomInfo();
+    testPlus();
     testMachine();
     if (argc > 1) {
         testInstall(argv[1]);
         testXmass(argv[1]);
+        testSuite(argv[1]);
     }
     return checkSummary("xmem");
 }

@@ -275,6 +275,12 @@ void Memory::remapMachine()
             readMap_[1] = asic_->page();
             registersMapped_ = true;
         }
+        // An X-MEM that boots takes the lower ROM's place on a Plus as on
+        // a CPC, where that is at the bottom of memory: the cartridge's
+        // page shows wherever else RMR2 has put it.
+        if (lowerEnabled_ && (where == 0 || where == 3))
+            if (const uint8_t* card = xmem_ ? xmem_->lowerRom() : nullptr)
+                readMap_[0] = card;
         if (upperEnabled_ && upperChosen_) {
             const int slot = upperSelected_ & romSlotMask_;
             if (const uint8_t* card = xmem_ ? xmem_->upperRom(upperSelected_) : nullptr)

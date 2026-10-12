@@ -40,6 +40,41 @@ void Xmem::setRom(int place, std::span<const uint8_t> image)
     changed_ = true;
 }
 
+Xmem::RomInfo Xmem::romInfo(std::span<const uint8_t> rom)
+{
+    RomInfo info;
+    if (rom.size() < 8)
+        return info;
+    // A firmware starts by setting the Gate Array: LD BC,&7F89.
+    if (rom[0] == 0x01 && rom[1] == 0x89 && rom[2] == 0x7F) {
+        info.present = info.firmware = true;
+        return info;
+    }
+    const unsigned table = rom[4] | rom[5] << 8;
+    if ((rom[0] > 2 && rom[0] != 0x80) || table < 0xC006 || table - 0xC000 >= rom.size())
+        return info;
+    info.present = true;
+    info.kind = rom[0];
+    info.mark = rom[1];
+    info.version = rom[2];
+    info.modification = rom[3];
+    // The name ends with a character that has its top bit set.
+    for (size_t at = table - 0xC000; at < rom.size() && info.name.size() < 16; ++at) {
+        const char character = static_cast<char>(rom[at] & 0x7F);
+        info.name += character >= 0x20 && character < 0x7F ? character : '?';
+        if (rom[at] & 0x80)
+            break;
+    }
+    return info;
+}
+
+Xmem::RomInfo Xmem::romInfo(int place) const
+{
+    if (place < 0 || place >= kRoms)
+        return {};
+    return romInfo(std::span<const uint8_t>(flash_).subspan(static_cast<size_t>(place) * kRomSize, kRomSize));
+}
+
 void Xmem::reset()
 {
     state_ = State::Read;

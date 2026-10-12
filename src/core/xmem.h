@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace tuxape {
@@ -65,6 +66,20 @@ public:
     void setFlash(std::span<const uint8_t> image);
     // One of its 32 places, written as a whole: what a flasher would do.
     void setRom(int place, std::span<const uint8_t> image);
+    // What one of its places holds, as a ROM tells of itself: its kind
+    // (0 a foreground ROM, 1 a background one, 2 an extension, &80 the
+    // BASIC), its version, and its name, the first of its table of
+    // commands. A firmware (the lower ROM) has no such header and is known
+    // by how it starts. Nothing there: `present` is false.
+    struct RomInfo {
+        bool present = false;
+        bool firmware = false;
+        uint8_t kind = 0, mark = 0, version = 0, modification = 0;
+        std::string name;
+    };
+    static RomInfo romInfo(std::span<const uint8_t> rom);
+    RomInfo romInfo(int place) const;
+
     // Whether the flash has been written since this was last cleared: for
     // whoever keeps it in a file.
     bool changed() const { return changed_; }
