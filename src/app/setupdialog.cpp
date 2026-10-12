@@ -34,6 +34,7 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+#include "contrast.h"
 #include "core/files.h"
 #include "core/gate_array.h"
 #include "core/setup.h"
@@ -97,6 +98,9 @@ public:
     QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem&, const QModelIndex& index) const override
     {
         const int row = index.row();
+        // A row the X-MEM has taken is not the page's to change.
+        if (dialog_->xmemTakesRow(row))
+            return nullptr;
         const QString current = dialog_->rom(row);
         auto* combo = new QComboBox(parent);
         combo->addItem(SetupDialog::emptyRomText(row), QString());
@@ -151,6 +155,16 @@ protected:
     void initStyleOption(QStyleOptionViewItem* option, const QModelIndex& index) const override
     {
         QStyledItemDelegate::initStyleOption(option, index);
+        // The X-MEM's own ROM in that place: greyed, but as far as it can
+        // be read, for it says what the machine has there; in italics and
+        // in words too, a grey alone being little to go by.
+        if (dialog_->xmemTakesRow(index.row())) {
+            option->text = dialog_->xmemRowText(index.row());
+            option->font.setItalic(true);
+            const QColor grey = option->palette.color(QPalette::Disabled, QPalette::Text);
+            option->palette.setColor(QPalette::Text, readable(grey, option->palette.color(QPalette::Base)));
+            return;
+        }
         const QString name = dialog_->rom(index.row());
         option->text = name.isEmpty() ? SetupDialog::emptyRomText(index.row()) : QDir::toNativeSeparators(name);
     }
@@ -1123,8 +1137,14 @@ QWidget* SetupDialog::createMemoryPage()
     romChecks->addWidget(disableRoms_);
     romChecks->addWidget(onlyLower0And7_);
     romChecks->addStretch(1);
+    romsNote_ = new QLabel(tr("In grey italics: the X-MEM's own ROMs (Expansions page), which take these places while the "
+                              "card is in. What was chosen here is kept for when it is out."));
+    romsNote_->setObjectName("lXmemTakes");
+    romsNote_->setWordWrap(true);
+    romsNote_->setVisible(false);
     auto* romsLayout = new QVBoxLayout(romsBox);
     romsLayout->addWidget(roms_, 1);
+    romsLayout->addWidget(romsNote_);
     romsLayout->addLayout(romChecks);
 
     updateTotalRam();
@@ -1644,7 +1664,10 @@ QWidget* SetupDialog::createExpansionsPage()
         switches->addWidget(holder, row, 1);
         switches->addWidget(hint, row, 2);
         ++row;
-        connect(second, &QRadioButton::toggled, this, [this] { updateTotalRam(); });
+        connect(second, &QRadioButton::toggled, this, [this] {
+            updateTotalRam();
+            updateRomOwners();
+        });
         return second;
     };
     xmem6128_ = twoWay(tr("CPC:"), tr("464"), tr("6128"), "rbXmemCpc",
@@ -1750,28 +1773,45 @@ void SetupDialog::setXmemSwitches(const tuxape::Xmem::Switches& switches)
     set(xmemReadYes_, switches.readRom);
 }
 
+namespace {
+
+// What a place of an X-MEM's flash memory holds: its name and version, and
+// its kind, which the list of them all gives too.
+struct PlaceText {
+    QString what;
+    QString kind;
+};
+
+PlaceText placeText(const std::optional<std::vector<uint8_t>>& flash, int place)
+{
+    tuxape::Xmem::RomInfo info;
+    const size_t start = static_cast<size_t>(place) * tuxape::Xmem::kRomSize;
+    if (flash && flash->size() >= start + tuxape::Xmem::kRomSize)
+        info = tuxape::Xmem::romInfo(std::span<const uint8_t>(*flash).subspan(start, tuxape::Xmem::kRomSize));
+    if (!info.present)
+        return {SetupDialog::tr("(empty)"), {}};
+    if (info.firmware)
+        return {SetupDialog::tr("a firmware"), {}};
+    const QString kind = info.kind == 0x80 ? SetupDialog::tr("BASIC")
+                         : info.kind == 0  ? SetupDialog::tr("foreground")
+                         : info.kind == 1  ? SetupDialog::tr("background")
+                                           : SetupDialog::tr("extension");
+    return {SetupDialog::tr("%1  %2.%3%4")
+                .arg(QString::fromStdString(info.name).trimmed())
+                .arg(info.mark)
+                .arg(info.version)
+                .arg(info.modification),
+            kind};
+}
+
+}  // namespace
+
 QStringList SetupDialog::xmemRoms() const
 {
     const auto flash = tuxape::readFile(xmemFlash_.toStdString());
     const auto line = [&](const QString& title, int place) {
-        tuxape::Xmem::RomInfo info;
-        const size_t start = static_cast<size_t>(place) * tuxape::Xmem::kRomSize;
-        if (flash && flash->size() >= start + tuxape::Xmem::kRomSize)
-            info = tuxape::Xmem::romInfo(std::span<const uint8_t>(*flash).subspan(start, tuxape::Xmem::kRomSize));
-        if (!info.present)
-            return tr("%1: (empty)").arg(title);
-        if (info.firmware)
-            return tr("%1: a firmware").arg(title);
-        const QString kind = info.kind == 0x80 ? tr("BASIC")
-                             : info.kind == 0  ? tr("foreground")
-                             : info.kind == 1  ? tr("background")
-                                               : tr("extension");
-        return tr("%1: %2  %3.%4%5 (%6)")
-            .arg(title, QString::fromStdString(info.name).trimmed())
-            .arg(info.mark)
-            .arg(info.version)
-            .arg(info.modification)
-            .arg(kind);
+        const PlaceText text = placeText(flash, place);
+        return text.kind.isEmpty() ? tr("%1: %2").arg(title, text.what) : tr("%1: %2 (%3)").arg(title, text.what, text.kind);
     };
     // The two places the card keeps for the ROMs it boots with, then the
     // ROMs by their numbers; ROM 7 is the machine's.
@@ -1780,6 +1820,37 @@ QStringList SetupDialog::xmemRoms() const
         if (rom != tuxape::Xmem::kLowerPlace)
             lines << line(QString::number(rom), rom);
     return lines;
+}
+
+bool SetupDialog::xmemTakesRow(int row) const
+{
+    if (!cards_[0] || !xmemReadYes_ || !xmemReadYes_->isChecked())
+        return false;
+    bool fitted = false;
+    for (int place = 0; place < tuxape::kCardPlaces; ++place)
+        fitted = fitted || card(place) == tuxape::Card::Xmem;
+    if (!fitted || row < 0 || row > tuxape::Xmem::kRoms)
+        return false;
+    // Row 0 is the lower ROM, row n ROM n - 1.
+    if (row <= 1)
+        return xmemBootRom_->isChecked();
+    return row - 1 != tuxape::Xmem::kLowerPlace;
+}
+
+QString SetupDialog::xmemRowText(int row) const
+{
+    const int place = row == 0 ? tuxape::Xmem::kLowerPlace : row - 1;
+    return tr("X-MEM: %1").arg(xmemPlaces_.value(place, tr("(empty)")));
+}
+
+// The Memory page's list shows whose each ROM is, and says why some rows
+// are greyed while any is.
+void SetupDialog::updateRomOwners()
+{
+    if (!roms_ || !romsNote_)
+        return;
+    romsNote_->setVisible(xmemTakesRow(2));
+    roms_->viewport()->update();
 }
 
 void SetupDialog::showXmemRoms()
@@ -1815,6 +1886,12 @@ void SetupDialog::setXmemFlash(const QString& file)
     xmemFlash_ = file;
     xmemFile_->setText(QDir::toNativeSeparators(file));
     xmemFile_->setToolTip(QDir::toNativeSeparators(file));
+    // What it holds, for the Memory page's list.
+    const auto flash = tuxape::readFile(file.toStdString());
+    xmemPlaces_.clear();
+    for (int place = 0; place < tuxape::Xmem::kRoms; ++place)
+        xmemPlaces_ << placeText(flash, place).what;
+    updateRomOwners();
 }
 
 // A card's own settings are there to be changed while the card is in a
@@ -1835,6 +1912,7 @@ void SetupDialog::updateCards()
     if (xmass && xmassDisc_.isEmpty())
         setXmassDisc(Settings::xmassDiscFile());
     updateTotalRam();
+    updateRomOwners();
 }
 
 // A card's file may be one that is not there yet: the card then starts

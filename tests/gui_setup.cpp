@@ -27,6 +27,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStandardItemModel>
+#include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -36,6 +37,7 @@
 #include <QWheelEvent>
 
 #include "check.h"
+#include "contrast.h"
 #include "core/inifile.h"
 #include "core/screen_text.h"
 #include "core/keymap.h"
@@ -939,9 +941,80 @@ void testExpansionsPage(const QString& folder, const QString& picture)
         showRoms->click();
         CHECK_EQ(listed, 32);
     }
+
+    // The Memory page's list says which of its ROMs the card has taken:
+    // greyed, with what the card holds there, and not to be changed. With
+    // BOOT on ROM that is every row but ROM 7's.
+    card.showPage(SetupDialog::Memory);
+    card.show();
+    auto* list = card.findChild<QTableWidget*>("ogROMs");
+    auto* note = card.findChild<QLabel*>("lXmemTakes");
+    const auto cardButton = [&](const char* name) { return card.findChild<QRadioButton*>(name); };
+    CHECK(list && note && cardButton("rbXmemBootOff") && cardButton("rbXmemReadOff") && cardButton("rbXmemReadOn"));
+    if (list && note && cardButton("rbXmemBootOff") && cardButton("rbXmemReadOff") && cardButton("rbXmemReadOn")) {
+        CHECK(card.xmemSwitches().bootRom && card.xmemSwitches().readRom);
+        CHECK(note->isVisible());
+        for (int row = 0; row <= 16; ++row)
+            CHECK(card.xmemTakesRow(row) == (row != 8));
+        CHECK(card.xmemRowText(0) == "X-MEM: a firmware");
+        CHECK(card.xmemRowText(1) == "X-MEM: BASIC  1.20");
+        CHECK(card.xmemRowText(2) == "X-MEM: (empty)");
+        CHECK(card.xmemRowText(6) == "X-MEM: UNIDOS  1.40");
+        // What the row is drawn with: that text, greyed.
+        QStyleOptionViewItem option;
+        option.initFrom(list);
+        option.state |= QStyle::State_Enabled;
+        struct Shown : QStyledItemDelegate {
+            using QStyledItemDelegate::initStyleOption;
+        };
+        const auto drawn = [&](int row) {
+            QStyleOptionViewItem copy = option;
+            (static_cast<Shown*>(static_cast<QStyledItemDelegate*>(list->itemDelegateForColumn(1)))->*(&Shown::initStyleOption))(
+                &copy, list->model()->index(row, 1));
+            return copy;
+        };
+        // In italics, and in a grey that still reads on the list's ground.
+        const QColor ground = option.palette.color(QPalette::Base);
+        CHECK(drawn(6).text == "X-MEM: UNIDOS  1.40" && drawn(6).font.italic());
+        CHECK(drawn(6).palette.color(QPalette::Text) != drawn(8).palette.color(QPalette::Text));
+        CHECK(contrastRatio(drawn(6).palette.color(QPalette::Text), ground) >= kTextContrast);
+        CHECK(drawn(8).text == "AMSDOS" && !drawn(8).font.italic());  // ROM 7: the machine's own
+        // No list opens on such a row; one does on ROM 7's.
+        list->setCurrentCell(6, 1);
+        CHECK(list->findChild<QComboBox*>() == nullptr);
+        list->setCurrentCell(8, 1);
+        CHECK(list->findChild<QComboBox*>() != nullptr);
+        list->setCurrentCell(8, 0);
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        // The name the row had is kept under the card's.
+        card.setRom(6, "PARADOS");
+        CHECK(card.xmemRowText(6) == "X-MEM: UNIDOS  1.40" && card.rom(6) == "PARADOS");
+        CHECK(card.settings().machine.upperRoms[5] == "PARADOS");
+        if (!picture.isEmpty())
+            card.grab().save(QString(picture).replace("expansions", "memory_xmem"));
+
+        // BOOT on CPC: the firmware and ROM 0 are the machine's again.
+        cardButton("rbXmemBootOff")->click();
+        CHECK(!card.xmemTakesRow(0) && !card.xmemTakesRow(1) && card.xmemTakesRow(2) && !card.xmemTakesRow(8));
+        CHECK(card.xmemTakesRow(9) && card.xmemTakesRow(32) && !card.xmemTakesRow(33));
+        CHECK(drawn(1).text == "BASIC1-1" && note->isVisible());
+        // READ ROM on NO, or the card out: all of them are, and the page
+        // shows its own names.
+        cardButton("rbXmemReadOff")->click();
+        CHECK(!card.xmemTakesRow(2) && !card.xmemTakesRow(6) && !note->isVisible());
+        CHECK(drawn(6).text == "PARADOS" && !drawn(6).font.italic());
+        cardButton("rbXmemReadOn")->click();
+        CHECK(card.xmemTakesRow(6) && note->isVisible());
+        card.setCard(0, Card::None);
+        CHECK(!card.xmemTakesRow(6) && !note->isVisible());
+        card.setCard(1, Card::Xmem);
+        CHECK(card.xmemTakesRow(6) && note->isVisible());
+    }
+
     // No file yet: an erased card.
     card.setXmemFlash(folder + "/none.flash");
     CHECK(card.xmemRoms().value(0) == "Lower: (empty)" && card.xmemRoms().size() == 32);
+    CHECK(card.xmemRowText(6) == "X-MEM: (empty)");
 }
 
 // The Input page: the CPC's keyboard to click on, the PC keys of the key

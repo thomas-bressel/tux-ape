@@ -94,6 +94,14 @@ public:
     // (background)" or "5: (empty)". The button "ROMs..." shows them.
     QStringList xmemRoms() const;
     void showXmemRoms();
+    // Whether a row of the Memory page's list of ROMs is the X-MEM's for
+    // the time being: with the card in a place and READ ROM on YES, ROMs 1
+    // to 31 but 7 are, and with BOOT on ROM the lower ROM and ROM 0 too.
+    // Such a row is greyed, shows what the card holds there ("X-MEM:
+    // UNIDOS  1.40") and cannot be changed; the name it had is kept for
+    // when the card is out.
+    bool xmemTakesRow(int row) const;
+    QString xmemRowText(int row) const;
     // The file that is the X-MASS's disc.
     QString xmassDisc() const { return xmassDisc_; }
     void setXmassDisc(const QString& file);
@@ -212,6 +220,9 @@ private:
     QRadioButton* xmemReadYes_ = nullptr;
     QLabel* xmemFile_ = nullptr;
     QString xmemFlash_;
+    QStringList xmemPlaces_;  // what each of the flash's 32 places holds, in short
+    QLabel* romsNote_ = nullptr;
+    void updateRomOwners();
     void chooseXmassDisc();
     QGroupBox* xmassBox_ = nullptr;
     QLabel* xmassFile_ = nullptr;
