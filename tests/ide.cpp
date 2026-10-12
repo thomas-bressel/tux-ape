@@ -85,7 +85,11 @@ void testDisc(const std::filesystem::path& dir)
         model += static_cast<char>(id[54 + static_cast<size_t>(i) + 1]);
         model += static_cast<char>(id[54 + static_cast<size_t>(i)]);
     }
-    CHECK(model.rfind("X-MASS DOM", 0) == 0);
+    // The module an X-MASS is sold with. JarvisOS takes the card to be
+    // there when it finds "DiskOn" nine characters into the name: five
+    // bytes of it, as they come out swapped, from the 64th of the answer.
+    CHECK(model.rfind("PQI IDE DiskOnModule", 0) == 0);
+    CHECK(std::string(id.begin() + 63, id.begin() + 68) == "DksnO");
     CHECK_EQ(disc.read(0), 0);  // nothing more to take
 
     // Nothing written: zeros, and still no file.

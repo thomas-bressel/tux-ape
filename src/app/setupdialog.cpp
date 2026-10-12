@@ -1723,7 +1723,7 @@ QWidget* SetupDialog::createExpansionsPage()
     auto* aboutDisc = new QLabel(
         tr("An IDE disc at the SYMBiFACE II's addresses (&FD06-&FD0F). The file grows as the disc is written; it "
            "is made a FAT volume from the machine, by the X-MASS disc's FORMAT, and can then be read on a PC. The "
-           "machine needs a DOS that knows such a disc, in a ROM: CubeMDOS or UniDOS, in the X-MEM or on the "
+           "machine needs a DOS that knows such a disc, in a ROM: CubeMDOS, JarvisOS or UniDOS, in the X-MEM or on the "
            "Memory page."));
     aboutDisc->setWordWrap(true);
     auto* xmassLayout = new QVBoxLayout(xmassBox_);

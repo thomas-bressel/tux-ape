@@ -523,7 +523,7 @@ void testXmass(const std::filesystem::path& folder)
     m.frames(100);
     m.keys.type("RUN\"FORMAT\n");
     CHECK(m.waitFor("Choose 1,2 or 3", 60));
-    CHECK(contains(readScreenText(m.cpc), "Controller Model: X-MASS DOM"));
+    CHECK(contains(readScreenText(m.cpc), "Controller Model: PQI IDE DiskOnModule"));
     m.keys.type("2");
     CHECK(m.waitFor("Success", 300));
     CHECK(m.cpc.ide() && m.cpc.ide()->good());
@@ -644,6 +644,37 @@ void testSuite(const std::filesystem::path& folder)
         drawn += p.cpc.memory().readRam(static_cast<uint16_t>(at)) != 0;
     CHECK_EQ(p.cpc.gateArray().mode(), 1);
     CHECK(drawn > 1000);  // a black screen in mode 2 is what it is without UniDOS in ROM 5
+
+    // An X-MASS beside it: the suite's JarvisOS (ROM 4) knows the card by
+    // its disc's name, formats it its own way and is then BASIC's disc.
+    const auto dir = std::filesystem::temp_directory_path() / "tuxape_jarvis_test";
+    std::filesystem::remove_all(dir);
+    plus.cards[1] = Card::Xmass;
+    plus.xmassDisc = (dir / "xmass.img").string();
+    plus.xmem.bootRom = false;  // the cartridge's firmware lets the ROMs say what they find
+    Machine j;
+    CHECK(applyMachine(j.cpc, plus, defaultRomDir(), nullptr));
+    j.cpc.xmem()->setFlash(flash);
+    j.cpc.crtc().setType(CrtcType::AsicPlus);
+    j.cpc.coldReset();
+    j.frames(100);
+    j.cpc.keyboard().set(CpcKey::F1, true);  // the cartridge's menu: BASIC
+    j.frames(10);
+    j.cpc.keyboard().set(CpcKey::F1, false);
+    CHECK(j.waitFor("Ready", 20));
+    CHECK(contains(readScreenText(j.cpc), "Find: PQI IDE DiskOnModule"));
+    CHECK(!contains(readScreenText(j.cpc), "not detected"));
+    j.frames(50);
+    j.keys.type("|FORMAT\n");
+    CHECK(j.waitFor("Format your X-Mass DoM", 20));
+    j.keys.type("Y");
+    CHECK(j.waitFor("Formatting...", 20));
+    j.frames(2500);
+    j.keys.type("MODE 2\n|X\n10 PRINT \"kept by Jarvis\"\nSAVE\"HELLO\"\nNEW\nCAT\n");
+    CHECK(j.waitFor("HELLO   .", 60));
+    j.keys.type("RUN\"HELLO\"\n");
+    CHECK(j.waitFor("\nkept by Jarvis", 30));
+    std::filesystem::remove_all(dir);
 }
 
 }  // namespace

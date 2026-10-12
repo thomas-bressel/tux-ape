@@ -222,7 +222,9 @@ void IdeDisc::identify()
     word(6, kSectorsPerTrack);
     text(10, 10, "TUXAPE00000001");
     text(23, 4, "1.0");
-    text(27, 20, "X-MASS DOM (TuxAPE)");
+    // The name of the module the card is sold with: JarvisOS knows an
+    // X-MASS by the "DiskOn" it finds there, nine characters in.
+    text(27, 20, kModel);
     word(49, 0x0200);  // it can be asked for sectors by their number
     word(53, 0x0001);
     word(54, static_cast<unsigned>(cylinders_));

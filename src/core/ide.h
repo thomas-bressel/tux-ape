@@ -36,6 +36,8 @@ public:
     // The shape it says it has.
     int cylinders() const { return cylinders_; }
     static constexpr int kHeads = 16, kSectorsPerTrack = 63;
+    // What it says it is called.
+    static constexpr const char* kModel = "PQI IDE DiskOnModule";
 
     // The registers, 0 to 7 as the disc numbers them: data, error (read) or
     // features (written), sector count, sector number, cylinder low and
