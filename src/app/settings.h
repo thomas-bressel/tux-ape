@@ -138,6 +138,15 @@ struct Settings {
     static bool loadKeyMap(tuxape::KeyMap& map);
     static bool saveKeyMap(const tuxape::KeyMap& map);
 
+    // The cards on the expansion port are part of the machine (see
+    // tuxape::MachineConfig), kept under "Expansions". A card is known in
+    // the file by its name.
+    static QString cardName(tuxape::Card card);
+    static tuxape::Card cardNamed(const QString& name);
+    // Where an X-MEM's flash memory is kept unless another file is chosen:
+    // beside the settings file.
+    static QString xmemFlashFile();
+
     bool operator==(const Settings&) const = default;
 
     // The file read and written: TuxAPE.ini in the user's configuration

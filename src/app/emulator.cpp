@@ -70,6 +70,8 @@ Emulator::Emulator(QObject* parent)
 Emulator::~Emulator()
 {
     stop();
+    // What the cards keep goes to their files.
+    tuxape::saveCards(cpc_);
 }
 
 QString Emulator::setupMachine(tuxape::CpcModel model)
@@ -1140,6 +1142,13 @@ void Emulator::threadMain()
             statsStart = now;
             statsMicroseconds = 0;
             statsFrames = frames;
+            // Once a second too, what the cards keep goes to their files
+            // if it has changed: a flash being written is not lost with a
+            // program that then crashes the machine, or TuxAPE.
+            {
+                std::lock_guard lock(machineMutex_);
+                tuxape::saveCards(cpc_);
+            }
         }
 
         if (every != 0) {

@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -766,6 +767,127 @@ void testRomFile(const QString& folder)
         qputenv("TUXAPE_USER_ROM_DIR", ownBefore);
 }
 
+// The Expansions page, TuxAPE's own: the four places of a MotherX4 board,
+// the X-MEM and its switches; what of it is kept in the settings file, and
+// what reaches the machine.
+void testExpansionsPage(const QString& folder, const QString& picture)
+{
+    using tuxape::Card;
+    Settings settings;
+    CHECK(!settings.machine.hasCard(Card::Xmem));
+    SetupDialog dialog(settings);
+    dialog.showPage(SetupDialog::Expansions);
+    dialog.show();
+    auto* tabs = dialog.findChild<QTabWidget*>("PageControl");
+    CHECK(tabs && tabs->tabText(SetupDialog::Expansions) == "Expansions");
+    CHECK(tabs && tabs->currentIndex() == SetupDialog::Expansions);
+    QComboBox* places[4] = {};
+    for (int place = 0; place < 4; ++place)
+        places[place] = dialog.findChild<QComboBox*>(QString("cbCard%1").arg(place + 1));
+    auto* box = dialog.findChild<QGroupBox*>("gbXMEM");
+    auto* file = dialog.findChild<QLabel*>("lXmemFlash");
+    auto* total = dialog.findChild<QLabel*>("lTotalRAM");
+    auto* ram64 = dialog.findChild<QRadioButton*>("rb64K");
+    const auto button = [&](const char* name) { return dialog.findChild<QRadioButton*>(name); };
+    const bool found = places[0] && places[1] && places[2] && places[3] && box && file && total && ram64
+                       && button("rbXmemCpcOff") && button("rbXmemCpcOn") && button("rbXmemBootOn")
+                       && button("rbXmemRomOn") && button("rbXmemReadOff");
+    CHECK(found);
+    if (!found)
+        return;
+
+    // Nothing on the port to begin with, and nothing of the card to set.
+    for (QComboBox* place : places)
+        CHECK(place->count() >= 2 && place->currentIndex() == 0 && place->itemText(0) == "(Empty)");
+    CHECK(places[0]->itemText(1).startsWith("X-MEM"));
+    CHECK(!box->isEnabled());
+    CHECK(total->text() == "128K");
+    CHECK(dialog.xmemFlash().isEmpty());
+
+    // The card in a place: its switches as the board has them when new, a
+    // file for its flash memory beside the settings, and its RAM counted.
+    places[1]->setCurrentIndex(1);
+    emit places[1]->activated(1);
+    CHECK(dialog.card(1) == Card::Xmem && box->isEnabled());
+    CHECK(button("rbXmemCpcOn")->isChecked() && button("rbXmemCpcOn")->text() == "6128");
+    CHECK(!button("rbXmemBootOn")->isChecked() && button("rbXmemBootOn")->text() == "ROM");
+    CHECK(!button("rbXmemRomOn")->isChecked() && button("rbXmemRomOn")->text() == "FREE");
+    CHECK(!button("rbXmemReadOff")->isChecked() && button("rbXmemReadOff")->text() == "NO");
+    CHECK(dialog.xmemFlash() == Settings::xmemFlashFile());
+    CHECK(Settings::xmemFlashFile() == folder + "/sub/xmem.flash");
+    CHECK(file->text() == QDir::toNativeSeparators(dialog.xmemFlash()));
+    CHECK(total->text() == "576K");
+    // On 464 in a 6128 it is the same; on 6128 in a machine of 64K the
+    // first bank is nobody's.
+    button("rbXmemCpcOff")->click();
+    CHECK(total->text() == "576K");
+    ram64->click();
+    CHECK(total->text() == "576K");
+    button("rbXmemCpcOn")->click();
+    CHECK(total->text() == "512K");
+    // There is one such card: put in another place, it leaves the first.
+    places[3]->setCurrentIndex(1);
+    emit places[3]->activated(1);
+    CHECK(dialog.card(3) == Card::Xmem && dialog.card(1) == Card::None && box->isEnabled());
+    dialog.setCard(0, Card::Xmem);
+    CHECK(dialog.card(0) == Card::Xmem && dialog.card(3) == Card::None);
+    if (!picture.isEmpty())
+        dialog.grab().save(picture);
+
+    button("rbXmemBootOn")->click();
+    button("rbXmemRomOn")->click();
+    dialog.setXmemFlash(folder + "/mine.flash");
+    Settings shown = dialog.settings();
+    CHECK(shown.machine.cards[0] == Card::Xmem && shown.machine.hasCard(Card::Xmem));
+    CHECK(shown.machine.xmem == (tuxape::Xmem::Switches{true, true, true, true}));
+    CHECK(shown.machine.xmemFlash == (folder + "/mine.flash").toStdString());
+
+    // In the file, under the names the board has for them.
+    CHECK(shown.save());
+    QFile ini(Settings::file());
+    CHECK(ini.open(QIODevice::ReadOnly));
+    const QByteArray text = ini.readAll();
+    ini.close();
+    CHECK(text.contains("\r\n[Expansions]\r\n"));
+    CHECK(text.contains("\r\nCard1=X-MEM\r\n") && text.contains("\r\nCard2=\r\n"));
+    CHECK(text.contains("\r\nX-MEM CPC=6128\r\n") && text.contains("\r\nX-MEM BOOT=ROM\r\n"));
+    CHECK(text.contains("\r\nX-MEM ROM=FREE\r\n") && text.contains("\r\nX-MEM READ ROM=YES\r\n"));
+    Settings loaded;
+    loaded.load();
+    CHECK(loaded.machine == shown.machine);
+    // And back in the window. The card taken out, its settings stay for
+    // when it comes back.
+    SetupDialog again(loaded);
+    CHECK(again.card(0) == Card::Xmem && again.xmemSwitches() == shown.machine.xmem);
+    CHECK(again.xmemFlash() == folder + "/mine.flash");
+    again.setCard(0, Card::None);
+    CHECK(!again.settings().machine.hasCard(Card::Xmem));
+    CHECK(again.settings().machine.xmem.bootRom && again.xmemFlash() == folder + "/mine.flash");
+    QFile::remove(Settings::file());
+
+    // In the machine: the card's RAM and ROMs, without a reset; and what
+    // is written in its flash memory is in its file when TuxAPE ends.
+    {
+        Emulator emulator;
+        tuxape::MachineConfig machine = shown.machine;
+        machine.xmem.bootRom = false;
+        emulator.setupMachine(machine, false);
+        CHECK(emulator.machine().hasCard(Card::Xmem));
+        const std::vector<uint8_t> rom(tuxape::Xmem::kRomSize, 0x5A);
+        emulator.withMachine([&](tuxape::Cpc& cpc) {
+            CHECK(cpc.xmem() != nullptr);
+            CHECK_EQ(cpc.memory().ramSizeKb(), 512);
+            if (cpc.xmem())
+                cpc.xmem()->setRom(12, rom);
+        });
+        CHECK(!QFile::exists(folder + "/mine.flash"));
+    }
+    QFile flash(folder + "/mine.flash");
+    CHECK(flash.open(QIODevice::ReadOnly));
+    const QByteArray kept = flash.readAll();
+    CHECK(kept.size() == 512 * 1024 && kept[12 * 16384] == 0x5A && kept[11 * 16384] == char(0xFF));
+}
+
 // The Input page: the CPC's keyboard to click on, the PC keys of the key
 // clicked, the joystick, and layouts in WinAPE's .kbd files.
 void testInputPage(const QString& folder, const QString& picture)
@@ -976,9 +1098,10 @@ void testDialog(const QString& picture)
     speed->setValue(300);
 
     // Six pages as in WinAPE; only the first is there yet.
-    CHECK_EQ(tabs->count(), 6);
+    CHECK_EQ(tabs->count(), 7);
     CHECK(tabs->tabText(0) == "General");
     CHECK(tabs->tabText(3) == "Memory");
+    CHECK(tabs->tabText(6) == "Expansions");
     CHECK(tabs->isTabEnabled(0));
     CHECK(tabs->isTabEnabled(1));
     CHECK(tabs->isTabEnabled(2));
@@ -1099,6 +1222,7 @@ int main(int argc, char* argv[])
     testSoundPage(prefix.isEmpty() ? QString() : prefix + "sound.png");
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");
     testRomFile(folder.path());
+    testExpansionsPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "expansions.png");
     testInputPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "input.png");
     testProfiles(folder.path(), prefix.isEmpty() ? QString() : prefix + "profile.png");
 

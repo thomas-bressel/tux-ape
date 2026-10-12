@@ -18,6 +18,7 @@ QString g_file;
 constexpr const char* kConfiguration = "Configuration";
 constexpr const char* kDrives = "Drives";
 constexpr const char* kRoms = "ROMS";
+constexpr const char* kExpansions = "Expansions";
 
 std::string upperKey(int slot)
 {
@@ -117,6 +118,22 @@ void Settings::read(const tuxape::IniFile& ini)
     machine.rom32 = ini.getBool(kRoms, "Enable 32 ROMs", machine.rom32);
     machine.disableAllRoms = ini.getBool(kRoms, "Disable All", machine.disableAllRoms);
     machine.onlyLower0And7 = ini.getBool(kRoms, "Enable L07", machine.onlyLower0And7);
+    // TuxAPE's own: the cards, and the X-MEM's switches as its board
+    // names their positions.
+    for (int place = 0; place < tuxape::kCardPlaces; ++place) {
+        const std::string key = "Card" + std::to_string(place + 1);
+        if (ini.has(kExpansions, key))
+            machine.cards[static_cast<size_t>(place)] = cardNamed(QString::fromStdString(ini.get(kExpansions, key)));
+    }
+    const auto position = [&](const char* key, const char* on, bool now) {
+        return ini.has(kExpansions, key) ? ini.get(kExpansions, key) == on : now;
+    };
+    machine.xmem.ram6128 = position("X-MEM CPC", "6128", machine.xmem.ram6128);
+    machine.xmem.bootRom = position("X-MEM BOOT", "ROM", machine.xmem.bootRom);
+    machine.xmem.romFree = position("X-MEM ROM", "FREE", machine.xmem.romFree);
+    machine.xmem.readRom = position("X-MEM READ ROM", "YES", machine.xmem.readRom);
+    if (ini.has(kExpansions, "X-MEM Flash"))
+        machine.xmemFlash = ini.get(kExpansions, "X-MEM Flash");
 
     monitorType = std::clamp(ini.getInt(kConfiguration, "Monitor Type", monitorType), 0, 2);
     brightness = std::clamp(ini.getInt(kConfiguration, "Monitor Brightness", brightness), -100, 100);
@@ -223,6 +240,14 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kRoms, "Enable 32 ROMs", machine.rom32);
         ini.setBool(kRoms, "Disable All", machine.disableAllRoms);
         ini.setBool(kRoms, "Enable L07", machine.onlyLower0And7);
+        for (int place = 0; place < tuxape::kCardPlaces; ++place)
+            ini.set(kExpansions, "Card" + std::to_string(place + 1),
+                    cardName(machine.cards[static_cast<size_t>(place)]).toStdString());
+        ini.set(kExpansions, "X-MEM CPC", machine.xmem.ram6128 ? "6128" : "464");
+        ini.set(kExpansions, "X-MEM BOOT", machine.xmem.bootRom ? "ROM" : "CPC");
+        ini.set(kExpansions, "X-MEM ROM", machine.xmem.romFree ? "FREE" : "LOCK");
+        ini.set(kExpansions, "X-MEM READ ROM", machine.xmem.readRom ? "YES" : "NO");
+        ini.set(kExpansions, "X-MEM Flash", machine.xmemFlash);
     }
     if (parts & MonitorPart) {
         ini.setInt(kConfiguration, "Monitor Type", monitorType);
@@ -315,6 +340,21 @@ QString Settings::profileFolder()
 QString Settings::userProfileFolder()
 {
     return QFileInfo(file()).absolutePath() + "/Profile";
+}
+
+QString Settings::cardName(tuxape::Card card)
+{
+    return card == tuxape::Card::Xmem ? QStringLiteral("X-MEM") : QString();
+}
+
+tuxape::Card Settings::cardNamed(const QString& name)
+{
+    return name.compare("X-MEM", Qt::CaseInsensitive) == 0 ? tuxape::Card::Xmem : tuxape::Card::None;
+}
+
+QString Settings::xmemFlashFile()
+{
+    return QFileInfo(file()).absolutePath() + "/xmem.flash";
 }
 
 QString Settings::keyMapFile()

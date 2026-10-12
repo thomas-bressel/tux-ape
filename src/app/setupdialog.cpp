@@ -190,6 +190,7 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     tabs_->addTab(createMemoryPage(), tr("Memory"));
     tabs_->addTab(createInputPage(), tr("Input"));
     tabs_->addTab(createOtherPage(), tr("Other"));
+    tabs_->addTab(createExpansionsPage(), tr("Expansions"));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
     wireHelp(buttons->button(QDialogButtonBox::Help));
@@ -1190,7 +1191,12 @@ void SetupDialog::chooseMultifaceRom()
 
 void SetupDialog::updateTotalRam()
 {
-    totalRam_->setText(tr("%1K").arg(tuxape::Memory::ramSizeKb(chosenRam(), siliconDisc_->isChecked())));
+    // With what the cards of the Expansions page bring.
+    uint8_t cardBanks = 0;
+    for (int place = 0; cards_[0] && place < tuxape::kCardPlaces; ++place)
+        if (card(place) == tuxape::Card::Xmem)
+            cardBanks = xmem6128_->isChecked() ? 0xFE : 0xFF;
+    totalRam_->setText(tr("%1K").arg(tuxape::Memory::ramSizeKb(chosenRam(), siliconDisc_->isChecked(), cardBanks)));
 }
 
 // One row for the firmware ROM and one for each slot of the ROM board.
@@ -1334,6 +1340,11 @@ void SetupDialog::setSettings(const Settings& settings)
     rom32_->setChecked(machine.rom32);
     disableRoms_->setChecked(machine.disableAllRoms);
     onlyLower0And7_->setChecked(machine.onlyLower0And7);
+    for (int place = 0; place < tuxape::kCardPlaces; ++place)
+        setCard(place, machine.cards[static_cast<size_t>(place)]);
+    setXmemSwitches(machine.xmem);
+    setXmemFlash(QString::fromStdString(machine.xmemFlash));
+    updateCards();
     updateTotalRam();
     updateRomRows();
     roms_->viewport()->update();
@@ -1526,6 +1537,10 @@ Settings SetupDialog::settings() const
     machine.rom32 = rom32_->isChecked();
     machine.disableAllRoms = disableRoms_->isChecked();
     machine.onlyLower0And7 = onlyLower0And7_->isChecked();
+    for (int place = 0; place < tuxape::kCardPlaces; ++place)
+        machine.cards[static_cast<size_t>(place)] = card(place);
+    machine.xmem = xmemSwitches();
+    machine.xmemFlash = xmemFlash_.toStdString();
 
     settings.monitorType = chosenMonitor();
     settings.verticalHold = verticalHold_->value();
@@ -1567,4 +1582,172 @@ Settings SetupDialog::settings() const
     settings.amxMouse = amxMouse_->isChecked();
     settings.keyboardFile = keyboardFile_;
     return settings;
+}
+
+// ---- Expansions: TuxAPE's own page ---------------------------------------
+
+// The cards of the expansion port. A real machine takes them on a
+// MotherX4 board, which has four places.
+QWidget* SetupDialog::createExpansionsPage()
+{
+    auto* page = new QWidget;
+
+    auto* board = new QGroupBox(tr("Expansion Port (MotherX4: four cards)"));
+    board->setObjectName("gbCards");
+    auto* places = new QGridLayout(board);
+    for (int place = 0; place < tuxape::kCardPlaces; ++place) {
+        auto* box = new QComboBox;
+        box->setObjectName(QString("cbCard%1").arg(place + 1));
+        box->addItem(tr("(Empty)"), static_cast<int>(tuxape::Card::None));
+        box->addItem(tr("X-MEM - 512K RAM, 32 ROMs in flash memory"), static_cast<int>(tuxape::Card::Xmem));
+        cards_[place] = box;
+        places->addWidget(new QLabel(tr("Slot %1:").arg(place + 1)), place, 0);
+        places->addWidget(box, place, 1);
+        connect(box, &QComboBox::activated, this, [this, place] {
+            // The same card twice is not to be had: it moves.
+            for (int other = 0; other < tuxape::kCardPlaces; ++other)
+                if (other != place && card(other) != tuxape::Card::None && card(other) == card(place))
+                    cards_[other]->setCurrentIndex(0);
+            updateCards();
+        });
+    }
+    places->setColumnStretch(1, 1);
+
+    // The X-MEM: its three switches and its jumper, each with the two
+    // positions the board has printed beside it.
+    xmemBox_ = new QGroupBox(tr("X-MEM"));
+    xmemBox_->setObjectName("gbXMEM");
+    auto* switches = new QGridLayout;
+    int row = 0;
+    const auto twoWay = [&](const QString& title, const QString& off, const QString& on, const char* name,
+                            const QString& what) {
+        // The two buttons of a switch are a group of their own.
+        auto* holder = new QWidget;
+        auto* both = new QHBoxLayout(holder);
+        both->setContentsMargins(0, 0, 0, 0);
+        auto* first = new QRadioButton(off);
+        auto* second = new QRadioButton(on);
+        first->setObjectName(QString("%1Off").arg(name));
+        second->setObjectName(QString("%1On").arg(name));
+        first->setChecked(true);
+        both->addWidget(first);
+        both->addWidget(second);
+        both->addStretch(1);
+        auto* label = new QLabel(title);
+        auto* hint = new QLabel(what);
+        hint->setWordWrap(true);
+        switches->addWidget(label, row, 0);
+        switches->addWidget(holder, row, 1);
+        switches->addWidget(hint, row, 2);
+        ++row;
+        connect(second, &QRadioButton::toggled, this, [this] { updateTotalRam(); });
+        return second;
+    };
+    xmem6128_ = twoWay(tr("CPC:"), tr("464"), tr("6128"), "rbXmemCpc",
+                       tr("The RAM for a 464 or 664, or for a 6128, whose own second 64K is the first bank."));
+    xmemBootRom_ = twoWay(tr("BOOT:"), tr("CPC"), tr("ROM"), "rbXmemBoot",
+                          tr("The machine starts from its own firmware and BASIC, or from the card's."));
+    xmemFree_ = twoWay(tr("ROM:"), tr("LOCK"), tr("FREE"), "rbXmemRom",
+                       tr("On FREE the flash memory can be written, as a disc without its tab."));
+    xmemReadYes_ = twoWay(tr("READ ROM (jumper):"), tr("NO"), tr("YES"), "rbXmemRead",
+                          tr("On NO the machine sees none of the card's ROMs: to rescue one that no longer starts."));
+    switches->setColumnStretch(2, 1);
+
+    xmemFile_ = new QLabel;
+    xmemFile_->setObjectName("lXmemFlash");
+    xmemFile_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto* chooseFile = new QPushButton(tr("Select File..."));
+    chooseFile->setObjectName("bXmemFlash");
+    connect(chooseFile, &QPushButton::clicked, this, &SetupDialog::chooseXmemFlash);
+    auto* file = new QHBoxLayout;
+    file->addWidget(new QLabel(tr("Flash memory:")));
+    file->addWidget(xmemFile_, 1);
+    file->addWidget(chooseFile);
+    auto* about = new QLabel(
+        tr("The card's flash memory holds ROMs 1 to 31, in place of those of the Memory page; ROM 7 stays the "
+           "machine's own, and so do the firmware and ROM 0 unless BOOT is on ROM. It is written from the machine, "
+           "as on a real one: by the X-MEM disc's INSTALL and FLASHER, or firmware 3.15's |FLASH."));
+    about->setWordWrap(true);
+    auto* xmemLayout = new QVBoxLayout(xmemBox_);
+    xmemLayout->addLayout(switches);
+    xmemLayout->addLayout(file);
+    xmemLayout->addWidget(about);
+
+    auto* layout = new QVBoxLayout(page);
+    layout->addWidget(board);
+    layout->addWidget(xmemBox_);
+    layout->addStretch(1);
+    return page;
+}
+
+tuxape::Card SetupDialog::card(int place) const
+{
+    if (place < 0 || place >= tuxape::kCardPlaces)
+        return tuxape::Card::None;
+    return static_cast<tuxape::Card>(cards_[place]->currentData().toInt());
+}
+
+void SetupDialog::setCard(int place, tuxape::Card card)
+{
+    if (place < 0 || place >= tuxape::kCardPlaces)
+        return;
+    for (int other = 0; other < tuxape::kCardPlaces; ++other)
+        if (other != place && card != tuxape::Card::None && this->card(other) == card)
+            cards_[other]->setCurrentIndex(0);
+    cards_[place]->setCurrentIndex(qMax(0, cards_[place]->findData(static_cast<int>(card))));
+    updateCards();
+}
+
+tuxape::Xmem::Switches SetupDialog::xmemSwitches() const
+{
+    return {xmem6128_->isChecked(), xmemBootRom_->isChecked(), xmemFree_->isChecked(), xmemReadYes_->isChecked()};
+}
+
+void SetupDialog::setXmemSwitches(const tuxape::Xmem::Switches& switches)
+{
+    const auto set = [](QRadioButton* on, bool value) {
+        if (value)
+            on->setChecked(true);
+        else
+            on->parentWidget()->findChild<QRadioButton*>(on->objectName().chopped(2) + "Off")->setChecked(true);
+    };
+    set(xmem6128_, switches.ram6128);
+    set(xmemBootRom_, switches.bootRom);
+    set(xmemFree_, switches.romFree);
+    set(xmemReadYes_, switches.readRom);
+}
+
+void SetupDialog::setXmemFlash(const QString& file)
+{
+    xmemFlash_ = file;
+    xmemFile_->setText(QDir::toNativeSeparators(file));
+    xmemFile_->setToolTip(QDir::toNativeSeparators(file));
+}
+
+// A card's own settings are there to be changed while the card is in a
+// place. An X-MEM put in without a file for its flash memory gets the
+// usual one, beside the settings.
+void SetupDialog::updateCards()
+{
+    bool xmem = false;
+    for (int place = 0; place < tuxape::kCardPlaces; ++place)
+        xmem = xmem || card(place) == tuxape::Card::Xmem;
+    xmemBox_->setEnabled(xmem);
+    if (xmem && xmemFlash_.isEmpty())
+        setXmemFlash(Settings::xmemFlashFile());
+    updateTotalRam();
+}
+
+// The file may be one that is not there yet: the card then starts erased,
+// and the file is made when its flash memory is first written.
+void SetupDialog::chooseXmemFlash()
+{
+    const QString start = xmemFlash_.isEmpty() ? Settings::xmemFlashFile() : xmemFlash_;
+    QFileDialog dialog(this, tr("X-MEM Flash Memory"), QFileInfo(start).absolutePath(),
+                       tr("Flash memory (*.flash *.rom *.bin);;All files (*)"));
+    dialog.setAcceptMode(QFileDialog::AcceptOpen);
+    dialog.setFileMode(QFileDialog::AnyFile);
+    dialog.selectFile(QFileInfo(start).fileName());
+    if (dialog.exec() == QDialog::Accepted && !dialog.selectedFiles().isEmpty())
+        setXmemFlash(dialog.selectedFiles().first());
 }

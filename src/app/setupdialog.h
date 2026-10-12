@@ -10,6 +10,7 @@
 
 class QAbstractButton;
 class QCheckBox;
+class QGroupBox;
 class QLineEdit;
 class QComboBox;
 class QPushButton;
@@ -29,7 +30,7 @@ class SetupDialog : public QDialog {
     Q_OBJECT
 
 public:
-    enum Page { General, Display, Sound, Memory, Input, Other };
+    enum Page { General, Display, Sound, Memory, Input, Other, Expansions };
 
     explicit SetupDialog(const Settings& settings, QWidget* parent = nullptr);
 
@@ -76,6 +77,18 @@ public:
     void chooseRom(int row);
     // What the list shows for a row without a ROM.
     static QString emptyRomText(int row);
+
+    // The Expansions page, TuxAPE's own: the cards on the expansion port,
+    // in the four places of a MotherX4 board, and what each card has to
+    // set. A card is in one place at the most: put in another, it leaves
+    // the one it was in.
+    tuxape::Card card(int place) const;
+    void setCard(int place, tuxape::Card card);
+    // The X-MEM's switches, and the file its flash memory is kept in.
+    tuxape::Xmem::Switches xmemSwitches() const;
+    void setXmemSwitches(const tuxape::Xmem::Switches& switches);
+    QString xmemFlash() const { return xmemFlash_; }
+    void setXmemFlash(const QString& file);
 
 private:
     QComboBox* profile_ = nullptr;
@@ -177,6 +190,19 @@ private:
     void updateTotalRam();
     void updateRomRows();
     tuxape::RamExpansion chosenRam() const;
+
+    QWidget* createExpansionsPage();
+    void updateCards();
+    void chooseXmemFlash();
+    QComboBox* cards_[tuxape::kCardPlaces] = {};
+    QGroupBox* xmemBox_ = nullptr;
+    // Each switch is two buttons; the second is the one kept here.
+    QRadioButton* xmem6128_ = nullptr;
+    QRadioButton* xmemBootRom_ = nullptr;
+    QRadioButton* xmemFree_ = nullptr;
+    QRadioButton* xmemReadYes_ = nullptr;
+    QLabel* xmemFile_ = nullptr;
+    QString xmemFlash_;
 };
 
 // Which settings go into a profile: WinAPE's "Select Profile Settings"
