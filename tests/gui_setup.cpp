@@ -7,6 +7,8 @@
 //                        <prefix>sound.png, <prefix>memory.png,
 //                        <prefix>input.png and <prefix>profile.png
 
+#include <array>
+
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
@@ -1017,6 +1019,86 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     CHECK(card.xmemRowText(6) == "X-MEM: (empty)");
 }
 
+// Profiles and the cards: the Expansions page is saved with the ROMs and
+// read with them.
+void testCardProfiles(const QString& folder)
+{
+    using tuxape::Card;
+    Settings fitted;
+    fitted.machine.cards = {Card::Xmass, Card::None, Card::Xmem, Card::None};
+    fitted.machine.xmem = {false, true, true, false};
+    fitted.machine.xmemFlash = (folder + "/profile.flash").toStdString();
+    fitted.machine.xmassDisc = (folder + "/profile.img").toStdString();
+    fitted.machine.upperRoms[5] = "PARADOS";
+
+    // A machine's profile (the CRTC, the RAM, the ROMs: what is ticked to
+    // begin with) holds the cards, their settings and their files.
+    const QString machineProfile = folder + "/with cards.wpf";
+    CHECK(fitted.saveProfile(machineProfile, ProfilePartsDialog().parts()));
+    QFile file(machineProfile);
+    CHECK(file.open(QIODevice::ReadOnly));
+    const QByteArray text = file.readAll();
+    file.close();
+    CHECK(text.contains("\r\n[Expansions]\r\n"));
+    CHECK(text.contains("\r\nCard1=X-MASS\r\n") && text.contains("\r\nCard3=X-MEM\r\n"));
+    CHECK(text.contains("\r\nX-MEM CPC=464\r\n") && text.contains("\r\nX-MEM BOOT=ROM\r\n"));
+    CHECK(text.contains("\r\nX-MEM READ ROM=NO\r\n"));
+    Settings plain;
+    CHECK(plain.loadProfile(machineProfile));
+    CHECK(plain.machine == fitted.machine);
+
+    // One that holds other settings only says nothing of them: no word of
+    // the cards in the file, and the cards are left as they are.
+    const QString speedProfile = folder + "/speed only.wpf";
+    CHECK(fitted.saveProfile(speedProfile, Settings::SpeedPart | Settings::SoundPart));
+    QFile other(speedProfile);
+    CHECK(other.open(QIODevice::ReadOnly));
+    CHECK(!other.readAll().contains("Expansions"));
+    other.close();
+    Settings kept = fitted;
+    CHECK(kept.loadProfile(speedProfile));
+    CHECK(kept.machine == fitted.machine);
+
+    // One of WinAPE's own names the ROMs and knows of no card: the machine
+    // it describes has none. What the cards were set to is not forgotten.
+    Settings stock = fitted;
+    CHECK(stock.loadProfile(Settings::profileFolder() + "/CPC6128.wpf"));
+    CHECK(!stock.machine.hasCard(Card::Xmem) && !stock.machine.hasCard(Card::Xmass));
+    CHECK(stock.machine.upperRoms[5].empty() && stock.machine.upperRoms[7] == "AMSDOS");
+    CHECK(stock.machine.xmem == fitted.machine.xmem && stock.machine.xmemFlash == fitted.machine.xmemFlash);
+
+    // In the window: the profile chosen shows on the Expansions page, and
+    // what the page shows is what the Save button's profile holds.
+    SetupDialog dialog{Settings()};
+    CHECK(dialog.card(2) == Card::None);
+    CHECK(dialog.loadProfile(machineProfile));
+    CHECK(dialog.card(0) == Card::Xmass && dialog.card(2) == Card::Xmem);
+    CHECK(dialog.xmemSwitches() == fitted.machine.xmem);
+    CHECK(dialog.xmemFlash() == folder + "/profile.flash" && dialog.xmassDisc() == folder + "/profile.img");
+    auto* xmemBox = dialog.findChild<QGroupBox*>("gbXMEM");
+    CHECK(xmemBox && xmemBox->isEnabled());
+    dialog.setCard(1, Card::Xmem);  // moved to the second place
+    const QString saved = folder + "/from the window.wpf";
+    CHECK(dialog.saveProfile(saved, ProfilePartsDialog().parts()));
+    Settings back;
+    CHECK(back.loadProfile(saved));
+    CHECK(back.machine.cards == (std::array<Card, 4>{Card::Xmass, Card::Xmem, Card::None, Card::None}));
+    CHECK(back.machine.xmem == fitted.machine.xmem);
+    CHECK(dialog.loadProfile(Settings::profileFolder() + "/CPC6128.wpf"));
+    CHECK(dialog.card(0) == Card::None && dialog.card(1) == Card::None && xmemBox && !xmemBox->isEnabled());
+
+    // The window that asks what a profile is to hold says the cards are
+    // with the ROMs.
+    ProfilePartsDialog parts;
+    auto* tree = parts.findChild<QTreeWidget*>("tvSettings");
+    CHECK(tree && tree->topLevelItemCount() == 5);
+    if (tree && tree->topLevelItemCount() == 5) {
+        QTreeWidgetItem* memory = tree->topLevelItem(3);
+        CHECK(memory->childCount() == 2 && memory->child(1)->text(0) == "ROMs and Expansion Cards");
+        CHECK(memory->child(1)->checkState(0) == Qt::Checked);
+    }
+}
+
 // The Input page: the CPC's keyboard to click on, the PC keys of the key
 // clicked, the joystick, and layouts in WinAPE's .kbd files.
 void testInputPage(const QString& folder, const QString& picture)
@@ -1352,6 +1434,7 @@ int main(int argc, char* argv[])
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");
     testRomFile(folder.path());
     testExpansionsPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "expansions.png");
+    testCardProfiles(folder.path());
     testInputPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "input.png");
     testProfiles(folder.path(), prefix.isEmpty() ? QString() : prefix + "profile.png");
 

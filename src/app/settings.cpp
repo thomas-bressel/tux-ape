@@ -119,11 +119,16 @@ void Settings::read(const tuxape::IniFile& ini)
     machine.disableAllRoms = ini.getBool(kRoms, "Disable All", machine.disableAllRoms);
     machine.onlyLower0And7 = ini.getBool(kRoms, "Enable L07", machine.onlyLower0And7);
     // TuxAPE's own: the cards, and the X-MEM's switches as its board
-    // names their positions.
+    // names their positions. The cards go with the ROMs, which an X-MEM
+    // stands for: a file that names the ROMs and no card (one of WinAPE's
+    // profiles, say) is a machine with nothing on its expansion port. A
+    // card's own settings stay as they were, for when it is back.
     for (int place = 0; place < tuxape::kCardPlaces; ++place) {
         const std::string key = "Card" + std::to_string(place + 1);
         if (ini.has(kExpansions, key))
             machine.cards[static_cast<size_t>(place)] = cardNamed(QString::fromStdString(ini.get(kExpansions, key)));
+        else if (ini.has(kRoms, "Lower"))
+            machine.cards[static_cast<size_t>(place)] = tuxape::Card::None;
     }
     const auto position = [&](const char* key, const char* on, bool now) {
         return ini.has(kExpansions, key) ? ini.get(kExpansions, key) == on : now;

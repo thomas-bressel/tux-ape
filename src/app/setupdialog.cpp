@@ -1414,7 +1414,9 @@ ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
     leaf(input, tr("Joystick"), Settings::InputPart, false);
     auto* memory = group(tr("Memory"));
     leaf(memory, tr("RAM"), Settings::RamPart, true);
-    leaf(memory, tr("ROMs"), Settings::RomsPart, true);
+    // The cards of the Expansions page go with the ROMs: an X-MEM is the
+    // machine's ROMs.
+    leaf(memory, tr("ROMs and Expansion Cards"), Settings::RomsPart, true);
     auto* sound = group(tr("Sound"));
     leaf(sound, tr("Sound Output"), Settings::SoundPart, false);
     tree_->expandAll();

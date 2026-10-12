@@ -140,7 +140,9 @@ struct Settings {
 
     // The cards on the expansion port are part of the machine (see
     // tuxape::MachineConfig), kept under "Expansions". A card is known in
-    // the file by its name.
+    // the file by its name. In a profile they are part of RomsPart: saved
+    // with the ROMs and read with them, a profile that names the ROMs and
+    // no card taking the cards out.
     static QString cardName(tuxape::Card card);
     static tuxape::Card cardNamed(const QString& name);
     // Where an X-MEM's flash memory is kept unless another file is chosen,
