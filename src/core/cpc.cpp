@@ -37,6 +37,9 @@ void Cpc::reset()
 
 void Cpc::coldReset()
 {
+    // The power has been off: a flash chip is back to showing what it holds.
+    if (xmem_)
+        xmem_->reset();
     memory_.clearRam();
     cpu_.powerOn();
     monitor_.reset();
@@ -149,6 +152,16 @@ void Cpc::setMultiface(std::span<const uint8_t> rom)
 {
     memory_.setMultiface(rom);
     multifacePen_ = multifaceCrtc_ = 0;
+}
+
+void Cpc::fitXmem(bool fitted, const std::string& file)
+{
+    if (!fitted)
+        xmem_.reset();
+    else if (!xmem_)
+        xmem_ = std::make_unique<Xmem>();
+    xmemFile_ = fitted ? file : std::string();
+    memory_.setXmem(xmem_.get());
 }
 
 void Cpc::multifaceStop()

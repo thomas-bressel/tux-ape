@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -9,12 +10,22 @@
 #include <vector>
 
 #include "core/memory.h"
+#include "core/xmem.h"
 
 namespace tuxape {
 
 class Cpc;
 
 enum class CpcModel { Cpc464, Cpc664, Cpc6128, Plus464, Plus6128 };
+
+// The cards that go on the expansion port. A MotherX4 board gives four
+// places for them; which place a card is in makes no difference to the
+// machine.
+enum class Card : uint8_t {
+    None,
+    Xmem,  // ACME's X-MEM: 512K of RAM and 32 ROMs in flash memory (see xmem.h)
+};
+constexpr int kCardPlaces = 4;
 
 // What is fitted to the machine: the choices of WinAPE's Memory settings.
 struct MachineConfig {
@@ -42,6 +53,14 @@ struct MachineConfig {
     // with none named, "multiface2" is.
     std::string multifaceRom;
     bool multifaceEnabled = false;
+    // TuxAPE's own: the cards on the expansion port, and what each needs.
+    std::array<Card, kCardPlaces> cards = {};
+    bool hasCard(Card card) const { return std::find(cards.begin(), cards.end(), card) != cards.end(); }
+    // The X-MEM's switches, and the file its flash memory is kept in: 512K
+    // as they are in the chip. Without a name it is not kept, and starts
+    // erased.
+    Xmem::Switches xmem;
+    std::string xmemFlash;
 
     bool operator==(const MachineConfig&) const = default;
 };
@@ -78,6 +97,11 @@ std::optional<std::vector<uint8_t>> readRom(const std::filesystem::path& file);
 // that cannot be read leaves its place empty; the function then returns
 // false, with the names of all such images in `error`.
 bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::path& romDir, std::string* error);
+// Writes to their files what the cards keep, where it has changed since it
+// was read or last written: an X-MEM's flash memory. applyMachine does so
+// itself before it takes a card out or gives it another file. False if a
+// file could not be written.
+bool saveCards(Cpc& cpc);
 
 // Fits a stock machine, then cold-resets it. ROM files use WinAPE's names
 // (OS6128.ROM, BASIC1-1.ROM, AMSDOS.ROM...).

@@ -7,6 +7,7 @@
 namespace tuxape {
 
 class Asic;
+class Xmem;
 
 // RAM fitted beyond the first 64K, as offered by WinAPE's memory settings.
 enum class RamExpansion : uint8_t {
@@ -24,14 +25,17 @@ public:
 
     Memory();
 
-    // Fitted RAM. The Silicon Disc adds the top 256K of the first 512K.
-    // The base RAM and the pages fitted before and after keep their
-    // contents; the banking register goes back to its reset state.
-    void setRam(RamExpansion expansion, bool siliconDisc);
+    // Fitted RAM. The Silicon Disc adds the top 256K of the first 512K; a
+    // card on the expansion port adds the 64K banks of `cardBanks`, bit n
+    // for the bank chosen with &C4 + 8n (an X-MEM brings all eight, or
+    // seven). The base RAM and the pages fitted before and after keep
+    // their contents; the banking register goes back to its reset state.
+    void setRam(RamExpansion expansion, bool siliconDisc, uint8_t cardBanks = 0);
     // What a choice of RAM comes to, in K.
-    static int ramSizeKb(RamExpansion expansion, bool siliconDisc);
+    static int ramSizeKb(RamExpansion expansion, bool siliconDisc, uint8_t cardBanks = 0);
     RamExpansion ramExpansion() const { return expansion_; }
     bool siliconDisc() const { return siliconDisc_; }
+    uint8_t cardBanks() const { return cardBanks_; }
     int ramSizeKb() const;
 
     // ROM images. An empty image removes the ROM. Images shorter than 16K
@@ -42,6 +46,12 @@ public:
     // Highest ROM number the select latch can reach: 15, or 31 with a
     // 32-slot ROM board.
     void setRomSlotLimit(int count) { romSlotMask_ = count > 16 ? 31 : 15; }
+
+    // An X-MEM on the expansion port, or none: its flash memory shows in
+    // place of the ROMs wherever the card answers, before anything fitted
+    // above, and gets what is written in the upper ROM's 16K.
+    void setXmem(Xmem* xmem);
+    bool hasXmem() const { return xmem_ != nullptr; }
 
     // The Plus: a cartridge takes the place of the ROMs. Its page 0 is the
     // lower ROM, or the page RMR2 names, shown where RMR2 says; the upper
@@ -87,6 +97,8 @@ public:
     uint8_t read(uint16_t addr) const { return readMap_[addr >> 14][addr & 0x3FFF]; }
     void write(uint16_t addr, uint8_t value)
     {
+        if (xmem_ && addr >= 0xC000)
+            writeFlash(addr, value);
         if (registersMapped_ && (addr & 0xC000) == 0x4000)
             writeRegister(addr, value);
         else if (multifacePaged_ && addr >= 0x2000 && addr < 0x4000)
@@ -137,6 +149,7 @@ public:
 private:
     RamExpansion expansion_ = RamExpansion::Internal;
     bool siliconDisc_ = false;
+    uint8_t cardBanks_ = 0;
 
     std::vector<uint8_t> ram_;      // base 64K followed by the expansion pages
     std::vector<int> pageOffset_;   // offset in ram_ of each 64K expansion page, -1 if absent
@@ -160,6 +173,7 @@ private:
     uint8_t rmr2_ = 0;
     Asic* asic_ = nullptr;
     bool registersMapped_ = false;
+    Xmem* xmem_ = nullptr;
 
     std::vector<uint8_t> multiface_;  // its ROM, then its RAM: 16K, or none
     bool multifacePaged_ = false;
@@ -167,6 +181,7 @@ private:
     void remap();
     void remapMachine();
     void writeRegister(uint16_t addr, uint8_t value);
+    void writeFlash(uint16_t addr, uint8_t value);
 };
 
 }  // namespace tuxape

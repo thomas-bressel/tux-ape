@@ -177,9 +177,27 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
         return std::move(*image);
     };
 
+    // The X-MEM first: its RAM is fitted with the rest. What its flash
+    // memory holds is read from its file when the card is put in, or given
+    // another file; what it held before goes to the file it had.
+    const bool xmem = config.hasCard(Card::Xmem);
+    if (cpc.xmem() && (!xmem || cpc.xmemFile() != config.xmemFlash))
+        saveCards(cpc);
+    if (xmem && (!cpc.xmem() || cpc.xmemFile() != config.xmemFlash)) {
+        cpc.fitXmem(true, config.xmemFlash);
+        const auto flash = config.xmemFlash.empty() ? std::nullopt : readFile(config.xmemFlash);
+        cpc.xmem()->setFlash(flash ? std::span<const uint8_t>(*flash) : std::span<const uint8_t>());
+    } else if (!xmem) {
+        cpc.fitXmem(false);
+    }
+    if (xmem)
+        cpc.xmem()->setSwitches(config.xmem);
+    const uint8_t cardBanks = xmem ? cpc.xmem()->ramBanks() : 0;
+
     Memory& memory = cpc.memory();
-    if (memory.ramExpansion() != config.ram || memory.siliconDisc() != config.siliconDisc)
-        memory.setRam(config.ram, config.siliconDisc);
+    if (memory.ramExpansion() != config.ram || memory.siliconDisc() != config.siliconDisc
+        || memory.cardBanks() != cardBanks)
+        memory.setRam(config.ram, config.siliconDisc, cardBanks);
     memory.setRomSlotLimit(config.rom32 ? 32 : 16);
     memory.setLowerRom(config.disableAllRoms ? std::vector<uint8_t>() : load(config.lowerRom));
     for (int slot = 0; slot < Memory::kRomSlots; ++slot) {
@@ -216,6 +234,21 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
     if (error)
         *error = "cannot read ROM image " + missing;
     return false;
+}
+
+bool saveCards(Cpc& cpc)
+{
+    Xmem* xmem = cpc.xmem();
+    if (!xmem || !xmem->changed() || cpc.xmemFile().empty())
+        return true;
+    std::error_code ignored;
+    const std::filesystem::path file(cpc.xmemFile());
+    if (file.has_parent_path())
+        std::filesystem::create_directories(file.parent_path(), ignored);
+    if (!writeFile(file, xmem->flash()))
+        return false;
+    xmem->clearChanged();
+    return true;
 }
 
 bool setupStockMachine(Cpc& cpc, CpcModel model, const std::filesystem::path& romDir, std::string* error)

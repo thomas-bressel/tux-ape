@@ -1,6 +1,7 @@
 #include "core/memory.h"
 
 #include "core/asic.h"
+#include "core/xmem.h"
 
 #include <algorithm>
 
@@ -33,10 +34,11 @@ Memory::Memory()
     setRam(RamExpansion::Internal, false);
 }
 
-void Memory::setRam(RamExpansion expansion, bool siliconDisc)
+void Memory::setRam(RamExpansion expansion, bool siliconDisc, uint8_t cardBanks)
 {
     expansion_ = expansion;
     siliconDisc_ = siliconDisc;
+    cardBanks_ = cardBanks;
 
     const std::vector<uint8_t> oldRam = std::move(ram_);
     const std::vector<int> oldOffset = pageOffset_;
@@ -56,6 +58,9 @@ void Memory::setRam(RamExpansion expansion, bool siliconDisc)
     }
     if (siliconDisc)
         fit(4, 4);
+    for (int bank = 0; bank < 8; ++bank)
+        if (cardBanks >> bank & 1)
+            fit(bank, 1);
 
     // What was in the base RAM and in the pages that stay fitted is kept:
     // RAM can be added to or taken from a running machine.
@@ -71,15 +76,21 @@ void Memory::setRam(RamExpansion expansion, bool siliconDisc)
     remap();
 }
 
-int Memory::ramSizeKb(RamExpansion expansion, bool siliconDisc)
+int Memory::ramSizeKb(RamExpansion expansion, bool siliconDisc, uint8_t cardBanks)
 {
-    switch (expansion) {
-    case RamExpansion::None: return siliconDisc ? 320 : 64;
-    case RamExpansion::Internal: return siliconDisc ? 384 : 128;
-    case RamExpansion::Dk256: return siliconDisc ? 576 : 320;
-    case RamExpansion::Yarek4M: return 4160;  // the Silicon Disc's place is part of it
-    }
-    return 64;
+    // The Silicon Disc's place, and a card's, are part of the 4M.
+    if (expansion == RamExpansion::Yarek4M)
+        return 4160;
+    // The first eight banks, each counted once whatever brings it.
+    unsigned banks = cardBanks | (siliconDisc ? 0xF0u : 0u);
+    if (expansion == RamExpansion::Internal)
+        banks |= 0x01;
+    else if (expansion == RamExpansion::Dk256)
+        banks |= 0x0F;
+    int size = 64;
+    for (; banks; banks >>= 1)
+        size += banks & 1 ? 64 : 0;
+    return size;
 }
 
 int Memory::ramSizeKb() const
@@ -128,6 +139,18 @@ void Memory::setRmr2(uint8_t value)
 void Memory::writeRegister(uint16_t addr, uint8_t value)
 {
     asic_->write(addr, value);
+}
+
+void Memory::setXmem(Xmem* xmem)
+{
+    xmem_ = xmem;
+    remap();
+}
+
+void Memory::writeFlash(uint16_t addr, uint8_t value)
+{
+    if (xmem_->write(upperSelected_, addr & 0x3FFF, value))
+        remap();
 }
 
 void Memory::setMultiface(std::span<const uint8_t> rom)
@@ -196,13 +219,13 @@ uint8_t* Memory::ramPage(int page)
 
 void Memory::selectRamBank(uint8_t value, uint8_t portHigh)
 {
-    if (expansion_ == RamExpansion::None && !siliconDisc_)
+    if (expansion_ == RamExpansion::None && !siliconDisc_ && !cardBanks_)
         return;
     ramConfig_ = value;
     // The 128K machine's own banking ignores the page bits. Expansions use
     // them, and the 4M one also decodes ports &78xx to &7Fxx.
     int page = 0;
-    if (expansion_ != RamExpansion::Internal || siliconDisc_)
+    if (expansion_ != RamExpansion::Internal || siliconDisc_ || cardBanks_)
         page = (value >> 3) & 7;
     if (expansion_ == RamExpansion::Yarek4M)
         page |= (~portHigh & 7) << 3;
@@ -254,21 +277,26 @@ void Memory::remapMachine()
         }
         if (upperEnabled_ && upperChosen_) {
             const int slot = upperSelected_ & romSlotMask_;
-            if (upperSelected_ <= romSlotMask_ && upperPresent_[slot])
+            if (const uint8_t* card = xmem_ ? xmem_->upperRom(upperSelected_) : nullptr)
+                readMap_[3] = card;
+            else if (upperSelected_ <= romSlotMask_ && upperPresent_[slot])
                 readMap_[3] = &upperRom_[static_cast<size_t>(slot) * kBankSize];
             else
                 readMap_[3] = page(upperSelected_ & 0x80 ? upperSelected_ & 0x1F : upperSelected_ == 7 && discRom_ ? 3 : 1);
         }
         return;
     }
-    if (lowerEnabled_)
-        readMap_[0] = lowerRom_.data();
+    if (lowerEnabled_) {
+        const uint8_t* card = xmem_ ? xmem_->lowerRom() : nullptr;
+        readMap_[0] = card ? card : lowerRom_.data();
+    }
     if (upperEnabled_) {
         // An empty slot shows BASIC, which sits in slot 0.
         int slot = upperSelected_ & romSlotMask_;
         if (upperSelected_ > romSlotMask_ || !upperPresent_[slot])
             slot = 0;
-        readMap_[3] = &upperRom_[static_cast<size_t>(slot) * kBankSize];
+        const uint8_t* card = xmem_ ? xmem_->upperRom(upperSelected_) : nullptr;
+        readMap_[3] = card ? card : &upperRom_[static_cast<size_t>(slot) * kBankSize];
     }
 }
 

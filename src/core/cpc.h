@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <span>
 #include <functional>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "core/asic.h"
@@ -17,6 +19,7 @@
 #include "core/ppi.h"
 #include "core/psg.h"
 #include "core/tape.h"
+#include "core/xmem.h"
 #include "core/z80.h"
 
 namespace tuxape {
@@ -132,6 +135,13 @@ public:
     // Multiface's own program takes over. Nothing without one, or while
     // it is paged in already.
     void multifaceStop();
+    // An X-MEM card on the expansion port (see xmem.h): put in, its flash
+    // memory erased, or taken out. Null without one. The RAM it brings is
+    // fitted like any other, with Memory::setRam. `file` is where its
+    // flash memory is kept, for whoever reads and writes it there.
+    void fitXmem(bool fitted, const std::string& file = {});
+    Xmem* xmem() { return xmem_.get(); }
+    const std::string& xmemFile() const { return xmemFile_; }
     bool plus() const { return plus_; }
     Asic& asic() { return asic_; }
     // The AMX mouse, on the joystick's port. The host says how far it has
@@ -366,6 +376,8 @@ private:
     Fdc fdc_;
     TapeDeck tape_;
     Asic asic_;
+    std::unique_ptr<Xmem> xmem_;
+    std::string xmemFile_;
     bool plus_ = false;
     AudioMixer audio_;
 

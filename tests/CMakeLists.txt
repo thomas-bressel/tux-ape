@@ -138,6 +138,12 @@ target_link_libraries(multiface PRIVATE tuxape_core)
 target_compile_definitions(multiface PRIVATE TUXAPE_USER_ROMS="${PROJECT_SOURCE_DIR}/roms")
 add_test(NAME multiface COMMAND multiface)
 
+# The X-MEM card. Its own disc, which is not TuxAPE's to give out, is run
+# too when it is there (tests/roms/xmem/xmem_side-A.dsk).
+add_executable(xmem xmem.cpp)
+target_link_libraries(xmem PRIVATE tuxape_core)
+add_test(NAME xmem COMMAND xmem ${TUXAPE_TEST_ROMS})
+
 add_executable(discfiles discfiles.cpp)
 target_link_libraries(discfiles PRIVATE tuxape_core)
 add_test(NAME discfiles COMMAND discfiles)
