@@ -140,6 +140,10 @@ add_test(NAME multiface COMMAND multiface)
 
 # The X-MEM card. Its own disc, which is not TuxAPE's to give out, is run
 # too when it is there (tests/roms/xmem/xmem_side-A.dsk).
+add_executable(disc_hfe disc_hfe.cpp)
+target_link_libraries(disc_hfe PRIVATE tuxape_core)
+add_test(NAME disc_hfe COMMAND disc_hfe ${TUXAPE_TEST_ROMS})
+
 add_executable(xmem xmem.cpp)
 target_link_libraries(xmem PRIVATE tuxape_core)
 add_test(NAME xmem COMMAND xmem ${TUXAPE_TEST_ROMS})

@@ -93,6 +93,13 @@ public:
     // CPCEMU .DSK images, standard and extended.
     static std::optional<Disc> fromDsk(std::span<const uint8_t> file);
     std::vector<uint8_t> toDsk() const;
+    // An HxC Floppy Emulator's .HFE image (the first kind of them, which
+    // is what a Gotek with its firmware takes): the track as the head
+    // reads it, bit cell by bit cell, from which the sectors are made out.
+    // Read only: a disc that has come from one is not written back to it.
+    static std::optional<Disc> fromHfe(std::span<const uint8_t> file);
+    // Either kind, told by what the file starts with.
+    static std::optional<Disc> fromImage(std::span<const uint8_t> file);
 
     // Short description for the user: tracks, sides, and the format if it
     // is one of the known ones.

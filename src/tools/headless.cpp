@@ -194,7 +194,7 @@ int main(int argc, char* argv[])
     cpc.fdc().setFast(fastDisc);
     if (!discFile.empty()) {
         const auto file = readFile(discFile);
-        auto disc = file ? Disc::fromDsk(*file) : std::nullopt;
+        auto disc = file ? Disc::fromImage(*file) : std::nullopt;
         if (!disc) {
             std::fprintf(stderr, "cannot read disc image %s\n", discFile.c_str());
             return 1;

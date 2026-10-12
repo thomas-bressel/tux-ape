@@ -123,6 +123,26 @@ int main(int argc, char* argv[])
     CHECK(discs->info(1).path == imagePath);
     CHECK(!discs->insert(1, folder.filePath("missing.dsk")).isEmpty());
 
+    // An HxC image (.hfe) is taken too (see disc_hfe for what is read of
+    // it), as a disc with its tab open: the file is writable, the disc is
+    // not, and the file is left as it is.
+    const QString hfePath = folder.filePath("gotek.hfe");
+    {
+        QByteArray image(3 * 512, '\xAA');  // a header, the track list, a track with nothing on it
+        image.replace(0, 20, QByteArray("HXCPICFE", 8) + QByteArray::fromHex("000101" "00" "FA00" "0000" "0601" "0100"));
+        image.replace(512, 4, QByteArray::fromHex("02000002"));
+        QFile hfe(hfePath);
+        CHECK(hfe.open(QIODevice::WriteOnly));
+        hfe.write(image);
+    }
+    CHECK(QFileInfo(hfePath).isWritable());
+    CHECK(discs->insert(1, hfePath).isEmpty());
+    CHECK(discs->info(1).path == hfePath && discs->info(1).readOnly);
+    CHECK(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.fdc().drive(1).disc->writeProtected; }));
+    emulator.withMachine([](tuxape::Cpc& cpc) { cpc.fdc().drive(1).disc->modified = true; });
+    CHECK(discs->insert(1, imagePath).isEmpty());
+    CHECK_EQ(QFileInfo(hfePath).size(), 3 * 512);
+
     // Flip puts the spare (empty at first) in the drive, and back.
     discs->flip(0);
     CHECK(!discs->info(0).present);

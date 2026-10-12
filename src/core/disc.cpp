@@ -236,6 +236,166 @@ std::optional<Disc> Disc::fromDsk(std::span<const uint8_t> file)
     return disc;
 }
 
+namespace {
+
+// The CRC of an ID or data field, as the FDC works it out: the three sync
+// bytes before the mark are part of it.
+uint16_t fieldCrc(uint16_t crc, uint8_t byte)
+{
+    crc ^= static_cast<uint16_t>(byte << 8);
+    for (int bit = 0; bit < 8; ++bit)
+        crc = static_cast<uint16_t>(crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1);
+    return crc;
+}
+
+// One side of a track as bit cells, two to a bit of data (a clock and the
+// bit), the first cell read in the top bit of each byte.
+class Cells {
+public:
+    explicit Cells(std::vector<uint8_t> cells)
+        : cells_(std::move(cells))
+    {
+    }
+    size_t count() const { return cells_.size() * 8; }
+    // Sixteen cells from a place, the track going round.
+    uint16_t word(size_t at) const
+    {
+        uint16_t value = 0;
+        for (int i = 0; i < 16; ++i, ++at)
+            value = static_cast<uint16_t>(value << 1 | cell(at));
+        return value;
+    }
+    // The byte of data in those sixteen cells: every second one.
+    uint8_t byte(size_t at) const
+    {
+        uint8_t value = 0;
+        for (int i = 0; i < 8; ++i)
+            value = static_cast<uint8_t>(value << 1 | cell(at + 1 + static_cast<size_t>(i) * 2));
+        return value;
+    }
+
+private:
+    unsigned cell(size_t at) const
+    {
+        at %= count();
+        return cells_[at >> 3] >> (7 - (at & 7)) & 1u;
+    }
+    std::vector<uint8_t> cells_;
+};
+
+// The sectors of a track of bit cells. A field starts with sync bytes that
+// no data can be mistaken for: &A1 written with a clock bit left out.
+void sectorsOf(const Cells& cells, DiscTrack& track)
+{
+    constexpr uint16_t kSync = 0x4489;
+    const size_t count = cells.count();
+    if (count < 16 * 64)
+        return;
+    bool haveId = false;
+    DiscSector id;
+    bool idGood = false;
+    for (size_t at = 0; at < count;) {
+        if (cells.word(at) != kSync) {
+            ++at;
+            continue;
+        }
+        while (cells.word(at) == kSync)
+            at += 16;
+        const uint8_t mark = cells.byte(at);
+        uint16_t crc = 0xFFFF;
+        for (int i = 0; i < 3; ++i)
+            crc = fieldCrc(crc, 0xA1);
+        crc = fieldCrc(crc, mark);
+        if (mark == 0xFE) {
+            uint8_t field[6];
+            for (int i = 0; i < 6; ++i) {
+                field[i] = cells.byte(at + 16 * static_cast<size_t>(1 + i));
+                crc = fieldCrc(crc, field[i]);
+            }
+            id = DiscSector();
+            id.c = field[0];
+            id.h = field[1];
+            id.r = field[2];
+            id.n = field[3];
+            idGood = crc == 0;
+            haveId = true;
+            at += 16 * 7;
+        } else if ((mark == 0xFB || mark == 0xF8) && haveId) {
+            const size_t size = static_cast<size_t>(id.nominalSize());
+            DiscSector sector = id;
+            sector.data.resize(size);
+            for (size_t i = 0; i < size; ++i) {
+                sector.data[i] = cells.byte(at + 16 * (1 + i));
+                crc = fieldCrc(crc, sector.data[i]);
+            }
+            for (size_t i = 0; i < 2; ++i)
+                crc = fieldCrc(crc, cells.byte(at + 16 * (1 + size + i)));
+            // As the FDC would report them: a bad CRC in the ID or in the
+            // data, a deleted data mark.
+            sector.st1 = static_cast<uint8_t>(!idGood || crc != 0 ? 0x20 : 0);
+            sector.st2 = static_cast<uint8_t>((crc != 0 && idGood ? 0x20 : 0) | (mark == 0xF8 ? 0x40 : 0));
+            // A field that runs over the index was met at the start too.
+            bool known = false;
+            for (const DiscSector& other : track.sectors)
+                known = known || (other.c == sector.c && other.h == sector.h && other.r == sector.r);
+            if (!known && static_cast<int>(track.sectors.size()) < kMaxSectorsPerTrack)
+                track.sectors.push_back(std::move(sector));
+            haveId = false;
+            at += 16 * (1 + size);
+        } else {
+            at += 16;
+        }
+    }
+    track.updateLayout();
+}
+
+}  // namespace
+
+std::optional<Disc> Disc::fromHfe(std::span<const uint8_t> file)
+{
+    constexpr size_t kBlock = 512;
+    if (file.size() < 2 * kBlock || std::memcmp(file.data(), "HXCPICFE", 8) != 0)
+        return std::nullopt;
+    const int cylinders = file[9];
+    const int sides = file[10];
+    const size_t list = static_cast<size_t>(le16(&file[18])) * kBlock;
+    // Its encoding byte: 0 is the PC's MFM, which is all a CPC's FDC
+    // writes; &FF is "not said".
+    if (file[8] != 0 || (file[11] != 0 && file[11] != 0xFF) || cylinders == 0 || cylinders > kMaxCylinders
+        || sides < 1 || sides > 2 || list + static_cast<size_t>(cylinders) * 4 > file.size())
+        return std::nullopt;
+
+    Disc disc;
+    disc.resize(cylinders, sides);
+    for (int cylinder = 0; cylinder < cylinders; ++cylinder) {
+        const uint8_t* entry = &file[list + static_cast<size_t>(cylinder) * 4];
+        const size_t start = static_cast<size_t>(le16(entry)) * kBlock;
+        const size_t length = std::min<size_t>(le16(entry + 2), start < file.size() ? file.size() - start : 0);
+        // The two sides take turns, 256 bytes each; a byte's first cell is
+        // in its lowest bit.
+        std::vector<uint8_t> cells[2];
+        for (size_t at = 0; at < length; at += kBlock)
+            for (int side = 0; side < 2; ++side)
+                for (size_t i = at + static_cast<size_t>(side) * 256; i < std::min(at + static_cast<size_t>(side + 1) * 256, length); ++i) {
+                    uint8_t byte = file[start + i], turned = 0;
+                    for (int bit = 0; bit < 8; ++bit, byte >>= 1)
+                        turned = static_cast<uint8_t>(turned << 1 | (byte & 1));
+                    cells[side].push_back(turned);
+                }
+        for (int side = 0; side < sides; ++side)
+            sectorsOf(Cells(std::move(cells[side])), disc.tracks_[static_cast<size_t>(cylinder * sides + side)]);
+    }
+    disc.modified = false;
+    return disc;
+}
+
+std::optional<Disc> Disc::fromImage(std::span<const uint8_t> file)
+{
+    if (auto disc = fromDsk(file))
+        return disc;
+    return fromHfe(file);
+}
+
 std::vector<uint8_t> Disc::toDsk() const
 {
     std::vector<uint8_t> file(kHeaderSize, 0);

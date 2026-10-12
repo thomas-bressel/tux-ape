@@ -49,9 +49,9 @@ namespace {
 
 bool isProgram(const QString& name)
 {
-    return name.endsWith(".dsk", Qt::CaseInsensitive) || name.endsWith(".cdt", Qt::CaseInsensitive)
-           || name.endsWith(".cpr", Qt::CaseInsensitive) || name.endsWith(".sna", Qt::CaseInsensitive)
-           || name.endsWith(".snr", Qt::CaseInsensitive);
+    return name.endsWith(".dsk", Qt::CaseInsensitive) || name.endsWith(".hfe", Qt::CaseInsensitive)
+           || name.endsWith(".cdt", Qt::CaseInsensitive) || name.endsWith(".cpr", Qt::CaseInsensitive)
+           || name.endsWith(".sna", Qt::CaseInsensitive) || name.endsWith(".snr", Qt::CaseInsensitive);
 }
 
 constexpr int kSubcategoryColumn = 1;
@@ -567,7 +567,7 @@ QList<LibraryEntry> scanLibrary(const QStringList& folders)
     QList<LibraryEntry> entries;
     QSet<QString> seen;
     for (const QString& folder : folders) {
-        QDirIterator it(folder, {"*.dsk", "*.cdt", "*.cpr", "*.sna", "*.snr", "*.zip"}, QDir::Files,
+        QDirIterator it(folder, {"*.dsk", "*.hfe", "*.cdt", "*.cpr", "*.sna", "*.snr", "*.zip"}, QDir::Files,
                         QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
         while (it.hasNext()) {
             const QString path = QDir::cleanPath(it.next());
@@ -1508,7 +1508,7 @@ void LibraryDialog::editFolders()
     buttons->addStretch(1);
     buttons->addWidget(ok);
     auto* layout = new QVBoxLayout(&dialog);
-    layout->addWidget(new QLabel(tr("Discs (.dsk), tapes (.cdt), cartridges (.cpr), snapshots (.sna) and sessions (.snr), zipped or not, are looked for in:")));
+    layout->addWidget(new QLabel(tr("Discs (.dsk, .hfe), tapes (.cdt), cartridges (.cpr), snapshots (.sna) and sessions (.snr), zipped or not, are looked for in:")));
     layout->addWidget(list, 1);
     layout->addLayout(buttons);
     dialog.resize(480, 260);

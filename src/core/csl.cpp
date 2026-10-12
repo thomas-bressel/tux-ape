@@ -395,7 +395,7 @@ bool CslRunner::insertDisc(int drive, const std::string& name)
     if (path.empty())
         path = fallbackDisc_;
     const auto file = path.empty() ? std::nullopt : readFile(path);
-    auto disc = file ? Disc::fromDsk(*file) : std::nullopt;
+    auto disc = file ? Disc::fromImage(*file) : std::nullopt;
     if (!disc)
         return fail("cannot read disc image '" + name + "'");
     cpc_.fdc().drive(drive).disc = std::make_unique<Disc>(std::move(*disc));

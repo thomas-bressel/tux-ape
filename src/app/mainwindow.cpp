@@ -64,7 +64,7 @@ const char kLedOn[] = "background-color: #ff2020; border: 1px solid palette(wind
 
 QString discFilter()
 {
-    return MainWindow::tr("Disc files (*.dsk);;All files (*)");
+    return MainWindow::tr("Disc files (*.dsk *.hfe);;All files (*)");
 }
 
 QString snapshotFilter()

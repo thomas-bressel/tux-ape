@@ -46,16 +46,19 @@ QString DiscManager::insert(int drive, const QString& path)
     if (!file.open(QIODevice::ReadOnly))
         return tr("Cannot open %1: %2").arg(path, file.errorString());
     const QByteArray bytes = file.readAll();
-    auto disc = Disc::fromDsk({reinterpret_cast<const uint8_t*>(bytes.constData()), static_cast<size_t>(bytes.size())});
+    auto disc = Disc::fromImage({reinterpret_cast<const uint8_t*>(bytes.constData()), static_cast<size_t>(bytes.size())});
     if (!disc)
         return tr("%1 is not a disc image TuxAPE can read.").arg(QFileInfo(path).fileName());
-    place(drive, std::make_unique<Disc>(std::move(*disc)), path, !QFileInfo(path).isWritable());
+    // An HFE image is read, not written: the disc is as one with its tab
+    // open, and what is done to it stays in the machine.
+    const bool hfe = bytes.startsWith("HXCPICFE");
+    place(drive, std::make_unique<Disc>(std::move(*disc)), path, hfe || !QFileInfo(path).isWritable());
     return {};
 }
 
 QString DiscManager::insertImage(int drive, std::span<const uint8_t> image, const QString& name)
 {
-    auto disc = Disc::fromDsk(image);
+    auto disc = Disc::fromImage(image);
     if (!disc)
         return tr("%1 is not a disc image TuxAPE can read.").arg(name);
     place(drive, std::make_unique<Disc>(std::move(*disc)), name, true);
