@@ -848,6 +848,30 @@ void Emulator::saveCards()
     withMachine([](Cpc& cpc) { tuxape::saveCards(cpc); });
 }
 
+bool Emulator::writeXmemRoms(const std::map<int, QByteArray>& roms, const QString& file)
+{
+    if (roms.empty())
+        return true;
+    const auto put = [&](tuxape::Xmem& card) {
+        for (const auto& [place, rom] : roms)
+            card.setRom(place, {reinterpret_cast<const uint8_t*>(rom.constData()), static_cast<size_t>(rom.size())});
+    };
+    return withMachine([&](Cpc& cpc) {
+        if (cpc.xmem()) {
+            put(*cpc.xmem());
+            return tuxape::saveCards(cpc);
+        }
+        // No card in the machine: its file all the same.
+        if (file.isEmpty())
+            return true;
+        tuxape::Xmem card;
+        if (const auto kept = tuxape::readFile(file.toStdString()))
+            card.setFlash(*kept);
+        put(card);
+        return tuxape::writeFile(file.toStdString(), card.flash());
+    });
+}
+
 bool Emulator::hasMultiface()
 {
     return withMachine([](Cpc& cpc) { return cpc.hasMultiface(); });

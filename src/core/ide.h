@@ -21,7 +21,9 @@ namespace tuxape {
 class IdeDisc {
 public:
     static constexpr int kSectorSize = 512;
-    static constexpr uint64_t kDefaultBytes = 512ull * 1024 * 1024;
+    // The card's own module: 1015 cylinders of 16 heads and 63 sectors,
+    // which JarvisOS shows as 0511560K.
+    static constexpr uint64_t kDefaultBytes = 1015ull * 16 * 63 * 512;
     // Status bits.
     static constexpr uint8_t kBusy = 0x80, kReady = 0x40, kSeekDone = 0x10, kDataRequest = 0x08, kError = 0x01;
     // Error bits.

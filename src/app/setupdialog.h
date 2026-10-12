@@ -1,5 +1,9 @@
 #pragma once
 
+#include <map>
+#include <vector>
+
+#include <QByteArray>
 #include <QDialog>
 #include <QImage>
 
@@ -94,6 +98,16 @@ public:
     // (background)" or "5: (empty)". The button "ROMs..." shows them.
     QStringList xmemRoms() const;
     void showXmemRoms();
+    // A ROM put in a place of that flash memory from here, as a programmer
+    // would, or a place erased: 0 to 31, 7 being the lower ROM's. It shows
+    // at once in the lists; it is in the card, and in its file, once the
+    // window is accepted (see xmemEdits). False for a file that cannot be
+    // read.
+    bool loadXmemRom(int place, const QString& file);
+    void eraseXmemRom(int place);
+    // What has been asked for so far: the 16K of each place changed, none
+    // for one erased.
+    std::map<int, QByteArray> xmemEdits() const { return xmemEdits_; }
     // Whether a row of the Memory page's list of ROMs is the X-MEM's for
     // the time being: with the card in a place and READ ROM on YES, ROMs 1
     // to 31 but 7 are, and with BOOT on ROM the lower ROM and ROM 0 too.
@@ -221,6 +235,9 @@ private:
     QLabel* xmemFile_ = nullptr;
     QString xmemFlash_;
     QStringList xmemPlaces_;  // what each of the flash's 32 places holds, in short
+    std::map<int, QByteArray> xmemEdits_;
+    std::vector<uint8_t> xmemImage() const;
+    void readXmemPlaces();
     QLabel* romsNote_ = nullptr;
     void updateRomOwners();
     void chooseXmassDisc();

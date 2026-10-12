@@ -871,6 +871,11 @@ void MainWindow::showSetup(int page)
     }
     if (!accepted)
         return;
+    // ROMs put in an X-MEM's flash memory from the window: in the card
+    // now, and in its file.
+    if (!emulator_->writeXmemRoms(dialog.xmemEdits(), QString::fromStdString(settings_.machine.xmemFlash)))
+        report(tr("Cannot write the X-MEM's flash memory to %1.")
+                   .arg(QDir::toNativeSeparators(QString::fromStdString(settings_.machine.xmemFlash))));
     // The keyboard layout is kept as it now is, for the next run too.
     if (!(dialog.keyMap() == keysBefore)) {
         emulator_->setKeyMap(dialog.keyMap());

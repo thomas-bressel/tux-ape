@@ -1808,9 +1808,54 @@ PlaceText placeText(const std::optional<std::vector<uint8_t>>& flash, int place)
 
 }  // namespace
 
+// The flash memory as it will be: what its file holds, with what has been
+// put in or erased from this window.
+std::vector<uint8_t> SetupDialog::xmemImage() const
+{
+    std::vector<uint8_t> image(tuxape::Xmem::kFlashSize, 0xFF);
+    if (const auto file = tuxape::readFile(xmemFlash_.toStdString()))
+        std::copy_n(file->begin(), std::min(file->size(), image.size()), image.begin());
+    for (const auto& [place, rom] : xmemEdits_) {
+        const auto start = image.begin() + static_cast<ptrdiff_t>(place) * tuxape::Xmem::kRomSize;
+        std::fill_n(start, tuxape::Xmem::kRomSize, uint8_t{0xFF});
+        std::copy_n(rom.begin(), std::min<qsizetype>(rom.size(), tuxape::Xmem::kRomSize), start);
+    }
+    return image;
+}
+
+void SetupDialog::readXmemPlaces()
+{
+    const std::optional<std::vector<uint8_t>> flash = xmemImage();
+    xmemPlaces_.clear();
+    for (int place = 0; place < tuxape::Xmem::kRoms; ++place)
+        xmemPlaces_ << placeText(flash, place).what;
+    updateRomOwners();
+}
+
+bool SetupDialog::loadXmemRom(int place, const QString& file)
+{
+    if (place < 0 || place >= tuxape::Xmem::kRoms)
+        return false;
+    const auto rom = tuxape::readRom(file.toStdString());
+    if (!rom || rom->empty())
+        return false;
+    xmemEdits_[place] = QByteArray(reinterpret_cast<const char*>(rom->data()),
+                                   static_cast<qsizetype>(std::min<size_t>(rom->size(), tuxape::Xmem::kRomSize)));
+    readXmemPlaces();
+    return true;
+}
+
+void SetupDialog::eraseXmemRom(int place)
+{
+    if (place < 0 || place >= tuxape::Xmem::kRoms)
+        return;
+    xmemEdits_[place] = QByteArray();
+    readXmemPlaces();
+}
+
 QStringList SetupDialog::xmemRoms() const
 {
-    const auto flash = tuxape::readFile(xmemFlash_.toStdString());
+    const std::optional<std::vector<uint8_t>> flash = xmemImage();
     const auto line = [&](const QString& title, int place) {
         const PlaceText text = placeText(flash, place);
         return text.kind.isEmpty() ? tr("%1: %2").arg(title, text.what) : tr("%1: %2 (%3)").arg(title, text.what, text.kind);
@@ -1863,16 +1908,61 @@ void SetupDialog::showXmemRoms()
     auto* list = new QListWidget;
     list->setObjectName("lbXmemRoms");
     list->addItems(xmemRoms());
-    auto* about = new QLabel(tr("The flash memory as its file has it. Lower and 0 are the ROMs the card boots with; ROM 7 "
-                                "is always the machine's own."));
+    auto* about = new QLabel(tr("What the flash memory holds. Lower and 0 are the ROMs the card boots with; ROM 7 is "
+                                "always the machine's own. A ROM put in a place here, or a place erased, is in the "
+                                "card once the Setup window is closed with OK."));
     about->setWordWrap(true);
+    auto* load = new QPushButton(tr("Load ROM File..."));
+    load->setObjectName("bXmemLoadRom");
+    auto* erase = new QPushButton(tr("Erase"));
+    erase->setObjectName("bXmemEraseRom");
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    buttons->addButton(load, QDialogButtonBox::ActionRole);
+    buttons->addButton(erase, QDialogButtonBox::ActionRole);
     connect(buttons, &QDialogButtonBox::rejected, &window, &QDialog::reject);
+    // The list's rows: the lower ROM (the flash's place 7), ROM 0, then ROMs
+    // 1 to 31 without the seventh.
+    const auto place = [list] {
+        const int row = list->currentRow();
+        return row < 0 ? -1 : row == 0 ? tuxape::Xmem::kLowerPlace : row <= tuxape::Xmem::kLowerPlace ? row - 1 : row;
+    };
+    const auto shown = [this, list, load, erase] {
+        const int row = list->currentRow();
+        list->clear();
+        list->addItems(xmemRoms());
+        list->setCurrentRow(row);
+        load->setEnabled(row >= 0);
+        erase->setEnabled(row >= 0);
+    };
+    connect(list, &QListWidget::currentRowChanged, &window, [load, erase](int row) {
+        load->setEnabled(row >= 0);
+        erase->setEnabled(row >= 0);
+    });
+    connect(load, &QPushButton::clicked, &window, [this, &window, place, shown] {
+        const QString own = QDir::cleanPath(QString::fromStdString(tuxape::userRomDir().string()));
+        const QString romDir = QDir::cleanPath(QString::fromStdString(tuxape::defaultRomDir().string()));
+        const bool again = !romFolder_.isEmpty() && QDir(romFolder_).exists();
+        const QString file = QFileDialog::getOpenFileName(&window, tr("Load ROM File"),
+                                                          again ? romFolder_ : QDir(own).exists() ? own : romDir,
+                                                          tr("ROM files (*.rom *.ROM);;All files (*)"));
+        if (file.isEmpty())
+            return;
+        romFolder_ = QFileInfo(file).absolutePath();
+        if (!loadXmemRom(place(), file))
+            QMessageBox::warning(&window, window.windowTitle(), tr("Cannot read %1.").arg(QDir::toNativeSeparators(file)));
+        shown();
+    });
+    connect(erase, &QPushButton::clicked, &window, [this, place, shown] {
+        eraseXmemRom(place());
+        shown();
+    });
+    load->setEnabled(false);
+    erase->setEnabled(false);
     auto* layout = new QVBoxLayout(&window);
     layout->addWidget(about);
     layout->addWidget(list, 1);
     layout->addWidget(buttons);
-    window.resize(380, 520);
+    window.resize(420, 560);
     window.exec();
 }
 
@@ -1885,15 +1975,15 @@ void SetupDialog::setXmassDisc(const QString& file)
 
 void SetupDialog::setXmemFlash(const QString& file)
 {
+    // Another file is another card's worth of ROMs: what was put in the
+    // first from here does not go with it.
+    if (file != xmemFlash_)
+        xmemEdits_.clear();
     xmemFlash_ = file;
     xmemFile_->setText(QDir::toNativeSeparators(file));
     xmemFile_->setToolTip(QDir::toNativeSeparators(file));
     // What it holds, for the Memory page's list.
-    const auto flash = tuxape::readFile(file.toStdString());
-    xmemPlaces_.clear();
-    for (int place = 0; place < tuxape::Xmem::kRoms; ++place)
-        xmemPlaces_ << placeText(flash, place).what;
-    updateRomOwners();
+    readXmemPlaces();
 }
 
 // A card's own settings are there to be changed while the card is in a

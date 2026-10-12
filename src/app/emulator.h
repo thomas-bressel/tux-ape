@@ -140,6 +140,11 @@ public:
     // What the cards keep goes to their files now, if it has changed (an
     // X-MEM's flash memory): for whoever is about to read those files.
     void saveCards();
+    // ROMs put in an X-MEM's flash memory from the Setup window (none of
+    // a place's bytes: erased): in the card if the machine has one, and in
+    // the file the flash is kept in either way. False if that file could
+    // not be written.
+    bool writeXmemRoms(const std::map<int, QByteArray>& roms, const QString& file);
 
     // A key of the PC keyboard went down or up. `pcKey` is a DirectInput
     // scan code (see keymap.h).

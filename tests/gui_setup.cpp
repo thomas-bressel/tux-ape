@@ -1013,10 +1013,80 @@ void testExpansionsPage(const QString& folder, const QString& picture)
         CHECK(card.xmemTakesRow(6) && note->isVisible());
     }
 
-    // No file yet: an erased card.
+    // A ROM put in a place from the window, as a programmer would: it shows
+    // at once, here and on the Memory page; the card's file has it once the
+    // window is accepted, which is the main window's doing.
+    const QString romFile = folder + "/catrun.rom";
+    QByteArray catrun = QByteArray::fromHex("01010100" "06C0") + "CATRU" + '\xCE';
+    catrun.resize(16384, '\0');
+    {
+        QFile out(romFile);
+        CHECK(out.open(QIODevice::WriteOnly));
+        out.write(catrun);
+    }
+    CHECK(card.xmemEdits().empty());
+    CHECK(card.loadXmemRom(5, romFile));
+    CHECK(card.xmemRoms().value(6) == "5: CATRUN  1.10 (background)");
+    CHECK(card.xmemRowText(6) == "X-MEM: CATRUN  1.10");
+    CHECK(!card.loadXmemRom(6, folder + "/no such.rom") && !card.loadXmemRom(32, romFile));
+    card.eraseXmemRom(0);
+    CHECK(card.xmemRoms().value(1) == "0: (empty)");
+    CHECK(card.xmemEdits().size() == 2 && card.xmemEdits()[5] == catrun && card.xmemEdits()[0].isEmpty());
+    {
+        QFile now(folder + "/mine.flash");
+        CHECK(now.open(QIODevice::ReadOnly));
+        CHECK(now.readAll().mid(5 * 16384 + 16, 6) == QByteArray("UNIDO") + '\xD3');  // not in the file yet
+    }
+    // The window's buttons work on the row chosen.
+    if (showRoms) {
+        QTimer::singleShot(100, [&] {
+            QWidget* modal = QApplication::activeModalWidget();
+            auto* list = modal ? modal->findChild<QListWidget*>("lbXmemRoms") : nullptr;
+            auto* load = modal ? modal->findChild<QPushButton*>("bXmemLoadRom") : nullptr;
+            auto* erase = modal ? modal->findChild<QPushButton*>("bXmemEraseRom") : nullptr;
+            if (list && load && erase) {
+                list->setCurrentRow(13);  // ROM 13: the row is the ROM's number from 8 on
+                if (erase->isEnabled() && load->isEnabled())
+                    erase->click();
+                list->setCurrentRow(0);  // the lower ROM is the flash's place 7
+                erase->click();
+            }
+            if (modal)
+                modal->close();
+        });
+        showRoms->click();
+        CHECK(card.xmemEdits().count(13) == 1 && card.xmemEdits().count(7) == 1 && card.xmemEdits().count(0) == 1);
+        CHECK(card.xmemRoms().value(0) == "Lower: (empty)");
+    }
+    // In the machine: the card has them, and its file; without the card,
+    // the file all the same.
+    {
+        Emulator emulator;
+        tuxape::MachineConfig machine = shown.machine;
+        emulator.setupMachine(machine, false);
+        CHECK(emulator.writeXmemRoms(card.xmemEdits(), folder + "/mine.flash"));
+        emulator.withMachine([&](tuxape::Cpc& cpc) {
+            CHECK(cpc.xmem() && cpc.xmem()->romInfo(5).name == "CATRUN" && !cpc.xmem()->romInfo(0).present);
+            CHECK(cpc.xmem() && !cpc.xmem()->romInfo(7).present && !cpc.xmem()->changed());
+        });
+        QFile now(folder + "/mine.flash");
+        CHECK(now.open(QIODevice::ReadOnly));
+        CHECK(now.readAll().mid(5 * 16384 + 6, 6) == QByteArray("CATRU") + '\xCE');
+        now.close();
+        machine.cards = {};
+        emulator.setupMachine(machine, false);
+        CHECK(emulator.writeXmemRoms({{9, catrun}}, folder + "/mine.flash"));
+        CHECK(now.open(QIODevice::ReadOnly));
+        const QByteArray all = now.readAll();
+        CHECK(all.size() == 512 * 1024 && all.mid(9 * 16384 + 6, 5) == "CATRU" && all.mid(5 * 16384 + 6, 5) == "CATRU");
+        CHECK(emulator.writeXmemRoms({}, QString()));
+    }
+
+    // No file yet: an erased card. What was put in the other file from
+    // here stays with it.
     card.setXmemFlash(folder + "/none.flash");
     CHECK(card.xmemRoms().value(0) == "Lower: (empty)" && card.xmemRoms().size() == 32);
-    CHECK(card.xmemRowText(6) == "X-MEM: (empty)");
+    CHECK(card.xmemRowText(6) == "X-MEM: (empty)" && card.xmemEdits().empty());
 }
 
 // Profiles and the cards: the Expansions page is saved with the ROMs and
