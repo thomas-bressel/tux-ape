@@ -72,7 +72,7 @@ int main(int argc, char* argv[])
     using G = GraphicsDialog;
     auto* modes = graphics->findChild<QComboBox*>("cbMode");
     auto* encodings = graphics->findChild<QComboBox*>("cbEncoding");
-    CHECK(modes && modes->count() == 5 && modes->itemText(0) == "Current" && modes->itemText(4) == "Sprite");
+    CHECK(modes && modes->count() == 5 && modes->itemText(0).startsWith("Current (") && modes->itemText(4) == "Sprite");
     CHECK(encodings && encodings->count() == 4 && encodings->itemText(1) == "Screen");
 
     // Mode 1, as the Gate Array reads a byte: two bits of each half.
@@ -133,6 +133,7 @@ int main(int argc, char* argv[])
     graphics->setView(G::kCurrentMode, 3, 0x9000, 2, 2, G::Cpc);
     const int machineMode = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.gateArray().mode() & 3; });
     CHECK_EQ(graphics->mode(), machineMode == 3 ? 0 : machineMode);
+    CHECK(modes->itemText(0) == QString("Current (%1)").arg(graphics->mode()));
 
     // As on the screen: lines &800 apart, the next row of characters &50 on.
     graphics->setView(1, 2, 0xC000, 2, 8, G::Screen);
@@ -368,6 +369,34 @@ int main(int argc, char* argv[])
         CHECK_EQ(peek(0x9101), 0x00);
         arrow->click();
     }
+
+    // On a Plus, the colours are the ASIC's: a program may give its
+    // colours there alone, and leave the Gate Array's inks as they were.
+    graphics->close();
+    emulator.setupMachine(tuxape::stockMachine(tuxape::CpcModel::Plus6128), true);
+    emulator.withMachine([](tuxape::Cpc& cpc) {
+        // As a program writes them at &6400 in the ASIC's page: R and B,
+        // then G.
+        const auto colour = [&](int index, int rb, int g) {
+            cpc.asic().write(static_cast<uint16_t>(0x6400 + index * 2), static_cast<uint8_t>(rb));
+            cpc.asic().write(static_cast<uint16_t>(0x6401 + index * 2), static_cast<uint8_t>(g));
+        };
+        colour(0, 0x00, 0);
+        colour(1, 0xF0, 0);  // red
+        colour(2, 0x00, 15);  // green
+        colour(16 + 1, 0x0F, 0);  // blue, a sprite's
+    });
+    show->trigger();
+    graphics->setView(G::kCurrentMode, 3, 0x9000, 2, 2, G::Screen);
+    const int plusMode = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.gateArray().mode() & 3; });
+    CHECK_EQ(graphics->mode(), plusMode == 3 ? 0 : plusMode);
+    CHECK(modes->itemText(0) == QString("Current (%1)").arg(graphics->mode()));
+    CHECK(graphics->colour(0) == qRgb(0, 0, 0));
+    CHECK(graphics->colour(1) == qRgb(255, 0, 0));
+    CHECK(graphics->colour(2) == qRgb(0, 255, 0));
+    // The sprites keep a palette of their own.
+    graphics->setView(G::kSpriteMode, 3, 0x9000, 16, 16, G::Cpc);
+    CHECK(graphics->colour(1) == qRgb(0, 0, 255));
 
     if (!prefix.isEmpty()) {
         for (int n = 0; n < 0x400; ++n)

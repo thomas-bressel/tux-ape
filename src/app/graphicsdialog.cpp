@@ -379,19 +379,29 @@ void GraphicsDialog::refresh()
         machineMode_ = cpc.gateArray().mode() & 3;
         if (machineMode_ == 3)
             machineMode_ = 0;
+        const auto plusRgb = [&](int index) {
+            const uint16_t grb = cpc.asic().colour(index);
+            return qRgb((grb >> 4 & 15) * 17, (grb >> 8 & 15) * 17, (grb & 15) * 17);
+        };
         for (int p = 0; p < 16; ++p) {
-            if (!sprites) {
+            if (!sprites && cpc.plus()) {
+                // A Plus shows the colours of its ASIC, which the Gate
+                // Array's inks go to as well: a program that gives its
+                // colours to the ASIC alone leaves the inks as they were.
+                colours_[static_cast<size_t>(p)] = plusRgb(p);
+            } else if (!sprites) {
                 colours_[static_cast<size_t>(p)] = cpc.gateArray().colour(cpc.gateArray().ink(p)) | 0xFF000000;
             } else if (cpc.plus()) {
                 // A Plus's sprites have a palette of their own; pen 0 lets
                 // the screen through.
-                const uint16_t grb = cpc.asic().colour(16 + p);
-                colours_[static_cast<size_t>(p)] = p ? qRgb((grb >> 4 & 15) * 17, (grb >> 8 & 15) * 17, (grb & 15) * 17) : qRgb(64, 64, 64);
+                colours_[static_cast<size_t>(p)] = p ? plusRgb(16 + p) : qRgb(64, 64, 64);
             } else {
                 colours_[static_cast<size_t>(p)] = qRgb(p * 17, p * 17, p * 17);
             }
         }
     });
+    // "Current" says which mode it is.
+    modeBox_->setItemText(0, tr("Current (%1)").arg(machineMode_));
     pen_ = std::min(pen_, pensInMode() - 1);
     paper_ = std::min(paper_, pensInMode() - 1);
     drawView();
