@@ -1,5 +1,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QDir>
+#include <QFile>
 #include <QMessageBox>
 #include <QTimer>
 
@@ -30,6 +32,16 @@ int main(int argc, char* argv[])
     parser.addOptions({grabOption, grabDelayOption});
     parser.addPositionalArgument("disc", QObject::tr("Disc image to put in drive A:."), "[disc]");
     parser.process(app);
+
+    // A folder made by tools/make-dist.sh has the ROMs and the profiles
+    // beside the program, as WinAPE's has: they are taken from there, unless
+    // the variables say otherwise.
+    const QDir beside(QCoreApplication::applicationDirPath());
+    for (const auto& [variable, folder] : {std::pair{"TUXAPE_ROM_DIR", "ROM"},
+                                           std::pair{"TUXAPE_USER_ROM_DIR", "roms"},
+                                           std::pair{"TUXAPE_PROFILE_DIR", "Profile"}})
+        if (qEnvironmentVariableIsEmpty(variable) && beside.exists(folder))
+            qputenv(variable, QFile::encodeName(beside.filePath(folder)));
 
     // Declared before the emulator, which uses it until it is destroyed.
     AudioOutput audio;

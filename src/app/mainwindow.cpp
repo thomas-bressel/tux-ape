@@ -1617,8 +1617,12 @@ bool MainWindow::saveBeforeLeaving(int drive)
 
 void MainWindow::chooseDisc(int drive)
 {
+    // The first time, the "dsk" folder beside the program if there is one.
+    QString folder = discFolder_;
+    if (const QDir beside(QCoreApplication::applicationDirPath()); folder.isEmpty() && beside.exists("dsk"))
+        folder = beside.filePath("dsk");
     const QString path = QFileDialog::getOpenFileName(
-        this, tr("Insert Disc Image in Drive %1:").arg(driveLetter(drive)), discFolder_, discFilter());
+        this, tr("Insert Disc Image in Drive %1:").arg(driveLetter(drive)), folder, discFilter());
     if (!path.isEmpty() && saveBeforeLeaving(drive))
         insertDiscFile(drive, path);
     screen_->setFocus();

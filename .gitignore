@@ -32,3 +32,6 @@ CMakeUserPresets.json
 
 # ROM images the user keeps for the emulated machine: not ours to version.
 /roms/
+
+# What tools/make-dist.sh makes: TuxAPE ready to run, with its folders.
+/dist/
