@@ -3,12 +3,13 @@
 #
 #   dist/tuxape      the program, built for it in build-dist/
 #   dist/lib/        the Qt libraries it was built with that come from .deps/
-#   dist/ROM/        WinAPE's ROM images, dist/Profile/ its profiles
+#   dist/ROM/        WinAPE's ROM images, dist/Profile/ its profiles and yours
 #   dist/roms/       your own ROMs
 #   dist/plugins/    the plugins installed
 #   dist/library/    the Library window's programs (hard links: no room taken)
 #   dist/assembly/   assembler sources
 #   dist/dsk/        disc images
+#   dist/img/        what the cards keep: the X-MASS's disc, the X-MEM's flash
 #
 # Run again, it brings what is newer in the project's folders: a file
 # newer in dist/ is left as it is, and nothing in dist/ is deleted.
@@ -26,7 +27,7 @@ cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_RPATH='$ORIGIN/lib' >/dev/null
 cmake --build "$build" -j"$(nproc)" --target tuxape
 
-mkdir -p "$dist/lib" "$dist/dsk"
+mkdir -p "$dist/lib" "$dist/dsk" "$dist/img"
 cp -f "$build/src/app/tuxape" "$dist/tuxape"
 
 # The libraries found in .deps/ go with it; those of the system stay there.

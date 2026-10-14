@@ -823,6 +823,22 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     CHECK(!button("rbXmemReadOff")->isChecked() && button("rbXmemReadOff")->text() == "NO");
     CHECK(dialog.xmemFlash() == Settings::xmemFlashFile());
     CHECK(Settings::xmemFlashFile() == folder + "/sub/xmem.flash");
+    // In a folder made by tools/make-dist.sh, what the cards keep goes
+    // into "img" beside the program, and the user's profiles into its
+    // "Profile", with WinAPE's.
+    {
+        const QDir beside(QCoreApplication::applicationDirPath());
+        const bool hadImg = beside.exists("img"), hadProfile = beside.exists("Profile");
+        CHECK(beside.mkpath("img") && beside.mkpath("Profile"));
+        CHECK(Settings::xmemFlashFile() == beside.filePath("img/xmem.flash"));
+        CHECK(Settings::xmassDiscFile() == beside.filePath("img/xmass.img"));
+        CHECK(Settings::userProfileFolder() == beside.filePath("Profile"));
+        if (!hadImg)
+            beside.rmdir("img");
+        if (!hadProfile)
+            beside.rmdir("Profile");
+        CHECK(Settings::xmemFlashFile() == folder + "/sub/xmem.flash");
+    }
     CHECK(file->text() == QDir::toNativeSeparators(dialog.xmemFlash()));
     CHECK(total->text() == "576K");
     // On 464 in a 6128 it is the same; on 6128 in a machine of 64K the

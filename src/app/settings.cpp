@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -345,8 +346,23 @@ QString Settings::profileFolder()
     return QString::fromStdString(tuxape::defaultProfileDir().string());
 }
 
+// A folder beside the program, as tools/make-dist.sh makes them, if it is
+// there; else the folder of the settings file.
+static QString besideOrSettings(const QString& folder, const QString& name)
+{
+    const QDir beside(QCoreApplication::applicationDirPath());
+    if (beside.exists(folder))
+        return beside.filePath(folder) + "/" + name;
+    return QFileInfo(Settings::file()).absolutePath() + "/" + name;
+}
+
+// The profiles the user saves are the user's work: beside the program, with
+// WinAPE's, when the folder is there.
 QString Settings::userProfileFolder()
 {
+    const QDir beside(QCoreApplication::applicationDirPath());
+    if (beside.exists("Profile"))
+        return beside.filePath("Profile");
     return QFileInfo(file()).absolutePath() + "/Profile";
 }
 
@@ -368,14 +384,16 @@ tuxape::Card Settings::cardNamed(const QString& name)
     return tuxape::Card::None;
 }
 
+// What a card keeps is the user's data, to be saved with the discs: in the
+// "img" folder beside the program when it is there.
 QString Settings::xmemFlashFile()
 {
-    return QFileInfo(file()).absolutePath() + "/xmem.flash";
+    return besideOrSettings("img", "xmem.flash");
 }
 
 QString Settings::xmassDiscFile()
 {
-    return QFileInfo(file()).absolutePath() + "/xmass.img";
+    return besideOrSettings("img", "xmass.img");
 }
 
 QString Settings::keyMapFile()

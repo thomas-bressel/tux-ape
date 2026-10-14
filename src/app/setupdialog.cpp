@@ -1453,7 +1453,9 @@ void SetupDialog::fillProfiles()
     // In the order of their names, not of their file names: "464 Plus"
     // comes before "464 Plus with ParaDOS".
     QFileInfoList files = QDir(Settings::profileFolder()).entryInfoList({"*.wpf"}, QDir::Files);
-    files += QDir(Settings::userProfileFolder()).entryInfoList({"*.wpf"}, QDir::Files);
+    // The user's are with WinAPE's in a folder made by tools/make-dist.sh.
+    if (QDir(Settings::userProfileFolder()) != QDir(Settings::profileFolder()))
+        files += QDir(Settings::userProfileFolder()).entryInfoList({"*.wpf"}, QDir::Files);
     std::sort(files.begin(), files.end(), [](const QFileInfo& a, const QFileInfo& b) {
         return a.completeBaseName().compare(b.completeBaseName(), Qt::CaseInsensitive) < 0;
     });
