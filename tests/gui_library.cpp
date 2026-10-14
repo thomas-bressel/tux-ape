@@ -145,7 +145,11 @@ void testNames()
     // notes as before.
     entry = libraryEntry("/games/The Simpsons (UK) (Face A) (1991) [Original].dsk");
     CHECK(entry.title == "The Simpsons" && entry.side == "Face A" && entry.year == "1991");
-    CHECK(entry.details == "UK, Face A" && entry.release == "Original");
+    CHECK(entry.details == "UK" && entry.release == "Original");
+    // The Face column: the letter, with its number if it has one.
+    CHECK(librarySideLetters("Face A") == "A" && librarySideLetters("face 2b") == "2B");
+    CHECK(librarySideLetters("Side 3") == "3" && librarySideLetters("Disc 1 of 2") == "Disc 1 of 2");
+    CHECK(librarySideLetters("Disk 2, Face A") == "Disk 2, A" && librarySideLetters("").isEmpty());
     CHECK(libraryEntry("/games/Robocop (face 2b).dsk").side == "face 2b");
     CHECK(libraryEntry("/games/Robocop (Side B).cdt").side == "Side B");
     CHECK(libraryEntry("/games/Robocop (Disc 1 of 2).dsk").side == "Disc 1 of 2");
@@ -288,7 +292,10 @@ int main(int argc, char* argv[])
         // The AI column: ticked for the files with "(AI)" in their name.
         CHECK(dialog.listedAiTitles() == QStringList{"boulder dash"});
         auto* programs = dialog.findChild<QTreeWidget*>("lvLibrary");
-        CHECK(programs && programs->columnCount() == 10 && programs->headerItem()->text(7) == "AI");
+        CHECK(programs && programs->columnCount() == 11 && programs->headerItem()->text(7) == "AI");
+        // Between the titles and the pictures, the side.
+        CHECK(programs && programs->headerItem()->text(10) == "Face");
+        CHECK(programs && programs->header()->visualIndex(10) == 1 && programs->header()->visualIndex(8) == 2);
         CHECK(programs && programs->headerItem()->text(9) == "Notes");
         CHECK(programs && programs->topLevelItem(0)->text(9).isEmpty());  // not among the notes as well
         // No category folder here: no tab, and nothing in the column.
@@ -969,9 +976,11 @@ int main(int argc, char* argv[])
         if (!(programs && button && insertA && preview))
             return checkSummary("gui_library");
         CHECK(programs->headerItem()->text(8) == "Thumbnail");
-        // It shows right after the titles, whatever its number.
-        CHECK(programs->header()->visualIndex(0) == 0 && programs->header()->visualIndex(8) == 1);
-        CHECK(programs->header()->visualIndex(1) == 2 && programs->header()->visualIndex(9) == 9);
+        // It shows right after the titles and the sides, whatever its
+        // number; the notes stay last.
+        CHECK(programs->header()->visualIndex(0) == 0 && programs->header()->visualIndex(10) == 1);
+        CHECK(programs->header()->visualIndex(8) == 2 && programs->header()->visualIndex(1) == 3);
+        CHECK(programs->header()->visualIndex(9) == 10);
         CHECK(dialog.setCategory("Games"));
         CHECK(dialog.listedTitles() == (QStringList{"Gryzor", "Gryzor", "Gryzor", "Sorcery+"}));
         CHECK(dialog.listedTypes() == (QStringList{"Tape", "Disc", "Disc", "Disc"}));

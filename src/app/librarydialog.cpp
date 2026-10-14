@@ -61,6 +61,7 @@ constexpr int kOriginColumn = 5;
 constexpr int kDumpColumn = 6;
 constexpr int kAiColumn = 7;
 constexpr int kThumbnailColumn = 8;
+constexpr int kFaceColumn = 10;
 
 // A row of the list. A click on a column's heading sorts by that column,
 // from A to Z, and a second click from Z to A: text without regard to
@@ -333,6 +334,16 @@ private:
 
 }  // namespace
 
+QString librarySideLetters(const QString& side)
+{
+    static const QRegularExpression face("^(face|side)\\s+", QRegularExpression::CaseInsensitiveOption);
+    QStringList parts = side.split(", ", Qt::SkipEmptyParts);
+    for (QString& part : parts)
+        if (const auto match = face.match(part); match.hasMatch())
+            part = part.mid(match.capturedLength()).toUpper();
+    return parts.join(", ");
+}
+
 QString libraryThumbnailName(const LibraryEntry& entry)
 {
     QString name = entry.title;
@@ -516,7 +527,7 @@ LibraryEntry libraryEntry(const QString& path)
         static const QRegularExpression note("[(\\[]([^)\\]]*)[)\\]]");
         static const QRegularExpression year("^((19|20)[0-9]{2})(-.*)?$");
         // "Face A", "Side 2", "Disc 1 of 3": which side or disc of the
-        // program it is. It stays among the notes.
+        // program it is. It has a column of its own.
         static const QRegularExpression side("^(face|side|disc|disk)\\s+\\w{1,3}(\\s+of\\s+\\w+)?$",
                                              QRegularExpression::CaseInsensitiveOption);
         QStringList details;
@@ -539,8 +550,10 @@ LibraryEntry libraryEntry(const QString& path)
                     entry.dump = text.mid(5).simplified();
                 continue;
             }
-            if (side.match(text).hasMatch())
+            if (side.match(text).hasMatch()) {
                 entry.side += (entry.side.isEmpty() ? "" : ", ") + text;
+                continue;
+            }
             // "CPC+", "CPC CPC+", "6128+", "Plus", "GX 4000": the machine
             // it was made for. It stays among the notes.
             static const QRegularExpression forPlus("(^|\\s)(cpc ?\\+|(464|6128) ?(\\+|plus)|plus|gx ?4000)($|\\s)",
@@ -650,7 +663,7 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     tabs_->setExpanding(false);
     tabs_->setDrawBase(false);
     list_->setHeaderLabels({tr("Title"), tr("Sub-category"), tr("Year"), tr("Type"), tr("Release Type"), tr("Origin"),
-                            tr("Dump"), tr("AI"), tr("Thumbnail"), tr("Notes")});
+                            tr("Dump"), tr("AI"), tr("Thumbnail"), tr("Notes"), tr("Face")});
     // Several programs at once, to give them a picture.
     list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
     list_->setRootIsDecorated(false);
@@ -667,9 +680,12 @@ LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
     list_->setColumnWidth(kDumpColumn, 150);
     list_->setColumnWidth(kAiColumn, 36);
     list_->setColumnWidth(kThumbnailColumn, 84);
-    // The pictures' column stands beside the titles. Only where it shows:
-    // the columns keep their numbers, which the kept sort order goes by.
+    list_->setColumnWidth(kFaceColumn, 50);
+    // The sides' column, then the pictures', stand beside the titles. Only
+    // where they show: the columns keep their numbers, which the kept sort
+    // order goes by.
     list_->header()->moveSection(list_->header()->visualIndex(kThumbnailColumn), 1);
+    list_->header()->moveSection(list_->header()->visualIndex(kFaceColumn), 1);
     // A program's picture, beside the pointer while it is over the program.
     preview_ = new QLabel(this, Qt::ToolTip | Qt::FramelessWindowHint);
     preview_->setObjectName("lPreview");
@@ -896,7 +912,8 @@ void LibraryDialog::fill()
         // The type shows as a picture: a disc, a tape, a cartridge, or a
         // snapshot; its name is there for whoever points at it.
         auto* item = new LibraryItem(list_, {entry.title, entry.subcategory, entry.year, QString(), entry.release,
-                                             entry.origin, entry.dump, QString(), QString(), entry.details});
+                                             entry.origin, entry.dump, QString(), QString(), entry.details,
+                                             librarySideLetters(entry.side)});
         item->setIcon(kTypeColumn, kIcons[entry.kind]);
         item->setToolTip(kTypeColumn, kind);
         item->setData(0, Qt::UserRole, i);

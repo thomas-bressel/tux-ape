@@ -96,6 +96,11 @@ QString libraryDisplayPath(const LibraryEntry& entry);
 // its category), what it is on, which side of it and the kind of release,
 // as in "Gryzor (1987) (Run and Gun) (Disc) (Face A) [Original].png". What
 // is not known is left out.
+// What the Face column says of a side: the letter, or the number and the
+// letter, of a "Face" or a "Side" ("A", "2B"); a disc as it is named
+// ("Disc 1 of 2").
+QString librarySideLetters(const QString& side);
+
 QString libraryThumbnailName(const LibraryEntry& entry);  // without the folder and the suffix
 QString libraryThumbnailFolder(const LibraryEntry& entry);
 // The program's picture: the file of that name; failing that one of the
