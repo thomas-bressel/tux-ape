@@ -145,6 +145,7 @@ private:
     QSlider* crtSliders_[6] = {};
     QCheckBox* displaySync_ = nullptr;
     QCheckBox* welcome_ = nullptr;
+    QCheckBox* throughX11_ = nullptr;
     CrtLook chosenLook() const;
     void setLook(const CrtLook& look);
     QCheckBox* turbo_ = nullptr;

@@ -114,6 +114,45 @@ void testSettingsFile(const QString& path)
 }
 
 // RAM and ROMs, under the names WinAPE.ini and its profiles give them.
+// Under Wayland with XWayland at hand, the box that has TuxAPE start
+// through XWayland, to put its windows back where they were; it is read
+// before the application is made. Nowhere else.
+void testThroughX11()
+{
+    const QByteArray wayland = qgetenv("WAYLAND_DISPLAY"), display = qgetenv("DISPLAY");
+    qputenv("WAYLAND_DISPLAY", "wayland-test");
+    qputenv("DISPLAY", ":99");
+    CHECK(Settings::windowsThroughX11Possible());
+    Settings settings;
+    {
+        SetupDialog dialog(settings);
+        auto* box = dialog.findChild<QCheckBox*>("ckThroughX11");
+        CHECK(box && !box->isHidden() && !box->isChecked());
+        if (box)
+            box->setChecked(true);
+        CHECK(dialog.settings().windowsThroughX11 && dialog.settings().save());
+    }
+    CHECK(Settings::windowsThroughX11Wanted());
+    Settings read;
+    read.load();
+    CHECK(read.windowsThroughX11);
+    read.windowsThroughX11 = false;
+    CHECK(read.save() && !Settings::windowsThroughX11Wanted());
+    qunsetenv("WAYLAND_DISPLAY");
+    CHECK(!Settings::windowsThroughX11Possible());
+    {
+        SetupDialog dialog(settings);
+        auto* box = dialog.findChild<QCheckBox*>("ckThroughX11");
+        CHECK(box && box->isHidden());
+    }
+    if (!wayland.isNull())
+        qputenv("WAYLAND_DISPLAY", wayland);
+    if (display.isNull())
+        qunsetenv("DISPLAY");
+    else
+        qputenv("DISPLAY", display);
+}
+
 void testMachineInSettingsFile(const QString& path)
 {
     using tuxape::CpcModel;
@@ -1515,6 +1554,7 @@ int main(int argc, char* argv[])
     const QString prefix = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString();
     testSettingsFile(path);
     testMachineInSettingsFile(path);
+    testThroughX11();
     testDialog(prefix.isEmpty() ? QString() : prefix + "general.png");
     testSoundPage(prefix.isEmpty() ? QString() : prefix + "sound.png");
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");

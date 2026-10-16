@@ -114,9 +114,19 @@ struct Settings {
         bool known() const { return size.width() > 0 && size.height() > 0; }
         bool operator==(const WindowPlace&) const = default;
     };
-    // By the window's name: "Main", "Debugger", "Registers", "Graphics",
-    // "Assembler".
+    // By the window's name: "Main", "Debugger", "Registers", "Asic",
+    // "Graphics", "Assembler".
     QMap<QString, WindowPlace> windowPlaces;
+    // Under Wayland, the system places the windows, and TuxAPE cannot put
+    // them back where they were. Through XWayland it can: the program then
+    // starts as an X11 one. From the next start.
+    bool windowsThroughX11 = false;
+    // That setting as the settings file has it, read before the
+    // application is made, when it has to be known.
+    static bool windowsThroughX11Wanted();
+    // Whether the setting means anything here: a Wayland session with
+    // XWayland at hand.
+    static bool windowsThroughX11Possible();
     // The debugger's own boxes: whether it goes away while the machine
     // runs, and whether it follows the machine as it runs.
     bool debuggerHideOnRun = false;

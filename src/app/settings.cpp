@@ -235,6 +235,7 @@ void Settings::read(const tuxape::IniFile& ini)
     libraryThumbnailView = ini.getBool("Library", "Thumbnail View", libraryThumbnailView);
     libraryThumbnailSize = ini.getInt("Library", "Thumbnail Size", libraryThumbnailSize);
     darkTheme = ini.getBool("Interface", "Dark Theme", darkTheme);
+    windowsThroughX11 = ini.getBool("Interface", "Windows Through X11", windowsThroughX11);
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -352,6 +353,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool("Library", "Thumbnail View", libraryThumbnailView);
         ini.setInt("Library", "Thumbnail Size", libraryThumbnailSize);
         ini.setBool("Interface", "Dark Theme", darkTheme);
+        ini.setBool("Interface", "Windows Through X11", windowsThroughX11);
     }
 }
 
@@ -394,6 +396,21 @@ static QString besideOrSettings(const QString& folder, const QString& name)
 
 // The profiles the user saves are the user's work: beside the program, with
 // WinAPE's, when the folder is there.
+bool Settings::windowsThroughX11Wanted()
+{
+    tuxape::IniFile ini;
+    return ini.load(file().toStdString()) && ini.getBool("Interface", "Windows Through X11", false);
+}
+
+bool Settings::windowsThroughX11Possible()
+{
+#ifdef __linux__
+    return !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") && !qEnvironmentVariableIsEmpty("DISPLAY");
+#else
+    return false;
+#endif
+}
+
 QString Settings::userProfileFolder()
 {
     const QDir beside(QCoreApplication::applicationDirPath());

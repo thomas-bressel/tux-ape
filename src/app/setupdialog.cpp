@@ -304,6 +304,11 @@ QWidget* SetupDialog::createGeneralPage()
     // TuxAPE's own: its picture as it starts, for those who want it.
     welcome_ = new QCheckBox(tr("Show the welcome picture at start-up"));
     welcome_->setObjectName("ckWelcome");
+    // TuxAPE's own, under Wayland only: windows back where they were.
+    throughX11_ = new QCheckBox(tr("Put the windows back where they were (through XWayland, from the next start)"));
+    throughX11_->setObjectName("ckThroughX11");
+    throughX11_->setToolTip(tr("Under Wayland, the system chooses where windows go. Started through XWayland, TuxAPE "
+                               "opens its windows again on the screens and at the places they had"));
 
     auto* optionsLayout = new QVBoxLayout(optionsBox);
     optionsLayout->setSpacing(3);
@@ -311,8 +316,9 @@ QWidget* SetupDialog::createGeneralPage()
     for (QWidget* widget : {static_cast<QWidget*>(enablePlus_), static_cast<QWidget*>(plusPpi),
                             static_cast<QWidget*>(fourDrives), static_cast<QWidget*>(fastDisc_),
                             static_cast<QWidget*>(flyback), static_cast<QWidget*>(disableUpdate),
-                            static_cast<QWidget*>(welcome_)})
+                            static_cast<QWidget*>(welcome_), static_cast<QWidget*>(throughX11_)})
         optionsLayout->addWidget(widget);
+    throughX11_->setHidden(!Settings::windowsThroughX11Possible());
     optionsLayout->addWidget(update, 0, Qt::AlignLeft);
 
     // ---- Timing ----
@@ -1305,6 +1311,7 @@ void SetupDialog::setSettings(const Settings& settings)
     setLook(settings.crtLook);
     displaySync_->setChecked(settings.displaySync);
     welcome_->setChecked(settings.welcomePicture);
+    throughX11_->setChecked(settings.windowsThroughX11);
     driveLed_->setChecked(settings.driveLed);
     showTrack_->setChecked(settings.showDriveCylinders);
     const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
@@ -1578,6 +1585,7 @@ Settings SetupDialog::settings() const
     settings.crtLook = chosenLook();
     settings.displaySync = displaySync_->isChecked();
     settings.welcomePicture = welcome_->isChecked();
+    settings.windowsThroughX11 = throughX11_->isChecked();
     settings.driveLed = driveLed_->isChecked();
     settings.showDriveCylinders = showTrack_->isChecked();
     Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
