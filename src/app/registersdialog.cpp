@@ -24,54 +24,13 @@ namespace {
 const char kPlain[] = "";
 const char kLit[] = "background: #40e0ff; color: #000000;";  // the register last selected, a counter at work
 
-QRgb rgbOf(uint16_t grb)
-{
-    return qRgb((grb >> 4 & 0xF) * 17, (grb >> 8 & 0xF) * 17, (grb & 0xF) * 17);
-}
-
-// A tick box that only shows.
-// The bytes that unlock the ASIC, written to the CRTC's register select
-// port; with another byte in the place of &CD, they lock it.
-constexpr uint8_t kAsicKey[17] = {0xFF, 0x00, 0xFF, 0x77, 0xB3, 0x51, 0xA8, 0xD4, 0x62,
-                                  0x39, 0x9C, 0x46, 0x2B, 0x15, 0x8A, 0xCD, 0xEE};
-// The room of the sprite as shown, at a screen pixel to a mode 2 pixel,
-// as TuxAPE's screen at its own size: one magnified 4 x 4 fills it.
-constexpr int kShownWidth = 64, kShownHeight = 128;
-
-QCheckBox* indicator(const QString& text, const char* objectName)
-{
-    auto* box = new QCheckBox(text);
-    box->setObjectName(objectName);
-    box->setAttribute(Qt::WA_TransparentForMouseEvents);
-    box->setFocusPolicy(Qt::NoFocus);
-    return box;
-}
-
-// One instruction of a sound list, as WinAPE writes it.
-QString dmaText(unsigned word)
-{
-    const auto hex = [](unsigned value, int digits) { return QString("%1").arg(value, digits, 16, QLatin1Char('0')).toUpper(); };
-    switch (word >> 12) {
-    case 0: return QString("LD R%1,%2").arg(hex(word >> 8 & 0xF, 1), hex(word & 0xFF, 2));
-    case 1: return QString("PAUSE %1").arg(hex(word & 0xFFF, 3));
-    case 2: return QString("REPEAT %1").arg(hex(word & 0xFFF, 3));
-    case 4:
-        if (word == 0x4000) return "NOP";
-        if (word == 0x4001) return "LOOP";
-        if (word == 0x4010) return "INT";
-        if (word == 0x4020) return "STOP";
-        break;
-    }
-    return hex(word, 4);
-}
-
 }  // namespace
 
 RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     : QDialog(parent)
     , emulator_(emulator)
 {
-    setWindowTitle(tr("TuxAPE - Registers"));
+    setWindowTitle(tr("TuxAPE - CRTC Registers"));
     auto* layout = new QVBoxLayout(this);
     layout->setSizeConstraint(QLayout::SetFixedSize);
 
@@ -105,9 +64,8 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     }
     asicButton_ = new QToolButton;
     asicButton_->setObjectName("bAsic");
-    asicButton_->setArrowType(Qt::DownArrow);
-    asicButton_->setCheckable(true);
-    asicButton_->setToolTip(tr("ASIC Registers"));
+    asicButton_->setText(tr("ASIC..."));
+    asicButton_->setToolTip(tr("ASIC Registers: a Plus's, in a window of their own"));
     counters->addWidget(asicButton_, 1, 12, Qt::AlignRight);
     rowHighlight_ = new QCheckBox(tr("Row Highlight"));
     rowHighlight_->setObjectName("ckRowHighlight");
@@ -121,118 +79,11 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     counters->setColumnStretch(12, 1);
     layout->addLayout(counters);
 
-    // ---- The ASIC ----
-    asicPane_ = new QWidget;
-    auto* asic = new QVBoxLayout(asicPane_);
-    asic->setContentsMargins(0, 0, 0, 0);
-    auto* palette = new QGridLayout;
-    palette->setSpacing(2);
-    palette->addWidget(new QLabel(tr("Palette:")), 0, 0, Qt::AlignRight);
-    palette->addWidget(new QLabel(tr("Sprite Palette:")), 1, 0, Qt::AlignRight);
-    for (int index = 0; index < 32; ++index) {
-        auto* square = new QLabel;
-        square->setObjectName(QString("colour%1").arg(index));
-        square->setFixedSize(22, 18);
-        square->setFrameStyle(QFrame::Panel | QFrame::Sunken);
-        square->setAutoFillBackground(true);
-        colours_[index] = square;
-        // The sprites' colours 1 to 15 stand under pens 1 to 15.
-        palette->addWidget(square, index < 17 ? 0 : 1, index < 17 ? index + 1 : index - 15);
-    }
-    asic->addLayout(palette);
-
-    auto* flags = new QHBoxLayout;
-    unlocked_ = indicator(tr("ASIC Unlocked"), "ckUnlocked");
-    ramEnabled_ = indicator(tr("ASIC RAM Enabled"), "ckRamEnabled");
-    // These two are for clicking.
-    for (QCheckBox* box : {unlocked_, ramEnabled_}) {
-        box->setAttribute(Qt::WA_TransparentForMouseEvents, false);
-        box->setFocusPolicy(Qt::StrongFocus);
-    }
-    unlocked_->setToolTip(tr("Sends the ASIC the sequence that unlocks it, or locks it"));
-    connect(unlocked_, &QCheckBox::clicked, this, [this](bool on) { setUnlocked(on); });
-    connect(ramEnabled_, &QCheckBox::clicked, this, [this](bool on) { setRamEnabled(on); });
-    flags->addWidget(unlocked_);
-    flags->addWidget(ramEnabled_);
-    flags->addStretch();
-    const auto labelled = [this](QBoxLayout* into, const QString& title, const QString& name, int digits) {
-        into->addWidget(new QLabel(title));
-        into->addWidget(field(name, digits));
-    };
-    labelled(flags, tr("LRB:"), "LRB", 4);
-    labelled(flags, tr("Cart Bank:"), "CartBank", 1);
-    labelled(flags, tr("DCSR:"), "DCSR", 2);
-    asic->addLayout(flags);
-
-    auto* lower = new QHBoxLayout;
-    spriteBox_ = new QGroupBox;
-    spriteBox_->setObjectName("gbSprite");
-    auto* sprite = new QGridLayout(spriteBox_);
-    spriteView_ = new QLabel;
-    spriteView_->setObjectName("SpriteView");
-    spriteView_->setFixedSize(64, 64);
-    spriteBar_ = new QScrollBar(Qt::Horizontal);
-    spriteBar_->setObjectName("sbSprite");
-    spriteBar_->setRange(0, 15);
-    sprite->addWidget(spriteView_, 0, 0, 4, 1);
-    sprite->addWidget(spriteBar_, 4, 0);
-    // The sprite as the screen shows it: the magnification gives it its
-    // size and its shape.
-    spriteShown_ = new QLabel;
-    spriteShown_->setObjectName("SpriteShown");
-    spriteShown_->setFixedSize(kShownWidth + 6, kShownHeight + 6);
-    spriteShown_->setAlignment(Qt::AlignCenter);
-    spriteShown_->setFrameStyle(QFrame::Panel | QFrame::Sunken);
-    sprite->addWidget(spriteShown_, 0, 5, 5, 1);
-    const auto cell = [&](int at, int column, const QString& title, const QString& name, int digits, bool editable) {
-        sprite->addWidget(new QLabel(title), at, column, Qt::AlignRight);
-        sprite->addWidget(field(name, digits, editable), at, column + 1, Qt::AlignLeft);
-    };
-    cell(0, 1, tr("X:"), "X", 4, true);
-    cell(1, 1, tr("Y:"), "Y", 4, true);
-    cell(2, 1, tr("Mag X:"), "MagX", 1, true);
-    cell(3, 1, tr("Mag Y:"), "MagY", 1, true);
-    fields_.value("MagX")->setToolTip(tr("0 hides the sprite; 1, 2 or 4 is the width of its pixels"));
-    fields_.value("MagY")->setToolTip(tr("0 hides the sprite; 1, 2 or 4 is the height of its pixels"));
-    cell(0, 3, tr("PRI:"), "PRI", 2, false);
-    cell(1, 3, tr("SSS:"), "SSS", 2, false);
-    cell(2, 3, tr("SSC:"), "SSC", 2, false);
-    cell(3, 3, tr("IVR:"), "IVR", 2, false);
-    cell(4, 3, tr("SSSA:"), "SSSA", 4, false);
-    lower->addWidget(spriteBox_);
-    for (int channel = 0; channel < 3; ++channel) {
-        auto* box = new QGroupBox(tr("DMA Chan %1").arg(channel));
-        auto* inside = new QGridLayout(box);
-        dmaEnabled_[channel] = indicator(tr("Enabled"), qPrintable(QString("ckDma%1").arg(channel)));
-        inside->addWidget(dmaEnabled_[channel], 0, 0, 1, 2);
-        inside->addWidget(new QLabel(tr("Addr:")), 1, 0, Qt::AlignRight);
-        inside->addWidget(field(QString("Addr%1").arg(channel), 4), 1, 1);
-        inside->addWidget(new QLabel(tr("Pause:")), 2, 0, Qt::AlignRight);
-        inside->addWidget(field(QString("Pause%1").arg(channel), 2), 2, 1);
-        dmaNext_[channel] = new QLabel;
-        dmaNext_[channel]->setObjectName(QString("lDma%1").arg(channel));
-        dmaNext_[channel]->setAlignment(Qt::AlignCenter);
-        dmaNext_[channel]->setStyleSheet(
-            QString("color: %1;").arg(readable(QColor(128, 0, 128), QGuiApplication::palette().color(QPalette::Window)).name()));
-        inside->addWidget(dmaNext_[channel], 3, 0, 1, 2);
-        dmaBox_[channel] = box;
-        lower->addWidget(box);
-    }
-    asic->addLayout(lower);
-    layout->addWidget(asicPane_);
-    asicPane_->hide();
-
-    connect(asicButton_, &QToolButton::toggled, this, [this](bool on) {
-        asicButton_->setArrowType(on ? Qt::UpArrow : Qt::DownArrow);
-        asicPane_->setVisible(on);
-        refresh();
-    });
-    connect(spriteBar_, &QScrollBar::valueChanged, this, &RegistersDialog::refresh);
-    // The machine goes on while the window is up. With the ASIC's part
-    // open, the sprite moves as it does on the screen.
+    // The ASIC's registers have a window of their own: the button opens it.
+    connect(asicButton_, &QToolButton::clicked, this, &RegistersDialog::asicRequested);
+    // The machine goes on while the window is up.
     auto* timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, [this, timer] {
-        timer->setInterval(asicPane_->isVisible() ? 40 : 200);
+    connect(timer, &QTimer::timeout, this, [this] {
         if (isVisible() && !emulator_->isPaused())
             refresh();
     });
@@ -302,33 +153,6 @@ bool RegistersDialog::setValue(const QString& name, const QString& hexText)
         const int n = name.mid(static_cast<int>(qstrlen(prefix))).toInt(&isNumber);
         return isNumber && n >= 0 && n < count ? n : -1;
     };
-    // The sprite's position and magnification, written where a program
-    // writes them: eight bytes to a sprite from &6000 in the ASIC's page.
-    const bool position = name == "X" || name == "Y", magnification = name == "MagX" || name == "MagY";
-    if (position || magnification) {
-        if (!ok || (position && value > 0xFFFF) || (magnification && value != 0 && value != 1 && value != 2 && value != 4))
-            return false;
-        const int number = spriteBar_->value();
-        bool plus = false;
-        emulator_->withMachine([&](tuxape::Cpc& cpc) {
-            if (!(plus = cpc.plus()))
-                return;
-            tuxape::Asic& asic = cpc.asic();
-            const auto at = [&](int offset) { return static_cast<uint16_t>(0x6000 + number * 8 + offset); };
-            if (position) {
-                const int offset = name == "X" ? 0 : 2;
-                asic.write(at(offset), static_cast<uint8_t>(value));
-                asic.write(at(offset + 1), static_cast<uint8_t>(value >> 8));
-            } else {
-                const auto code = [](unsigned factor) { return factor == 4 ? 3u : factor; };
-                const tuxape::Asic::Sprite& now = asic.sprite(number);
-                const unsigned x = name == "MagX" ? value : now.magX, y = name == "MagY" ? value : now.magY;
-                asic.write(at(4), static_cast<uint8_t>(code(x) << 2 | code(y)));
-            }
-        });
-        refresh();
-        return plus;
-    }
     const int pen = numbered("Palette", 17), sound = numbered("PSG", 16), video = numbered("CRTC", 16);
     if (!ok || value > 0xFF || (pen < 0 && sound < 0 && video < 0))
         return false;
@@ -350,70 +174,6 @@ bool RegistersDialog::setValue(const QString& name, const QString& hexText)
     });
     refresh();
     return true;
-}
-
-void RegistersDialog::setUnlocked(bool on)
-{
-    emulator_->withMachine([&](tuxape::Cpc& cpc) {
-        if (!cpc.plus())
-            return;
-        // The CRTC takes those bytes as register numbers: the one that was
-        // chosen is chosen again after them.
-        const uint8_t selected = cpc.crtc().selected();
-        for (int n = 0; n < 17; ++n)
-            cpc.out(0xBC00, n == 15 && !on ? 0xA5 : kAsicKey[n]);
-        cpc.out(0xBC00, selected);
-    });
-    refresh();
-}
-
-bool RegistersDialog::setRamEnabled(bool on)
-{
-    bool done = false;
-    emulator_->withMachine([&](tuxape::Cpc& cpc) {
-        if (!cpc.plus() || !cpc.asic().unlocked())
-            return;
-        const uint8_t rmr2 = cpc.asic().rmr2();
-        const int position = rmr2 >> 3 & 3;
-        if (on && position != 3)
-            lowerRomPosition_ = position;
-        const int wanted = on ? 3 : (position == 3 ? lowerRomPosition_ : position);
-        // Through the Gate Array's port, as a program would: RMR2.
-        cpc.out(0x7F00, static_cast<uint8_t>(0xA0 | wanted << 3 | (rmr2 & 7)));
-        done = true;
-    });
-    refresh();
-    return done;
-}
-
-QImage RegistersDialog::spriteAsShown() const
-{
-    return shownImage_;
-}
-
-bool RegistersDialog::asicShown() const
-{
-    return asicButton_->isChecked();
-}
-
-void RegistersDialog::setAsicShown(bool shown)
-{
-    asicButton_->setChecked(shown);
-}
-
-int RegistersDialog::sprite() const
-{
-    return spriteBar_->value();
-}
-
-void RegistersDialog::setSprite(int number)
-{
-    spriteBar_->setValue(number);
-}
-
-QString RegistersDialog::dmaInstruction(int channel) const
-{
-    return dmaNext_[channel % 3]->text();
 }
 
 void RegistersDialog::showEvent(QShowEvent* event)
@@ -448,16 +208,7 @@ void RegistersDialog::refresh()
         int hdc, vdur, beamColumn;
         uint16_t vma;
         bool hsync, vsync, adjust, plus;
-        uint16_t colours[32];
-        bool unlocked;
-        uint8_t rmr2, dcsr, pri, sss, ssc, ivr;
-        uint16_t sssa;
-        tuxape::Asic::Sprite sprite;
-        uint8_t pixels[256];
-        tuxape::Asic::Channel dma[3];
-        uint16_t next[3];
     };
-    const int spriteNumber = spriteBar_->value();
     const State s = emulator_->withMachine([&](tuxape::Cpc& cpc) {
         State out{};
         const tuxape::GateArray& ga = cpc.gateArray();
@@ -490,28 +241,8 @@ void RegistersDialog::refresh()
         out.vma = static_cast<uint16_t>((ma & 0x3000) << 2 | (crtc.ra() & 7) << 11 | (ma & 0x3FF) << 1);
         out.plus = cpc.plus();
         out.icsr = ga.interruptRequested() ? 0x80 : 0;
-        if (out.plus) {
-            const tuxape::Asic& asic = cpc.asic();
-            out.icsr = static_cast<uint8_t>(out.icsr | (asic.dcsr() & 0x70));
-            for (int index = 0; index < 32; ++index)
-                out.colours[index] = asic.colour(index);
-            out.unlocked = asic.unlocked();
-            out.rmr2 = asic.rmr2();
-            out.dcsr = asic.dcsr();
-            out.pri = asic.rasterInterruptLine();
-            out.sss = asic.splitLine();
-            out.ssc = asic.scroll();
-            out.ivr = asic.interruptVector();
-            out.sssa = asic.splitAddress();
-            out.sprite = asic.sprite(spriteNumber);
-            for (int i = 0; i < 256; ++i)
-                out.pixels[i] = asic.spritePixel(spriteNumber, i & 15, i >> 4);
-            for (int channel = 0; channel < 3; ++channel) {
-                out.dma[channel] = asic.channel(channel);
-                const uint16_t at = out.dma[channel].address;
-                out.next[channel] = static_cast<uint16_t>(cpc.memory().readRam(at) | cpc.memory().readRam(static_cast<uint16_t>(at + 1)) << 8);
-            }
-        }
+        if (out.plus)
+            out.icsr = static_cast<uint8_t>(out.icsr | (cpc.asic().dcsr() & 0x70));
         return out;
     });
     // "Row Highlight": the screen shows where the beam is, while the
@@ -540,68 +271,6 @@ void RegistersDialog::refresh()
     put("Mode", s.mode);
     put("ICSR", s.icsr);
 
-    // The ASIC's part is a Plus's alone.
+    // The ASIC's window is a Plus's alone.
     asicButton_->setEnabled(s.plus);
-    if (!s.plus && asicButton_->isChecked())
-        asicButton_->setChecked(false);
-    if (!s.plus || !asicPane_->isVisible())
-        return;
-    for (int index = 0; index < 32; ++index) {
-        QLabel* square = colours_[index];
-        const QRgb rgb = rgbOf(s.colours[index]);
-        QPalette look = square->palette();
-        if (look.color(QPalette::Window).rgb() != rgb) {
-            look.setColor(QPalette::Window, QColor(rgb));
-            square->setPalette(look);
-        }
-        square->setToolTip(tr("Red %1, Green %2, Blue %3").arg(s.colours[index] >> 4 & 0xF).arg(s.colours[index] >> 8 & 0xF).arg(s.colours[index] & 0xF));
-    }
-    unlocked_->setChecked(s.unlocked);
-    const int position = s.rmr2 >> 3 & 3;
-    ramEnabled_->setChecked(position == 3);
-    // RMR2 is written only while the ASIC is unlocked.
-    ramEnabled_->setEnabled(s.unlocked);
-    ramEnabled_->setToolTip(s.unlocked ? tr("Shows the ASIC's page of registers at &4000-&7FFF, or the lower ROM where it was")
-                                       : tr("Unlock the ASIC first"));
-    put("LRB", position == 1 ? 0x4000u : position == 2 ? 0x8000u : 0u);
-    put("CartBank", s.rmr2 & 7u);
-    put("DCSR", s.dcsr);
-    spriteBox_->setTitle(tr("Sprite %1").arg(spriteNumber));
-    QImage image(16, 16, QImage::Format_RGB32);
-    for (int i = 0; i < 256; ++i) {
-        // Colour 0 lets the screen through: shown as a grey chequer.
-        const uint8_t pixel = s.pixels[i] & 15;
-        const QRgb through = ((i ^ i >> 4) & 1) ? qRgb(96, 96, 96) : qRgb(72, 72, 72);
-        image.setPixel(i & 15, i >> 4, pixel ? rgbOf(s.colours[16 + pixel]) : through);
-    }
-    spriteView_->setPixmap(QPixmap::fromImage(image.scaled(64, 64)));
-    // As shown: a sprite pixel is its magnification of mode 2 pixels wide
-    // and of lines high, and a line is two mode 2 pixels high. Hidden, it
-    // is drawn as if it were not magnified.
-    const int wide = s.sprite.magX ? s.sprite.magX : 1, high = s.sprite.magY ? s.sprite.magY : 1;
-    shownImage_ = image.scaled(kShownWidth * wide / 4, kShownHeight * high / 4);
-    spriteShown_->setPixmap(QPixmap::fromImage(shownImage_));
-    spriteShown_->setToolTip(s.sprite.magX && s.sprite.magY
-                                 ? tr("As the screen shows it: %1 x %2 mode 2 pixels").arg(16 * s.sprite.magX).arg(16 * s.sprite.magY * 2)
-                                 : tr("Not shown: a magnification is 0"));
-    put("X", static_cast<uint16_t>(s.sprite.x));
-    put("Y", static_cast<uint16_t>(s.sprite.y));
-    put("MagX", s.sprite.magX);
-    put("MagY", s.sprite.magY);
-    put("PRI", s.pri);
-    put("SSS", s.sss);
-    put("SSC", s.ssc);
-    put("IVR", s.ivr);
-    put("SSSA", s.sssa);
-    for (int channel = 0; channel < 3; ++channel) {
-        const tuxape::Asic::Channel& dma = s.dma[channel];
-        dmaEnabled_[channel]->setChecked((s.dcsr >> channel & 1) != 0);
-        put(QString("Addr%1").arg(channel), dma.address);
-        put(QString("Pause%1").arg(channel), dma.prescaler);
-        dmaNext_[channel]->setText(dmaText(s.next[channel]));
-        dmaBox_[channel]->setToolTip(tr("Pause counter %1, loop start %2, loop count %3")
-                                         .arg(dma.pause)
-                                         .arg(QString("%1").arg(dma.loopStart, 4, 16, QLatin1Char('0')).toUpper())
-                                         .arg(dma.repeats));
-    }
 }

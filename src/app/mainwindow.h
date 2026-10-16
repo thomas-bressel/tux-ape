@@ -27,6 +27,7 @@ class TimersDialog;
 class DebuggerDialog;
 class GraphicsDialog;
 class RegistersDialog;
+class AsicDialog;
 class ScreenWidget;
 class TapeDialog;
 enum class IconId;
@@ -46,6 +47,7 @@ public:
     DebuggerDialog* debugger() const { return debugger_; }
     AssemblerDialog* assembler() const { return assembler_; }
     RegistersDialog* registers() const { return registers_; }
+    AsicDialog* asicRegisters() const { return asicRegisters_; }
     BreakpointsDialog* breakpoints() const { return breakpoints_; }
     TimersDialog* timers() const { return timers_; }
     GraphicsDialog* graphics() const { return graphics_; }
@@ -137,6 +139,7 @@ private:
     DebuggerDialog* debugger_ = nullptr;
     AssemblerDialog* assembler_ = nullptr;
     RegistersDialog* registers_ = nullptr;
+    AsicDialog* asicRegisters_ = nullptr;
     BreakpointsDialog* breakpoints_ = nullptr;
     TimersDialog* timers_ = nullptr;
     GraphicsDialog* graphics_ = nullptr;
@@ -205,6 +208,7 @@ private:
     void showAssembler();
     void printToAssembler();
     void showRegisters();
+    void showAsicRegisters();
     void showBreakpoints();
     void showDataAreas();
     void showTimers();

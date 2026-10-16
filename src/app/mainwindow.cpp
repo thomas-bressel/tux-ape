@@ -34,6 +34,7 @@
 #include "debuggerdialog.h"
 #include "graphicsdialog.h"
 #include "registersdialog.h"
+#include "asicdialog.h"
 #include "discdialogs.h"
 #include "disceditordialog.h"
 #include "discmanager.h"
@@ -190,6 +191,8 @@ void MainWindow::reopenWindows()
     const auto wasOpen = [this](const char* name) { return settings_.windowPlaces.value(name).open; };
     if (wasOpen("Registers"))
         showRegisters();
+    if (wasOpen("Asic"))
+        showAsicRegisters();
     if (wasOpen("Graphics"))
         showGraphics();
     if (wasOpen("Assembler"))
@@ -515,7 +518,8 @@ void MainWindow::createMenus()
         action->setEnabled(false);
         addAction(action);
     }
-    registersAction_ = addItem(debug, tr("&Registers"), {}, [this] { showRegisters(); });
+    registersAction_ = addItem(debug, tr("&CRTC Registers"), {}, [this] { showRegisters(); });
+    addItem(debug, tr("&ASIC Registers"), {}, [this] { showAsicRegisters(); });
     addItem(debug, tr("&Breakpoints"), {}, [this] { showBreakpoints(); });
     addItem(debug, tr("&Data Areas"), {}, [this] { showDataAreas(); });
     addItem(debug, tr("&Timers"), {}, [this] { showTimers(); });
@@ -564,7 +568,7 @@ void MainWindow::createControlPanel()
     addButton(IconId::SingleStep, tr("Single Step (F7)"), stepAction_);
     addButton(IconId::StepOver, tr("Step Over (F8)"), stepOverAction_);
     row->addWidget(separator(controlPanel_));
-    addButton(IconId::Registers, tr("Registers"), registersAction_);
+    addButton(IconId::Registers, tr("CRTC Registers"), registersAction_);
     addButton(IconId::Assembler, tr("Assembler (F3)"), assemblerAction_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Library, tr("Library (F4)"), libraryAction_);
@@ -662,9 +666,20 @@ void MainWindow::showRegisters()
         // "Row Highlight": where the beam is, on the picture.
         connect(registers_, &RegistersDialog::beamChanged, screen_, &ScreenWidget::setBeamMarker);
         connect(registers_, &RegistersDialog::interruptMarksShown, screen_, &ScreenWidget::setInterruptMarksShown);
+        connect(registers_, &RegistersDialog::asicRequested, this, &MainWindow::showAsicRegisters);
     }
     registers_->show();
     registers_->raise();
+}
+
+void MainWindow::showAsicRegisters()
+{
+    if (!asicRegisters_) {
+        asicRegisters_ = new AsicDialog(emulator_, this);
+        placeWindow(asicRegisters_, "Asic");
+    }
+    asicRegisters_->show();
+    asicRegisters_->raise();
 }
 
 void MainWindow::showGraphics()
@@ -837,6 +852,8 @@ void MainWindow::machineStopped()
         graphics_->refresh();
     if (registers_ && registers_->isVisible())
         registers_->refresh();
+    if (asicRegisters_ && asicRegisters_->isVisible())
+        asicRegisters_->refresh();
     if (emulator_->isPaused())
         showDebugger();
 }

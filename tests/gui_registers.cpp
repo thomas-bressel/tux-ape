@@ -7,6 +7,7 @@
 //                            <prefix>registers.png
 
 #include <algorithm>
+#include <cstdlib>
 
 #include <QAction>
 #include <QApplication>
@@ -25,6 +26,7 @@
 #include <QToolButton>
 
 #include "check.h"
+#include "asicdialog.h"
 #include "debuggerdialog.h"
 #include "graphicsdialog.h"
 #include "assemblerdialog.h"
@@ -62,11 +64,11 @@ int main(int argc, char* argv[])
 
     QAction* show = nullptr;
     for (QAction* action : window.findChildren<QAction*>())
-        if (action->text() == "&Registers")
+        if (action->text() == "&CRTC Registers")
             show = action;
     QToolButton* button = nullptr;
     for (QToolButton* candidate : window.findChildren<QToolButton*>())
-        if (candidate->toolTip() == "Registers")
+        if (candidate->toolTip() == "CRTC Registers")
             button = candidate;
     CHECK(show && show->isEnabled() && button && button->isEnabled());
     CHECK(window.registers() == nullptr);
@@ -147,9 +149,25 @@ int main(int argc, char* argv[])
     auto* vcc = registers->findChild<QLineEdit*>("edVCC");
     CHECK(vcc && vcc->isReadOnly());
 
-    // The ASIC's part is for a Plus.
+    CHECK(registers->windowTitle() == "TuxAPE - CRTC Registers");
+    // The ASIC's registers are for a Plus: the button that opens their
+    // window waits for one; the window, opened from the menu, says why it
+    // has nothing to show.
     auto* asicButton = registers->findChild<QToolButton*>("bAsic");
-    CHECK(asicButton && !asicButton->isEnabled() && !registers->asicShown());
+    CHECK(asicButton && !asicButton->isEnabled());
+    {
+        QAction* asicEntry = nullptr;
+        for (QAction* action : window.findChildren<QAction*>())
+            if (action->text() == "&ASIC Registers")
+                asicEntry = action;
+        CHECK(asicEntry && window.asicRegisters() == nullptr);
+        if (asicEntry)
+            asicEntry->trigger();
+        CHECK(window.asicRegisters() && window.asicRegisters()->isVisible() && !window.asicRegisters()->plus());
+        CHECK(window.asicRegisters() && window.asicRegisters()->findChild<QLabel*>("lNotPlus")->isVisible());
+        if (window.asicRegisters())
+            window.asicRegisters()->hide();
+    }
     struct Asic {
         unsigned sssa, ivr, colour1, x, y;
         bool plus, unlocked;
@@ -190,46 +208,78 @@ int main(int argc, char* argv[])
     CHECK_EQ(asic.colour1, 0xF84);
     registers->refresh();
     CHECK(asicButton && asicButton->isEnabled());
-    registers->setAsicShown(true);
-    registers->setSprite(2);
-    CHECK(registers->asicShown() && registers->sprite() == 2);
-    auto* unlocked = registers->findChild<QCheckBox*>("ckUnlocked");
-    auto* ramEnabled = registers->findChild<QCheckBox*>("ckRamEnabled");
+    // Its button opens the ASIC's window.
+    if (asicButton)
+        asicButton->click();
+    AsicDialog* asicWindow = window.asicRegisters();
+    CHECK(asicWindow && asicWindow->isVisible() && asicWindow->windowTitle() == "TuxAPE - ASIC Registers");
+    if (!asicWindow)
+        return checkSummary("gui_registers");
+    CHECK(asicWindow->plus() && !asicWindow->findChild<QLabel*>("lNotPlus")->isVisible());
+    asicWindow->setSprite(2);
+    CHECK(asicWindow->sprite() == 2);
+    auto* unlocked = asicWindow->findChild<QCheckBox*>("ckUnlocked");
+    auto* ramEnabled = asicWindow->findChild<QCheckBox*>("ckRamEnabled");
     CHECK(unlocked && unlocked->isVisible() && unlocked->isChecked());
     CHECK(ramEnabled && ramEnabled->isChecked());
-    CHECK(registers->value("LRB") == "0000" && registers->value("CartBank") == "2");
-    auto* colour1 = registers->findChild<QLabel*>("colour1");
+    CHECK(asicWindow->value("LRB") == "0000" && asicWindow->value("CartBank") == "2");
+    auto* colour1 = asicWindow->findChild<QLabel*>("colour1");
     CHECK(colour1 && colour1->palette().color(QPalette::Window) == QColor(0x88, 0xFF, 0x44));
     CHECK(colour1 && colour1->toolTip() == "Red 8, Green 15, Blue 4");
-    auto* spriteBox = registers->findChild<QGroupBox*>("gbSprite");
+    auto* spriteBox = asicWindow->findChild<QGroupBox*>("gbSprite");
     CHECK(spriteBox && spriteBox->title() == "Sprite 2");
-    auto* spriteView = registers->findChild<QLabel*>("SpriteView");
+    auto* spriteView = asicWindow->findChild<QLabel*>("SpriteView");
     CHECK(spriteView && !spriteView->pixmap().isNull()
           && spriteView->pixmap().toImage().pixelColor(1, 1) == QColor(0, 0, 0xFF));
-    CHECK(registers->value("X") == hex(asic.x, 4) && asic.x == 0x123);
-    CHECK(registers->value("Y") == hex(asic.y, 4) && asic.y == 0x45);
-    CHECK(registers->value("MagX") == "4" && registers->value("MagY") == "1");
+    CHECK(asicWindow->value("X") == hex(asic.x, 4) && asic.x == 0x123);
+    CHECK(asicWindow->value("Y") == hex(asic.y, 4) && asic.y == 0x45);
+    CHECK(asicWindow->value("MagX") == "4" && asicWindow->value("MagY") == "1");
+    // The sixteen sprites on the board, sprite 2 as it is drawn, at twice
+    // its size; on the map of the picture, where it stands, four times as
+    // wide as a mode 2 pixel and one line high a pixel. The others have
+    // no magnification: not on the map.
+    {
+        auto* board = asicWindow->findChild<QWidget*>("SpriteBoard");
+        auto* map = asicWindow->findChild<QWidget*>("SpriteMap");
+        CHECK(board && board->isVisible() && map && map->isVisible());
+        const QRect cell = asicWindow->boardCell(2);
+        CHECK(cell.isValid() && board && board->rect().contains(cell));
+        if (board) {
+            const QImage drawn = board->grab().toImage();
+            CHECK(drawn.pixelColor(cell.left() + 6 + 1, cell.top() + 3 + 1) == QColor(0, 0, 0xFF));
+        }
+        const QRect place = asicWindow->mapPlace(2);
+        CHECK(!place.isEmpty() && std::abs(place.width() - 2 * place.height()) <= 2);
+        CHECK(asicWindow->mapPlace(3).isEmpty() && asicWindow->mapPlace(0).isEmpty());
+        // A click on a sprite, on the board or on the map, shows its registers.
+        if (board && map) {
+            QTest::mouseClick(board, Qt::LeftButton, {}, asicWindow->boardCell(7).center());
+            CHECK_EQ(asicWindow->sprite(), 7);
+            QTest::mouseClick(map, Qt::LeftButton, {}, place.center());
+            CHECK_EQ(asicWindow->sprite(), 2);
+        }
+    }
     // As the screen shows it: four mode 2 pixels to a pixel across, one
     // line down, a line being two mode 2 pixels high.
-    CHECK(registers->spriteAsShown().size() == QSize(64, 32));
-    CHECK(registers->spriteAsShown().pixelColor(1, 1) == QColor(0, 0, 0xFF));
+    CHECK(asicWindow->spriteAsShown().size() == QSize(64, 32));
+    CHECK(asicWindow->spriteAsShown().pixelColor(1, 1) == QColor(0, 0, 0xFF));
     // Its position and its magnification typed over: written where a
     // program writes them.
     const auto spriteNow = [&] {
         return emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().sprite(2); });
     };
-    CHECK(registers->setValue("MagY", "2") && spriteNow().magY == 2 && spriteNow().magX == 4);
-    CHECK(registers->value("MagY") == "2" && registers->spriteAsShown().size() == QSize(64, 64));
-    CHECK(!registers->setValue("MagX", "3") && spriteNow().magX == 4);
-    CHECK(registers->setValue("MagY", "0") && spriteNow().magY == 0 && spriteNow().magX == 4);
-    CHECK(registers->setValue("MagY", "1") && spriteNow().magY == 1);
-    CHECK(registers->setValue("X", "0050") && spriteNow().x == 0x50 && registers->value("X") == "0050");
-    CHECK(registers->setValue("Y", "FFF0") && spriteNow().y == -16);
-    CHECK(registers->setValue("X", "0123") && registers->setValue("Y", "0045"));
+    CHECK(asicWindow->setValue("MagY", "2") && spriteNow().magY == 2 && spriteNow().magX == 4);
+    CHECK(asicWindow->value("MagY") == "2" && asicWindow->spriteAsShown().size() == QSize(64, 64));
+    CHECK(!asicWindow->setValue("MagX", "3") && spriteNow().magX == 4);
+    CHECK(asicWindow->setValue("MagY", "0") && spriteNow().magY == 0 && spriteNow().magX == 4);
+    CHECK(asicWindow->setValue("MagY", "1") && spriteNow().magY == 1);
+    CHECK(asicWindow->setValue("X", "0050") && spriteNow().x == 0x50 && asicWindow->value("X") == "0050");
+    CHECK(asicWindow->setValue("Y", "FFF0") && spriteNow().y == -16);
+    CHECK(asicWindow->setValue("X", "0123") && asicWindow->setValue("Y", "0045"));
     {
-        QLineEdit* magX = registers->findChild<QLineEdit*>("edMagX");
+        QLineEdit* magX = asicWindow->findChild<QLineEdit*>("edMagX");
         CHECK(magX && !magX->isReadOnly());
-        CHECK(registers->findChild<QLineEdit*>("edPRI")->isReadOnly());
+        CHECK(asicWindow->findChild<QLineEdit*>("edPRI")->isReadOnly());
     }
     // The page of registers out of memory and back, by its box.
     CHECK(ramEnabled && ramEnabled->isEnabled());
@@ -244,27 +294,29 @@ int main(int argc, char* argv[])
     const uint8_t chosen = crtcSelected();
     unlocked->click();
     CHECK(!unlocked->isChecked() && !emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().unlocked(); }));
-    CHECK(!ramEnabled->isEnabled() && !registers->setRamEnabled(false));
+    CHECK(!ramEnabled->isEnabled() && !asicWindow->setRamEnabled(false));
     unlocked->click();
     CHECK(unlocked->isChecked() && emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().unlocked(); }));
     CHECK(ramEnabled->isEnabled() && crtcSelected() == chosen);
-    CHECK(registers->value("PRI") == "40" && registers->value("SSS") == "30" && registers->value("SSC") == "25");
-    CHECK(registers->value("IVR") == hex(asic.ivr, 2) && asic.ivr != 0);
-    CHECK(registers->value("SSSA") == hex(asic.sssa, 4) && asic.sssa != 0);
-    CHECK(registers->value("DCSR") == "01");
-    auto* dma0 = registers->findChild<QCheckBox*>("ckDma0");
-    auto* dma1 = registers->findChild<QCheckBox*>("ckDma1");
+    CHECK(asicWindow->value("PRI") == "40" && asicWindow->value("SSS") == "30" && asicWindow->value("SSC") == "25");
+    CHECK(asicWindow->value("IVR") == hex(asic.ivr, 2) && asic.ivr != 0);
+    CHECK(asicWindow->value("SSSA") == hex(asic.sssa, 4) && asic.sssa != 0);
+    CHECK(asicWindow->value("DCSR") == "01");
+    auto* dma0 = asicWindow->findChild<QCheckBox*>("ckDma0");
+    auto* dma1 = asicWindow->findChild<QCheckBox*>("ckDma1");
     CHECK(dma0 && dma0->isChecked() && dma1 && !dma1->isChecked());
-    CHECK(registers->value("Addr0") == "9000" && registers->value("Pause0") == "55");
-    CHECK(registers->dmaInstruction(0) == "LD R9,0A");
+    CHECK(asicWindow->value("Addr0") == "9000" && asicWindow->value("Pause0") == "55");
+    CHECK(asicWindow->dmaInstruction(0) == "LD R9,0A");
     // The lower ROM moved, the registers out of memory again.
     emulator.withMachine([](tuxape::Cpc& cpc) { cpc.out(0x7F00, 0xA0 | 0x08 | 5); });
-    registers->refresh();
+    asicWindow->refresh();
     CHECK(ramEnabled && !ramEnabled->isChecked());
-    CHECK(registers->value("LRB") == "4000" && registers->value("CartBank") == "5");
+    CHECK(asicWindow->value("LRB") == "4000" && asicWindow->value("CartBank") == "5");
 
-    if (!prefix.isEmpty())
+    if (!prefix.isEmpty()) {
         registers->grab().save(prefix + "registers.png");
+        asicWindow->grab().save(prefix + "asic.png");
+    }
     // "Row Highlight": while its box is ticked and the machine stands
     // still, the screen shows where the beam is: the line of the picture
     // and the place along it. Not while the machine runs, nor once the
