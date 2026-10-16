@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QImage>
+#include <QList>
+#include <QPoint>
 #include <QWidget>
 
 #include "crtlook.h"
@@ -73,6 +75,12 @@ public:
     void setBeamMarker(int line, int column);
     int beamMarkerLine() const { return beamLine_; }
     int beamMarkerColumn() const { return beamColumn_; }
+    // "Row Highlight" too: where the Z80 took its interrupts in the
+    // picture shown, as Emulator::interruptMarks() gives them, as dashed
+    // lines across with a square where the beam was.
+    void setInterruptMarksShown(bool on);
+    bool interruptMarksShown() const { return interruptsShown_; }
+    QList<QPoint> interruptMarks() const { return interrupts_; }
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -102,6 +110,9 @@ private:
     QRect pictureRect() const;
     void paintDriveLight(QPainter& painter, const QRect& light) const;
     void paintBeamMarker(QPainter& painter, const QRect& picture) const;
+    void paintInterruptMarks(QPainter& painter, const QRect& picture) const;
+    bool interruptsShown_ = false;
+    QList<QPoint> interrupts_;
     int beamLine_ = -1;
     int beamColumn_ = -1;
     CrtView* crt_ = nullptr;

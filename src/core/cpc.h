@@ -114,6 +114,23 @@ public:
     Crtc& crtc() { return crtc_; }
     GateArray& gateArray() { return gateArray_; }
     Monitor& monitor() { return monitor_; }
+
+    // Where on the picture the Z80 took its interrupts, for the Registers
+    // window's "Row Highlight": the line and the column the beam was at.
+    struct InterruptMark {
+        int16_t line;
+        int16_t column;
+    };
+    // Those of the last picture the monitor finished, or of the one it is
+    // drawing.
+    const std::vector<InterruptMark>& interruptMarks(bool finished) const
+    {
+        static const std::vector<InterruptMark> none;
+        const uint64_t frame = monitor_.frameNumber();
+        if (marksFrame_ == frame)
+            return finished ? finishedMarks_ : marks_;
+        return finished && marksFrame_ + 1 == frame ? marks_ : none;
+    }
     Ppi& ppi() { return ppi_; }
     Psg& psg() { return psg_; }
     Keyboard& keyboard() { return keyboard_; }
@@ -358,6 +375,7 @@ public:
         // instruction).
         runVideo(clk_ + 2);
         const bool raster = gateArray_.interruptRequested();
+        markInterrupt();
         gateArray_.acknowledgeInterrupt();
         advance(2);
         // On a Plus the ASIC puts its vector on the bus; on a CPC nothing
@@ -369,6 +387,23 @@ private:
     // T-state, within each microsecond, on which the Gate Array releases
     // the WAIT line.
     static constexpr unsigned kReadyPhase = 1;
+
+    // The interrupts of the picture being drawn, and of the one before.
+    std::vector<InterruptMark> marks_, finishedMarks_;
+    uint64_t marksFrame_ = 0;  // the picture marks_ are of
+    void markInterrupt()
+    {
+        const uint64_t frame = monitor_.frameNumber();
+        if (frame != marksFrame_) {
+            if (frame == marksFrame_ + 1)
+                finishedMarks_.swap(marks_);
+            else
+                finishedMarks_.clear();
+            marks_.clear();
+            marksFrame_ = frame;
+        }
+        marks_.push_back({static_cast<int16_t>(monitor_.rasterLine()), static_cast<int16_t>(monitor_.beamColumn())});
+    }
 
     Z80<Cpc> cpu_;
     Memory memory_;

@@ -2,12 +2,14 @@
 
 #include "contrast.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QPen>
 #include <QScreen>
 #include <QTimer>
 #include <QWindow>
@@ -139,6 +141,8 @@ void ScreenWidget::setPalEmulation(bool pal)
 void ScreenWidget::fetchFrame()
 {
     image_ = emulator_->frame();
+    if (interruptsShown_)
+        interrupts_ = emulator_->interruptMarks();
     if (crt_)
         crt_->setFrame(image_);
     else
@@ -155,6 +159,7 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
         crt_->setGeometry(pictureRect());
         crt_->overlay = [this](QPainter& painter) {
             paintDriveLight(painter, driveLightRect().translated(-crt_->pos()));
+            paintInterruptMarks(painter, crt_->rect());
             paintBeamMarker(painter, crt_->rect());
         };
         // A graphics card that will not have the shaders: plain drawing.
@@ -227,6 +232,42 @@ void ScreenWidget::setBeamMarker(int line, int column)
     update();
     if (crt_)
         crt_->update();
+}
+
+void ScreenWidget::setInterruptMarksShown(bool on)
+{
+    if (on == interruptsShown_)
+        return;
+    interruptsShown_ = on;
+    interrupts_ = on ? emulator_->interruptMarks() : QList<QPoint>();
+    update();
+    if (crt_)
+        crt_->update();
+}
+
+// Each interrupt: a dashed line across the picture, light magenta on a
+// black edge so that it shows on any picture, and a square on it where
+// the beam was when the Z80 took it. The beam's own lines are solid.
+void ScreenWidget::paintInterruptMarks(QPainter& painter, const QRect& picture) const
+{
+    if (!interruptsShown_)
+        return;
+    const QColor edge(0, 0, 0, 200);
+    const QColor mark = readable(QColor(255, 110, 255), Qt::black, kGraphicContrast);
+    for (const QPoint& at : interrupts_) {
+        if (at.y() < 0 || at.y() >= tuxape::Monitor::kHeight)
+            continue;
+        const int y = picture.top() + (at.y() * 2 + 1) * picture.height() / kDisplayHeight;
+        const int x = picture.left() + std::clamp(at.x(), 0, kDisplayWidth - 1) * picture.width() / kDisplayWidth;
+        painter.setPen(QPen(edge, 3));
+        painter.drawLine(picture.left(), y, picture.right(), y);
+        painter.setPen(QPen(mark, 1, Qt::DashLine));
+        painter.drawLine(picture.left(), y, picture.right(), y);
+        const QRect square(x - 3, y - 3, 7, 7);
+        painter.fillRect(square, mark);
+        painter.setPen(QPen(edge, 1));
+        painter.drawRect(square);
+    }
 }
 
 void ScreenWidget::paintBeamMarker(QPainter& painter, const QRect& picture) const
@@ -331,6 +372,7 @@ void ScreenWidget::paintEvent(QPaintEvent*)
         painter.drawImage(target, striped_);
     }
     paintDriveLight(painter, driveLightRect());
+    paintInterruptMarks(painter, target);
     paintBeamMarker(painter, target);
 }
 

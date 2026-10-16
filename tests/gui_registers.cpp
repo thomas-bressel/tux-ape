@@ -15,6 +15,8 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QList>
+#include <QPoint>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QToolButton>
@@ -308,8 +310,64 @@ int main(int argc, char* argv[])
         CHECK(screen->beamMarkerLine() != -1);
         registers->hide();
         CHECK_EQ(screen->beamMarkerLine(), -1);
+        CHECK(!screen->interruptMarksShown());
         registers->setRowHighlight(false);
         emulator.setPaused(false);
+
+        // And, the machine running, where the Z80 took its interrupts in
+        // the picture: those of the Gate Array, every 52 lines, six to a
+        // frame. A program that does nothing but take them: EI and a loop,
+        // with EI, RET at &0038 in RAM.
+        emulator.setPaused(true);
+        emulator.setupMachine(tuxape::stockMachine(tuxape::CpcModel::Cpc6128), true);
+        emulator.setPaused(true);
+        emulator.withMachine([](tuxape::Cpc& cpc) {
+            cpc.out(0x7F00, 0x8D);  // both ROMs off, mode 1
+            // The CRTC as the firmware sets it, which it has not done yet.
+            const int crtc[10] = {63, 40, 46, 0x8E, 38, 0, 25, 30, 0, 7};
+            for (int n = 0; n < 10; ++n) {
+                cpc.out(0xBC00, static_cast<uint8_t>(n));
+                cpc.out(0xBD00, static_cast<uint8_t>(crtc[n]));
+            }
+            for (const auto& [address, byte] : {std::pair{0x0038, 0xFB}, {0x0039, 0xC9}, {0x9100, 0xFB}, {0x9101, 0x18}, {0x9102, 0xFE}})
+                cpc.memory().write(static_cast<uint16_t>(address), static_cast<uint8_t>(byte));
+            cpc.cpu().pc = 0x9100;
+            cpc.cpu().im = 1;
+        });
+        registers->show();
+        registers->setRowHighlight(true);
+        CHECK(screen->interruptMarksShown());
+        emulator.setPaused(false);
+        emulator.start();
+        QTest::qWait(300);
+        QList<QPoint> marks = screen->interruptMarks();
+        CHECK_EQ(marks.size(), 6);
+        std::sort(marks.begin(), marks.end(), [](const QPoint& a, const QPoint& b) { return a.y() < b.y(); });
+        for (int n = 1; n < marks.size(); ++n)
+            CHECK_EQ(marks[n].y() - marks[n - 1].y(), 52);
+        // On the picture: a dashed light magenta line, at a mark's line.
+        for (const QPoint& mark : marks) {
+            if (mark.y() < 10 || mark.y() >= 260)
+                continue;
+            const QImage shown = screen->grab().toImage();
+            const int y = (mark.y() * 2 + 1) * screen->height() / 540;
+            int magenta = 0;
+            for (int x = 0; x < shown.width(); ++x) {
+                const QColor colour = shown.pixelColor(x, std::min(y, shown.height() - 1));
+                magenta += colour.red() > 200 && colour.green() < 160 && colour.blue() > 200;
+            }
+            CHECK(magenta > shown.width() / 4 && magenta < shown.width());
+            break;
+        }
+        if (!prefix.isEmpty())
+            screen->grab().save(prefix + "interrupts.png");
+        registers->setRowHighlight(false);
+        CHECK(!screen->interruptMarksShown());
+        registers->setRowHighlight(true);
+        registers->hide();
+        CHECK(!screen->interruptMarksShown());
+        registers->setRowHighlight(false);
+        emulator.stop();
     }
     return checkSummary("gui_registers");
 }

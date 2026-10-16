@@ -27,7 +27,8 @@ public:
 
     void refresh();
     // WinAPE's "Row Highlight": while the box is ticked and the machine
-    // stands still, the screen shows where the beam is.
+    // stands still, the screen shows where the beam is; while it is ticked,
+    // where the interrupts were taken in the picture.
     bool rowHighlight() const;
     void setRowHighlight(bool on);
 
@@ -35,6 +36,10 @@ signals:
     // The line of the picture and the column in it the beam is at, for
     // the screen to show; -1 and -1 when it is not to show any.
     void beamChanged(int line, int column);
+    // Whether the screen shows where the Z80 took its interrupts: while
+    // the window is up with "Row Highlight" ticked, the machine running or
+    // not.
+    void interruptMarksShown(bool on);
 
 public:
     // A field by its name: "Palette0" to "Palette16" (the border), "PSG0"

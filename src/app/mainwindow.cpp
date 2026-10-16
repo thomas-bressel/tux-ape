@@ -509,6 +509,7 @@ void MainWindow::showRegisters()
         registers_ = new RegistersDialog(emulator_, this);
         // "Row Highlight": where the beam is, on the picture.
         connect(registers_, &RegistersDialog::beamChanged, screen_, &ScreenWidget::setBeamMarker);
+        connect(registers_, &RegistersDialog::interruptMarksShown, screen_, &ScreenWidget::setInterruptMarksShown);
     }
     registers_->show();
     registers_->raise();

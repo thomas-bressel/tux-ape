@@ -1006,6 +1006,12 @@ QImage Emulator::frame()
     return frame_.copy();
 }
 
+QList<QPoint> Emulator::interruptMarks()
+{
+    std::lock_guard lock(frameMutex_);
+    return frameMarks_;
+}
+
 QImage Emulator::frameInProgress()
 {
     QImage picture(Monitor::kWidth, Monitor::kHeight, QImage::Format_RGB32);
@@ -1045,12 +1051,19 @@ void Emulator::publishFrame()
         emit driveLightChanged();
     {
         std::lock_guard lock(frameMutex_);
+        QList<QPoint> marks;
+        for (const Cpc::InterruptMark& mark : cpc_.interruptMarks(true))
+            marks << QPoint(mark.column, mark.line);
+        const bool marksChanged = marks != frameMarks_;
+        frameMarks_ = std::move(marks);
         const size_t size = static_cast<size_t>(Monitor::kWidth) * Monitor::kHeight * sizeof(uint32_t);
         // A picture that has not changed is not drawn again: a screen that
         // stands still costs the user interface nothing.
-        if (std::memcmp(frame_.constBits(), cpc_.monitor().frame(), size) == 0)
+        const bool same = std::memcmp(frame_.constBits(), cpc_.monitor().frame(), size) == 0;
+        if (same && !marksChanged)
             return;
-        std::memcpy(frame_.bits(), cpc_.monitor().frame(), size);
+        if (!same)
+            std::memcpy(frame_.bits(), cpc_.monitor().frame(), size);
     }
     // One notification is enough until the GUI has collected the picture.
     if (!framePending_.exchange(true))

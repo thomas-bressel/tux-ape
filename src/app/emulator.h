@@ -15,6 +15,8 @@
 #include <QFile>
 #include <QByteArray>
 #include <QImage>
+#include <QList>
+#include <QPoint>
 #include <QObject>
 #include <QString>
 
@@ -175,6 +177,9 @@ public:
 
     // The latest finished picture: 768 x 270, to be shown twice as tall.
     QImage frame();
+    // Where the Z80 took its interrupts in that picture: x the column, y
+    // the line, as the picture has them.
+    QList<QPoint> interruptMarks();
     // The picture as it is at this instant: this frame as far as the beam
     // has drawn it, and the frame before under it. For a screenshot that
     // does not wait for the frame to end.
@@ -394,6 +399,7 @@ private:
 
     std::mutex frameMutex_;
     QImage frame_;
+    QList<QPoint> frameMarks_;  // the interrupts of frame_
     std::atomic<bool> framePending_{false};
     uint64_t lastFrameNumber_ = 0;
 

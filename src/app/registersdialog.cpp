@@ -111,9 +111,13 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     counters->addWidget(asicButton_, 1, 12, Qt::AlignRight);
     rowHighlight_ = new QCheckBox(tr("Row Highlight"));
     rowHighlight_->setObjectName("ckRowHighlight");
-    rowHighlight_->setToolTip(tr("Shows on the picture where the beam is, while the machine stands still"));
+    rowHighlight_->setToolTip(tr("Shows on the picture where the Z80 took its interrupts (dashed lines, a square where "
+                                 "the beam was), and where the beam is while the machine stands still"));
     counters->addWidget(rowHighlight_, 0, 12, Qt::AlignRight);
-    connect(rowHighlight_, &QCheckBox::toggled, this, [this] { refresh(); });
+    connect(rowHighlight_, &QCheckBox::toggled, this, [this](bool on) {
+        emit interruptMarksShown(on && isVisible());
+        refresh();
+    });
     counters->setColumnStretch(12, 1);
     layout->addLayout(counters);
 
@@ -415,6 +419,7 @@ QString RegistersDialog::dmaInstruction(int channel) const
 void RegistersDialog::showEvent(QShowEvent* event)
 {
     QDialog::showEvent(event);
+    emit interruptMarksShown(rowHighlight_->isChecked());
     refresh();
 }
 
@@ -432,6 +437,7 @@ void RegistersDialog::hideEvent(QHideEvent* event)
 {
     QDialog::hideEvent(event);
     emit beamChanged(-1, -1);
+    emit interruptMarksShown(false);
 }
 
 void RegistersDialog::refresh()
