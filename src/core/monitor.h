@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -8,7 +9,10 @@ namespace tuxape {
 // The picture tube. It follows the sync pulses it is given, like a real
 // monitor, and exposes the part of the raster that WinAPE shows: 48
 // characters by 270 scanlines, i.e. 768 x 270 pixels at mode-2 resolution
-// (scanlines are doubled when displayed).
+// (scanlines are doubled when displayed). Or, TuxAPE's own, the whole
+// raster the beam sweeps, what the monitor's case hides included: the 64
+// microseconds of a line from its start, 312 lines from the vertical
+// retrace, 1024 x 312 pixels.
 //
 // Its lines are timed by an oscillator that the horizontal sync pulses
 // steer, as a CTM's is: a line starts two microseconds before the middle of
@@ -24,6 +28,8 @@ public:
     static constexpr int kColumns = 48;
     static constexpr int kWidth = kColumns * kCellWidth;
     static constexpr int kHeight = 270;
+    static constexpr int kFullWidth = 64 * kCellWidth;
+    static constexpr int kFullHeight = 312;
 
     Monitor();
     void reset();
@@ -37,11 +43,11 @@ public:
     {
         const int row = y_ - firstLine_;
         const int px = ((beam_ + kUnit - 1) >> kUnitShift) - firstPixel_;
-        if (px <= -kCellWidth || px >= kWidth || row < 0 || row >= kHeight)
+        if (px <= -kCellWidth || px >= width_ || row < 0 || row >= height_)
             return nullptr;
-        if (px < 0 || px > kWidth - kCellWidth) [[unlikely]]
+        if (px < 0 || px > width_ - kCellWidth) [[unlikely]]
             return edgeCell(row, px);
-        return back_ + row * kWidth + px;
+        return back_ + row * width_ + px;
     }
 
     // One microsecond has passed.
@@ -64,8 +70,20 @@ public:
     void vsync();  // start of the vertical sync pulse
     void vsyncEnded() { vertical_ = false; }  // ... and its end
 
-    // Last complete picture, kWidth x kHeight, 0xAARRGGBB.
+    // The whole raster, or the part WinAPE shows. What has been drawn is
+    // kept, put where it goes in the other.
+    void setFullRaster(bool on);
+    bool fullRaster() const { return full_; }
+    // The size of the pictures: kWidth x kHeight, or kFullWidth x
+    // kFullHeight for the whole raster.
+    int width() const { return width_; }
+    int height() const { return height_; }
+
+    // Last complete picture, width() x height(), 0xAARRGGBB.
     const uint32_t* frame() const { return front_; }
+    // In it, the part WinAPE shows, kWidth x kHeight, its lines width()
+    // apart: the whole of it unless the raster is.
+    const uint32_t* windowFrame() const { return front_ + windowOffset(); }
     // The picture being drawn: its lines above the beam are this frame's,
     // those under it an older frame's.
     const uint32_t* drawing() const { return back_; }
@@ -73,7 +91,7 @@ public:
     uint64_t frameNumber() const { return frameNumber_; }
 
     // Shifts the picture up or down, as the V Hold knob does.
-    void setVerticalHold(int lines) { firstLine_ = kFirstLine + lines; }
+    void setVerticalHold(int lines);
 
     // Microseconds since the line began.
     int beamX() const { return beam_ >> (kUnitShift + 4); }
@@ -128,6 +146,15 @@ private:
     int y_ = 0;
     int firstPixel_ = kFirstColumn * kCellWidth;
     int firstLine_ = kFirstLine;
+    bool full_ = false;   // the whole raster
+    int width_ = kWidth;
+    int height_ = kHeight;
+    int hold_ = 0;        // the V Hold knob's lines
+    bool late_ = false;   // the monitor of a machine whose pulse comes a microsecond later
+    // Where the part WinAPE shows starts, in the whole raster.
+    int windowLeft() const { return (late_ ? kFirstColumn - 1 : kFirstColumn) * kCellWidth; }
+    int windowTop() const { return std::clamp(kFirstLine + hold_, 0, kFullHeight - kHeight); }
+    int windowOffset() const { return full_ ? windowTop() * width_ + windowLeft() : 0; }
     bool locked_ = false;      // the line in progress has had its pulse
     bool coasting_ = false;    // the line in progress has had no pulse: the oscillator keeps its pace
     bool vertical_ = false;    // the vertical sync pulse is on

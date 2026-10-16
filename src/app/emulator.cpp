@@ -838,6 +838,18 @@ void Emulator::setVerticalHold(int lines)
     withMachine([lines](Cpc& cpc) { cpc.monitor().setVerticalHold(lines); });
 }
 
+void Emulator::setWholeRaster(bool on)
+{
+    withMachine([&](Cpc& cpc) {
+        if (cpc.monitor().fullRaster() == on)
+            return;
+        cpc.monitor().setFullRaster(on);
+        // The picture in its new size at once, the machine running or not.
+        lastFrameNumber_ = ~uint64_t{0};
+        publishFrame();
+    });
+}
+
 void Emulator::multifaceStop()
 {
     withMachine([](Cpc& cpc) { cpc.multifaceStop(); });
@@ -1014,16 +1026,17 @@ QList<QPoint> Emulator::interruptMarks()
 
 QImage Emulator::frameInProgress()
 {
-    QImage picture(Monitor::kWidth, Monitor::kHeight, QImage::Format_RGB32);
+    QImage picture;
     withMachine([&](Cpc& cpc) {
         const Monitor& monitor = cpc.monitor();
-        const size_t row = static_cast<size_t>(Monitor::kWidth) * sizeof(uint32_t);
-        const int line = std::clamp(monitor.rasterLine(), 0, static_cast<int>(Monitor::kHeight));
-        std::memcpy(picture.bits(), monitor.frame(), row * Monitor::kHeight);
+        picture = QImage(monitor.width(), monitor.height(), QImage::Format_RGB32);
+        const size_t row = static_cast<size_t>(monitor.width()) * sizeof(uint32_t);
+        const int line = std::clamp(monitor.rasterLine(), 0, monitor.height());
+        std::memcpy(picture.bits(), monitor.frame(), row * static_cast<size_t>(monitor.height()));
         std::memcpy(picture.bits(), monitor.drawing(), row * static_cast<size_t>(line));
-        if (line < Monitor::kHeight) {
-            const int column = std::clamp(monitor.beamColumn(), 0, static_cast<int>(Monitor::kWidth));
-            std::memcpy(picture.scanLine(line), monitor.drawing() + static_cast<size_t>(line) * Monitor::kWidth,
+        if (line < monitor.height()) {
+            const int column = std::clamp(monitor.beamColumn(), 0, monitor.width());
+            std::memcpy(picture.scanLine(line), monitor.drawing() + static_cast<size_t>(line) * monitor.width(),
                         static_cast<size_t>(column) * sizeof(uint32_t));
         }
     });
@@ -1056,10 +1069,15 @@ void Emulator::publishFrame()
             marks << QPoint(mark.column, mark.line);
         const bool marksChanged = marks != frameMarks_;
         frameMarks_ = std::move(marks);
-        const size_t size = static_cast<size_t>(Monitor::kWidth) * Monitor::kHeight * sizeof(uint32_t);
+        const Monitor& monitor = cpc_.monitor();
+        const size_t size = static_cast<size_t>(monitor.width()) * monitor.height() * sizeof(uint32_t);
+        // The whole raster or the part WinAPE shows: the picture takes its size.
+        const bool resized = frame_.width() != monitor.width() || frame_.height() != monitor.height();
+        if (resized)
+            frame_ = QImage(monitor.width(), monitor.height(), QImage::Format_RGB32);
         // A picture that has not changed is not drawn again: a screen that
         // stands still costs the user interface nothing.
-        const bool same = std::memcmp(frame_.constBits(), cpc_.monitor().frame(), size) == 0;
+        const bool same = !resized && std::memcmp(frame_.constBits(), monitor.frame(), size) == 0;
         if (same && !marksChanged)
             return;
         if (!same)
@@ -1138,7 +1156,8 @@ void Emulator::threadMain()
             cpc_.runFrame();
         ym_.frame(cpc_.psg());
         if (avi_.active()) {
-            avi_.addFrame(cpc_.monitor().frame(), cpc_.audio().samples());
+            // The part WinAPE shows, whatever the screen shows.
+            avi_.addFrame(cpc_.monitor().windowFrame(), cpc_.audio().samples(), cpc_.monitor().width());
             // It ends by itself when its file is as large as one can be.
             if (!avi_.active()) {
                 stopMixerForRecording();

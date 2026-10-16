@@ -325,6 +325,47 @@ void testNoPulseInVerticalSync()
 
 }  // namespace
 
+// TuxAPE's own: the whole raster, the 64 microseconds of each line from
+// its start and 312 lines from the vertical retrace. The part WinAPE shows
+// is in it as it is alone; switched one way or the other, what was drawn
+// stays where it goes.
+void testWholeRaster()
+{
+    Tube part, whole;
+    whole.monitor.setFullRaster(true);
+    CHECK(whole.monitor.fullRaster() && whole.monitor.width() == Monitor::kFullWidth && whole.monitor.height() == Monitor::kFullHeight);
+    CHECK(part.monitor.width() == Monitor::kWidth && part.monitor.height() == Monitor::kHeight);
+    for (Tube* tube : {&part, &whole}) {
+        tube->settle(48);
+        // A whole picture drawn on the pulses, then shown.
+        for (int n = 0; n < 250; ++n)
+            tube->line(48);
+        tube->monitor.vsync();
+        tube->line(48);
+    }
+    const uint32_t* alone = part.monitor.frame();
+    const uint32_t* inside = whole.monitor.windowFrame();
+    bool same = true;
+    for (int y = 0; y < Monitor::kHeight; ++y)
+        for (int x = 0; x < Monitor::kWidth; ++x)
+            same = same && inside[y * Monitor::kFullWidth + x] == alone[y * Monitor::kWidth + x];
+    CHECK(same);
+    CHECK(inside == whole.monitor.frame() + 35 * Monitor::kFullWidth + 13 * Monitor::kCellWidth);
+    // Around it, what the case hides: the mark's microsecond on the lines
+    // above the part WinAPE shows, and those under it.
+    const uint32_t* full = whole.monitor.frame();
+    CHECK_EQ(full[20 * Monitor::kFullWidth + kHome + 13 * Monitor::kCellWidth], kMark);
+    CHECK_EQ(full[300 * Monitor::kFullWidth + kHome + 13 * Monitor::kCellWidth], kMark);
+    CHECK_EQ(full[20 * Monitor::kFullWidth + 5], kGround);
+    // Back to the part WinAPE shows: what was drawn there is still there.
+    whole.monitor.setFullRaster(false);
+    CHECK(whole.monitor.width() == Monitor::kWidth && whole.monitor.windowFrame() == whole.monitor.frame());
+    same = true;
+    for (int i = 0; i < Monitor::kWidth * Monitor::kHeight; ++i)
+        same = same && whole.monitor.frame()[i] == alone[i];
+    CHECK(same);
+}
+
 int main()
 {
     testLock();
@@ -335,5 +376,6 @@ int main()
     testOtherPace();
     testNoPulse();
     testNoPulseInVerticalSync();
+    testWholeRaster();
     return checkSummary("monitor");
 }

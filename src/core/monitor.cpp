@@ -9,8 +9,8 @@ constexpr uint32_t kBlack = 0xFF000000;
 }
 
 Monitor::Monitor()
-    : bufferA_(kWidth * kHeight, kBlack)
-    , bufferB_(kWidth * kHeight, kBlack)
+    : bufferA_(kFullWidth * kFullHeight, kBlack)
+    , bufferB_(kFullWidth * kFullHeight, kBlack)
     , back_(bufferA_.data())
     , front_(bufferB_.data())
 {
@@ -38,7 +38,8 @@ void Monitor::hsync(bool late)
     // those machines, the Plus's CM14 and the CTM sold with the last CPCs,
     // so that the frame is centred all the same (Compendium 15.1): the
     // visible area starts a character sooner after the pulse.
-    firstPixel_ = (late ? kFirstColumn - 1 : kFirstColumn) * kCellWidth;
+    late_ = late;
+    firstPixel_ = full_ ? 0 : windowLeft();
     if (beam_ <= kWindow && awaited_) {
         // The line has just begun and waits for its pulse: this is it, on
         // time or late.
@@ -251,16 +252,16 @@ uint32_t* Monitor::edgeCell(int row, int px)
     edgeRow_ = row;
     edgePixel_ = px;
     // What the picture has before the cell, for a cell that changes it.
-    edge_[0] = px > 0 ? back_[row * kWidth + px - 1] : kBlack;
+    edge_[0] = px > 0 ? back_[row * width_ + px - 1] : kBlack;
     return edge_ + 1;
 }
 
 void Monitor::placeEdge()
 {
-    uint32_t* line = back_ + edgeRow_ * kWidth;
+    uint32_t* line = back_ + edgeRow_ * width_;
     for (int i = -1; i < kCellWidth; ++i) {
         const int x = edgePixel_ + i;
-        if (x >= 0 && x < kWidth)
+        if (x >= 0 && x < width_)
             line[x] = edge_[1 + i];
     }
     edgeRow_ = -1;
@@ -270,8 +271,39 @@ void Monitor::newFrame()
 {
     y_ = 0;
     std::swap(back_, front_);
-    std::fill(back_, back_ + kWidth * kHeight, kBlack);
+    std::fill(back_, back_ + width_ * height_, kBlack);
     ++frameNumber_;
+}
+
+void Monitor::setVerticalHold(int lines)
+{
+    hold_ = lines;
+    if (!full_)
+        firstLine_ = kFirstLine + lines;
+}
+
+void Monitor::setFullRaster(bool on)
+{
+    if (on == full_)
+        return;
+    if (edgeRow_ >= 0)
+        placeEdge();
+    // The part WinAPE shows, from one picture into the other.
+    const int left = windowLeft(), top = windowTop();
+    for (std::vector<uint32_t>* buffer : {&bufferA_, &bufferB_}) {
+        std::vector<uint32_t> before(*buffer);
+        std::fill(buffer->begin(), buffer->end(), kBlack);
+        for (int y = 0; y < kHeight; ++y) {
+            const uint32_t* from = before.data() + (on ? y * kWidth : (top + y) * kFullWidth + left);
+            uint32_t* to = buffer->data() + (on ? (top + y) * kFullWidth + left : y * kWidth);
+            std::copy_n(from, kWidth, to);
+        }
+    }
+    full_ = on;
+    width_ = on ? kFullWidth : kWidth;
+    height_ = on ? kFullHeight : kHeight;
+    firstPixel_ = on ? 0 : windowLeft();
+    firstLine_ = on ? 0 : kFirstLine + hold_;
 }
 
 }  // namespace tuxape

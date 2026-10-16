@@ -515,6 +515,16 @@ QWidget* SetupDialog::createDisplayPage()
     displaySync_->setToolTip(tr("On a screen set to 50 Hz (or 100 Hz) the machine runs one frame to each picture the screen "
                                 "shows: what scrolls is as smooth as on a CTM644. On any other screen this does nothing."));
     shaderGrid->addWidget(displaySync_, 4, 0, 1, 6);
+    // Without the shader, the picture can show what the tube draws under
+    // the monitor's case too.
+    wholeRaster_ = new QCheckBox(tr("Without it: the whole picture the tube draws, what the monitor's case hides too"));
+    wholeRaster_->setObjectName("ckWholeRaster");
+    wholeRaster_->setToolTip(tr("The 64 microseconds of each line and its 312 lines, borders and sync included, "
+                                "around the part WinAPE shows"));
+    shaderGrid->addWidget(wholeRaster_, 5, 0, 1, 6);
+    connect(wholeRaster_, &QCheckBox::toggled, this, announce);
+    const auto wholeAvailable = [this] { wholeRaster_->setEnabled(!crtShader_->isChecked()); };
+    connect(crtShader_, &QCheckBox::toggled, this, wholeAvailable);
     shaderGrid->setColumnStretch(1, 1);
     shaderGrid->setColumnStretch(4, 1);
     connect(crtShader_, &QCheckBox::toggled, this, announce);
@@ -1308,6 +1318,8 @@ void SetupDialog::setSettings(const Settings& settings)
     linearPalette_->setChecked(settings.linearPalette);
     pal_->setChecked(settings.palEmulation);
     crtShader_->setChecked(settings.crtShader);
+    wholeRaster_->setChecked(settings.wholeRaster);
+    wholeRaster_->setEnabled(!settings.crtShader);
     setLook(settings.crtLook);
     displaySync_->setChecked(settings.displaySync);
     welcome_->setChecked(settings.welcomePicture);
@@ -1582,6 +1594,7 @@ Settings SetupDialog::settings() const
     settings.linearPalette = linearPalette_->isChecked();
     settings.palEmulation = pal_->isChecked();
     settings.crtShader = crtShader_->isChecked();
+    settings.wholeRaster = wholeRaster_->isChecked();
     settings.crtLook = chosenLook();
     settings.displaySync = displaySync_->isChecked();
     settings.welcomePicture = welcome_->isChecked();

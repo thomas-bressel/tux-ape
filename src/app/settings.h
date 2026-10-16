@@ -37,6 +37,7 @@ struct Settings {
     bool palEmulation = false;        // pixels run into their neighbours, every other line dimmed
     bool crtShader = true;            // the picture as a CTM644 shows it, drawn by the graphics card
     CrtLook crtLook;                  // and how that is set
+    bool wholeRaster = true;          // without the shader: the whole raster, what the monitor's case hides too
     bool displaySync = true;          // a frame to each picture of a screen that shows fifty a second
     bool welcomePicture = true;       // shown for a moment as the program starts
     bool screenshotOnFlyback = true;  // a screenshot is of a whole frame, not of the one being drawn

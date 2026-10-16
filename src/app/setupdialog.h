@@ -55,8 +55,8 @@ public:
     void setPreview(const QImage& frame);
 
 signals:
-    // The shader's box or one of its sliders has moved: for the picture to
-    // show it at once, before OK.
+    // The shader's box or one of its sliders has moved, or the whole
+    // raster's box: for the picture to show it at once, before OK.
     void shaderChanged(bool on, const CrtLook& look);
 
 public:
@@ -142,6 +142,7 @@ private:
     QCheckBox* linearPalette_ = nullptr;
     QCheckBox* pal_ = nullptr;
     QCheckBox* crtShader_ = nullptr;
+    QCheckBox* wholeRaster_ = nullptr;
     QSlider* crtSliders_[6] = {};
     QCheckBox* displaySync_ = nullptr;
     QCheckBox* welcome_ = nullptr;

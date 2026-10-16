@@ -134,6 +134,10 @@ public:
     // hold (lines the picture is moved by).
     void setMonitor(int kind, bool linearPalette, int brightness);
     void setVerticalHold(int lines);
+    // TuxAPE's own: the whole raster the beam sweeps, what the monitor's
+    // case hides included (Monitor::setFullRaster), or the part WinAPE
+    // shows. frame() takes the size.
+    void setWholeRaster(bool on);
 
     void reset(bool cold);
     // The Multiface's red button, if the machine has one.

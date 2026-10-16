@@ -22,8 +22,6 @@
 namespace {
 
 // A CPC pixel line is shown as two screen lines.
-constexpr int kDisplayWidth = tuxape::Monitor::kWidth;
-constexpr int kDisplayHeight = tuxape::Monitor::kHeight * 2;
 
 }  // namespace
 
@@ -45,7 +43,7 @@ ScreenWidget::ScreenWidget(Emulator* emulator, QWidget* parent)
 
 QSize ScreenWidget::sizeHint() const
 {
-    return halfSize_ ? QSize(kDisplayWidth / 2, kDisplayHeight / 2) : QSize(kDisplayWidth, kDisplayHeight);
+    return halfSize_ ? QSize(displayWidth() / 2, displayHeight() / 2) : QSize(displayWidth(), displayHeight());
 }
 
 void ScreenWidget::setHalfSize(bool half)
@@ -68,12 +66,12 @@ void ScreenWidget::setRenderBothLines(bool both)
 
 QSize ScreenWidget::minimumSizeHint() const
 {
-    return {kDisplayWidth / 2, kDisplayHeight / 2};
+    return {displayWidth() / 2, displayHeight() / 2};
 }
 
 QImage ScreenWidget::screenshot() const
 {
-    return image_.scaled(kDisplayWidth, kDisplayHeight);
+    return image_.scaled(displayWidth(), displayHeight());
 }
 
 QImage ScreenWidget::shownPicture(int widest) const
@@ -140,7 +138,16 @@ void ScreenWidget::setPalEmulation(bool pal)
 
 void ScreenWidget::fetchFrame()
 {
+    const QSize before = image_.size();
     image_ = emulator_->frame();
+    // The whole raster, or the part WinAPE shows: another size.
+    if (image_.size() != before) {
+        striped_ = QImage();
+        updateGeometry();
+        if (crt_)
+            crt_->setGeometry(pictureRect());
+        emit pictureSizeChanged();
+    }
     if (interruptsShown_)
         interrupts_ = emulator_->interruptMarks();
     if (crt_)
@@ -255,10 +262,10 @@ void ScreenWidget::paintInterruptMarks(QPainter& painter, const QRect& picture) 
     const QColor edge(0, 0, 0, 200);
     const QColor mark = readable(QColor(255, 110, 255), Qt::black, kGraphicContrast);
     for (const QPoint& at : interrupts_) {
-        if (at.y() < 0 || at.y() >= tuxape::Monitor::kHeight)
+        if (at.y() < 0 || at.y() >= displayHeight() / 2)
             continue;
-        const int y = picture.top() + (at.y() * 2 + 1) * picture.height() / kDisplayHeight;
-        const int x = picture.left() + std::clamp(at.x(), 0, kDisplayWidth - 1) * picture.width() / kDisplayWidth;
+        const int y = picture.top() + (at.y() * 2 + 1) * picture.height() / displayHeight();
+        const int x = picture.left() + std::clamp(at.x(), 0, displayWidth() - 1) * picture.width() / displayWidth();
         painter.setPen(QPen(edge, 3));
         painter.drawLine(picture.left(), y, picture.right(), y);
         painter.setPen(QPen(mark, 1, Qt::DashLine));
@@ -275,12 +282,12 @@ void ScreenWidget::paintBeamMarker(QPainter& painter, const QRect& picture) cons
     if (beamLine_ < 0 && beamColumn_ < 0)
         return;
     painter.setPen(QColor(255, 255, 0, 200));
-    if (beamLine_ >= 0 && beamLine_ < tuxape::Monitor::kHeight) {
-        const int y = picture.top() + (beamLine_ * 2 + 1) * picture.height() / kDisplayHeight;
+    if (beamLine_ >= 0 && beamLine_ < displayHeight() / 2) {
+        const int y = picture.top() + (beamLine_ * 2 + 1) * picture.height() / displayHeight();
         painter.drawLine(picture.left(), y, picture.right(), y);
     }
-    if (beamColumn_ >= 0 && beamColumn_ < kDisplayWidth) {
-        const int x = picture.left() + beamColumn_ * picture.width() / kDisplayWidth;
+    if (beamColumn_ >= 0 && beamColumn_ < displayWidth()) {
+        const int x = picture.left() + beamColumn_ * picture.width() / displayWidth();
         painter.drawLine(x, picture.top(), x, picture.bottom());
     }
 }
@@ -295,7 +302,7 @@ void ScreenWidget::resizeEvent(QResizeEvent* event)
 // Largest picture of the right proportions that fits, centred.
 QRect ScreenWidget::pictureRect() const
 {
-    QSize size(kDisplayWidth, kDisplayHeight);
+    QSize size(displayWidth(), displayHeight());
     size.scale(this->size(), Qt::KeepAspectRatio);
     return QRect(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2), size);
 }

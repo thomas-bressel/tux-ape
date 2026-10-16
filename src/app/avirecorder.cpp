@@ -168,14 +168,14 @@ void AviRecorder::chunk(const char* id, const QByteArray& data, uint32_t flags)
         file_.write("\0", 1);
 }
 
-void AviRecorder::addFrame(const uint32_t* pixels, std::span<const int16_t> samples)
+void AviRecorder::addFrame(const uint32_t* pixels, std::span<const int16_t> samples, int stride)
 {
     if (!active())
         return;
     // Each of the 270 lines twice, as the screen shows them.
     QImage picture(kWidth, kHeight, QImage::Format_RGB32);
     for (int y = 0; y < kHeight; ++y)
-        std::memcpy(picture.scanLine(y), pixels + (y / 2) * kWidth, static_cast<size_t>(kWidth) * 4);
+        std::memcpy(picture.scanLine(y), pixels + (y / 2) * stride, static_cast<size_t>(kWidth) * 4);
     QByteArray jpeg;
     QBuffer buffer(&jpeg);
     buffer.open(QIODevice::WriteOnly);

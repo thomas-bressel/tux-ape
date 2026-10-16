@@ -112,6 +112,12 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
     screen_ = new ScreenWidget(emulator_, central);
     screen_->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(screen_, &QWidget::customContextMenuRequested, this, &MainWindow::showContextMenu);
+    // The whole raster, or the part WinAPE shows: the window follows the
+    // picture's size.
+    connect(screen_, &ScreenWidget::pictureSizeChanged, this, [this] {
+        if (!isFullScreen() && !isMaximized())
+            QTimer::singleShot(0, this, [this] { adjustSize(); });
+    });
     layout->addWidget(screen_, 1);
 
     createMenus();
@@ -984,6 +990,8 @@ void MainWindow::applySettings(const Settings& settings)
     screen_->setDriveLight(settings.driveLed, settings.showDriveCylinders);
     screen_->setPalEmulation(settings.palEmulation);
     screen_->setCrtShader(settings.crtShader, settings.monitorType == 0, settings.crtLook);
+    // Without the shader, the whole raster if it is wanted.
+    emulator_->setWholeRaster(settings.wholeRaster && !settings.crtShader);
     screen_->setDisplaySync(settings.displaySync);
     emulator_->setVerticalHold(settings.verticalHold);
     emulator_->setSound(settings.soundOn, settings.soundRate, settings.sound16Bit, settings.soundStereo,
@@ -1033,8 +1041,9 @@ void MainWindow::showSetup(int page)
     dialog.setKeyMap(keysBefore);
     dialog.showPage(static_cast<SetupDialog::Page>(page));
     // The shader's sliders show on the picture as they move.
-    connect(&dialog, &SetupDialog::shaderChanged, this, [this](bool on, const CrtLook& look) {
+    connect(&dialog, &SetupDialog::shaderChanged, this, [this, &dialog](bool on, const CrtLook& look) {
         screen_->setCrtShader(on, settings_.monitorType == 0, look);
+        emulator_->setWholeRaster(dialog.settings().wholeRaster && !on);
     });
     // The machine stands still while its settings are open, and goes on
     // afterwards if it was running.
@@ -1046,8 +1055,10 @@ void MainWindow::showSetup(int page)
     const bool accepted = dialog.exec() == QDialog::Accepted;
     if (accepted)
         applySettings(dialog.settings());
-    else
+    else {
         screen_->setCrtShader(settings_.crtShader, settings_.monitorType == 0, settings_.crtLook);
+        emulator_->setWholeRaster(settings_.wholeRaster && !settings_.crtShader);
+    }
     if (wasRunning) {
         emulator_->setPaused(false);
         updateDebugActions();

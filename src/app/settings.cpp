@@ -149,6 +149,7 @@ void Settings::read(const tuxape::IniFile& ini)
     linearPalette = ini.getBool(kConfiguration, "Linear Palette", linearPalette);
     palEmulation = ini.getBool(kConfiguration, "PAL Emulation", palEmulation);
     crtShader = ini.getBool(kConfiguration, "CRT Shader", crtShader);
+    wholeRaster = ini.getBool(kConfiguration, "Whole Raster", wholeRaster);
     const auto percent = [&](const char* key, int& value) {
         value = std::clamp(ini.getInt(kConfiguration, key, value), 0, CrtLook::kMost);
     };
@@ -285,6 +286,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kConfiguration, "Linear Palette", linearPalette);
         ini.setBool(kConfiguration, "PAL Emulation", palEmulation);
         ini.setBool(kConfiguration, "CRT Shader", crtShader);
+        ini.setBool(kConfiguration, "Whole Raster", wholeRaster);
         ini.setInt(kConfiguration, "CRT Curvature", crtLook.curvature);
         ini.setInt(kConfiguration, "CRT Scan Lines", crtLook.scanLines);
         ini.setInt(kConfiguration, "CRT Mask", crtLook.mask);

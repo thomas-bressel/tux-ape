@@ -5,6 +5,7 @@
 #include <QPoint>
 #include <QWidget>
 
+#include "core/monitor.h"
 #include "crtlook.h"
 
 class QPainter;
@@ -73,6 +74,10 @@ public:
     // it (0 to 767) the beam is at, shown as a line across and a line
     // down; -1 for none.
     void setBeamMarker(int line, int column);
+    // The picture's size as shown, lines doubled: 768 x 540, or 1024 x 624
+    // for the whole raster.
+    int displayWidth() const { return image_.isNull() ? tuxape::Monitor::kWidth : image_.width(); }
+    int displayHeight() const { return (image_.isNull() ? tuxape::Monitor::kHeight : image_.height()) * 2; }
     int beamMarkerLine() const { return beamLine_; }
     int beamMarkerColumn() const { return beamColumn_; }
     // "Row Highlight" too: where the Z80 took its interrupts in the
@@ -81,6 +86,11 @@ public:
     void setInterruptMarksShown(bool on);
     bool interruptMarksShown() const { return interruptsShown_; }
     QList<QPoint> interruptMarks() const { return interrupts_; }
+
+signals:
+    // The picture has another size: the whole raster, or the part WinAPE
+    // shows.
+    void pictureSizeChanged();
 
 protected:
     void paintEvent(QPaintEvent* event) override;
