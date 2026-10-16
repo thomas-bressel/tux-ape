@@ -201,6 +201,45 @@ int main(int argc, char* argv[])
     CHECK(registers->value("X") == hex(asic.x, 4) && asic.x == 0x123);
     CHECK(registers->value("Y") == hex(asic.y, 4) && asic.y == 0x45);
     CHECK(registers->value("MagX") == "4" && registers->value("MagY") == "1");
+    // As the screen shows it: four mode 2 pixels to a pixel across, one
+    // line down, a line being two mode 2 pixels high.
+    CHECK(registers->spriteAsShown().size() == QSize(64, 32));
+    CHECK(registers->spriteAsShown().pixelColor(1, 1) == QColor(0, 0, 0xFF));
+    // Its position and its magnification typed over: written where a
+    // program writes them.
+    const auto spriteNow = [&] {
+        return emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().sprite(2); });
+    };
+    CHECK(registers->setValue("MagY", "2") && spriteNow().magY == 2 && spriteNow().magX == 4);
+    CHECK(registers->value("MagY") == "2" && registers->spriteAsShown().size() == QSize(64, 64));
+    CHECK(!registers->setValue("MagX", "3") && spriteNow().magX == 4);
+    CHECK(registers->setValue("MagY", "0") && spriteNow().magY == 0 && spriteNow().magX == 4);
+    CHECK(registers->setValue("MagY", "1") && spriteNow().magY == 1);
+    CHECK(registers->setValue("X", "0050") && spriteNow().x == 0x50 && registers->value("X") == "0050");
+    CHECK(registers->setValue("Y", "FFF0") && spriteNow().y == -16);
+    CHECK(registers->setValue("X", "0123") && registers->setValue("Y", "0045"));
+    {
+        QLineEdit* magX = registers->findChild<QLineEdit*>("edMagX");
+        CHECK(magX && !magX->isReadOnly());
+        CHECK(registers->findChild<QLineEdit*>("edPRI")->isReadOnly());
+    }
+    // The page of registers out of memory and back, by its box.
+    CHECK(ramEnabled && ramEnabled->isEnabled());
+    ramEnabled->click();
+    CHECK(!ramEnabled->isChecked());
+    CHECK(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().rmr2(); }) == 0x02);
+    ramEnabled->click();
+    CHECK(ramEnabled->isChecked() && emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().rmr2(); }) == 0x1A);
+    // The ASIC locked, then unlocked, by its box: the CRTC keeps the
+    // register that was chosen.
+    const auto crtcSelected = [&] { return emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.crtc().selected(); }); };
+    const uint8_t chosen = crtcSelected();
+    unlocked->click();
+    CHECK(!unlocked->isChecked() && !emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().unlocked(); }));
+    CHECK(!ramEnabled->isEnabled() && !registers->setRamEnabled(false));
+    unlocked->click();
+    CHECK(unlocked->isChecked() && emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.asic().unlocked(); }));
+    CHECK(ramEnabled->isEnabled() && crtcSelected() == chosen);
     CHECK(registers->value("PRI") == "40" && registers->value("SSS") == "30" && registers->value("SSC") == "25");
     CHECK(registers->value("IVR") == hex(asic.ivr, 2) && asic.ivr != 0);
     CHECK(registers->value("SSSA") == hex(asic.sssa, 4) && asic.sssa != 0);
