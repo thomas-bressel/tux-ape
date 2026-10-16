@@ -78,7 +78,11 @@ int main(int argc, char* argv[])
     MainWindow window(&emulator);
     window.applySettings(settings);
     const auto open = [&] {
+        // Where the windows were when TuxAPE last left, and those that were
+        // open open again.
+        window.placeMainWindow();
         window.show();
+        window.reopenWindows();
         if (!parser.positionalArguments().isEmpty())
             window.insertDiscFile(0, parser.positionalArguments().first());
         emulator.start();

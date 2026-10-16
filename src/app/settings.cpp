@@ -207,6 +207,25 @@ void Settings::read(const tuxape::IniFile& ini)
         assemblerLibraryPath = QString::fromStdString(ini.get("Assembler", "Library Path"));
     assemblerPushPc = ini.getBool("Assembler", "Push PC On Run", assemblerPushPc);
     assemblerHideOutput = ini.getBool("Assembler", "Hide Output", assemblerHideOutput);
+    // "open, maximized, x, y, width, height, screen": the screen's name last,
+    // whatever it holds. A profile has none: it leaves them as they are.
+    if (!ini.keys("Windows").empty())
+        windowPlaces.clear();
+    for (const std::string& key : ini.keys("Windows")) {
+        const QStringList parts = QString::fromStdString(ini.get("Windows", key)).split(',');
+        if (parts.size() < 7)
+            continue;
+        WindowPlace place;
+        place.open = parts[0].trimmed() == "1";
+        place.maximized = parts[1].trimmed() == "1";
+        place.offset = QPoint(parts[2].trimmed().toInt(), parts[3].trimmed().toInt());
+        place.size = QSize(parts[4].trimmed().toInt(), parts[5].trimmed().toInt());
+        place.screen = parts.mid(6).join(',').trimmed();
+        if (place.known())
+            windowPlaces.insert(QString::fromStdString(key), place);
+    }
+    debuggerHideOnRun = ini.getBool("Debugger", "Hide On Run", debuggerHideOnRun);
+    debuggerRealTime = ini.getBool("Debugger", "Real Time", debuggerRealTime);
 
     if (!ini.keys("Library").empty()) {
         libraryFolders.clear();
@@ -308,6 +327,23 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.set("Assembler", "Library Path", assemblerLibraryPath.toStdString());
         ini.setBool("Assembler", "Push PC On Run", assemblerPushPc);
         ini.setBool("Assembler", "Hide Output", assemblerHideOutput);
+        for (const std::string& key : ini.keys("Windows"))
+            ini.remove("Windows", key);
+        for (auto it = windowPlaces.cbegin(); it != windowPlaces.cend(); ++it) {
+            const WindowPlace& place = it.value();
+            ini.set("Windows", it.key().toStdString(),
+                    QString("%1,%2,%3,%4,%5,%6,%7")
+                        .arg(place.open ? 1 : 0)
+                        .arg(place.maximized ? 1 : 0)
+                        .arg(place.offset.x())
+                        .arg(place.offset.y())
+                        .arg(place.size.width())
+                        .arg(place.size.height())
+                        .arg(place.screen)
+                        .toStdString());
+        }
+        ini.setBool("Debugger", "Hide On Run", debuggerHideOnRun);
+        ini.setBool("Debugger", "Real Time", debuggerRealTime);
         for (const std::string& key : ini.keys("Library"))
             ini.remove("Library", key);
         ini.setInt("Library", "Folders", static_cast<int>(libraryFolders.size()));

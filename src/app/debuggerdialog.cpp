@@ -30,6 +30,7 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QTimer>
 #include <QTabWidget>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -776,7 +777,27 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     followPc_->setChecked(true);
     hideOnRun_ = new QCheckBox(tr("Hide On Run"));
     hideOnRun_->setObjectName("ckHideOnRun");
-    hideOnRun_->setChecked(true);
+    hideOnRun_->setToolTip(tr("The window goes away while the machine runs, and comes back when it stops"));
+    realTime_ = new QCheckBox(tr("Real Time"));
+    realTime_->setObjectName("ckRealTime");
+    realTime_->setToolTip(tr("Follows the machine as it runs: registers, stack and memory, twenty times a second"));
+    realTimer_ = new QTimer(this);
+    realTimer_->setInterval(50);
+    connect(realTimer_, &QTimer::timeout, this, [this] {
+        if (!isVisible() || emulator_->isPaused())
+            return;
+        live_ = true;
+        refresh();
+        live_ = false;
+    });
+    connect(realTime_, &QCheckBox::toggled, this, [this](bool on) {
+        if (on)
+            realTimer_->start();
+        else
+            realTimer_->stop();
+        emit boxesChanged();
+    });
+    connect(hideOnRun_, &QCheckBox::toggled, this, &DebuggerDialog::boxesChanged);
     breakpointsOn_ = new QCheckBox(tr("Breakpoints"));
     breakpointsOn_->setObjectName("ckBreakpoints");
     breakpointsOn_->setChecked(emulator_->breakpointsEnabled());
@@ -802,7 +823,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     selection->addLayout(files, 0, 3, 2, 1);
     selection->setColumnStretch(1, 1);
     auto* switches = new QHBoxLayout;
-    for (QCheckBox* box : {followPc_, hideOnRun_, breakpointsOn_, breakInstructions_})
+    for (QCheckBox* box : {followPc_, hideOnRun_, realTime_, breakpointsOn_, breakInstructions_})
         switches->addWidget(box);
     for (QToolButton* made : {breakpoints, dataAreas, timers, graphics, search})
         switches->addWidget(made);
@@ -910,7 +931,8 @@ void DebuggerDialog::refresh()
         marks.push_back({point.address, point.size, point.write});
     dump_->setMarks(marks);
     disassembly_->setState(cpu.pc, emulator_->breakpoints());
-    if (followPc_->isChecked()) {
+    // While the machine runs, the disassembly would never stand still.
+    if (followPc_->isChecked() && !live_) {
         disassembly_->show(cpu.pc);
         disassembly_->select(cpu.pc);
     }
@@ -1000,6 +1022,21 @@ QStringList DebuggerDialog::stackLines() const
 bool DebuggerDialog::hideOnRun() const
 {
     return hideOnRun_->isChecked();
+}
+
+void DebuggerDialog::setHideOnRun(bool on)
+{
+    hideOnRun_->setChecked(on);
+}
+
+bool DebuggerDialog::realTime() const
+{
+    return realTime_->isChecked();
+}
+
+void DebuggerDialog::setRealTime(bool on)
+{
+    realTime_->setChecked(on);
 }
 
 void DebuggerDialog::stepInto()

@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QMap>
+#include <QPoint>
+#include <QSize>
 #include <QString>
 #include <QStringList>
 
@@ -96,6 +99,28 @@ struct Settings {
     QString assemblerLibraryPath;
     bool assemblerPushPc = true;
     bool assemblerHideOutput = false;
+
+    // TuxAPE's own: where a window was when it was last closed or TuxAPE
+    // left, and whether it was open then. The screen is known by its name
+    // ("DP-8"); the place is the window's top left corner, frame included,
+    // from the screen's own top left; the size is the window's, frame left
+    // out, and the one it has when not maximized.
+    struct WindowPlace {
+        bool open = false;
+        bool maximized = false;
+        QString screen;
+        QPoint offset;
+        QSize size;
+        bool known() const { return size.width() > 0 && size.height() > 0; }
+        bool operator==(const WindowPlace&) const = default;
+    };
+    // By the window's name: "Main", "Debugger", "Registers", "Graphics",
+    // "Assembler".
+    QMap<QString, WindowPlace> windowPlaces;
+    // The debugger's own boxes: whether it goes away while the machine
+    // runs, and whether it follows the machine as it runs.
+    bool debuggerHideOnRun = false;
+    bool debuggerRealTime = false;
 
     // Values out of range are brought back into it; a missing file or key
     // leaves the default.

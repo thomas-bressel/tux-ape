@@ -16,6 +16,7 @@
 
 class Emulator;
 class QCheckBox;
+class QTimer;
 class QComboBox;
 class QGroupBox;
 class QLabel;
@@ -186,6 +187,12 @@ public:
     QString flagsText() const;
     QStringList stackLines() const;
     bool hideOnRun() const;
+    void setHideOnRun(bool on);
+    // TuxAPE's own "Real Time": while the box is ticked and the machine
+    // runs, the window follows it, twenty times a second: registers, stack,
+    // memory. The disassembly keeps its place until the machine stops.
+    bool realTime() const;
+    void setRealTime(bool on);
 
     void stepInto();
     void stepOver();
@@ -270,6 +277,8 @@ signals:
     void breakpointsRequested();
     void timersRequested();
     void graphicsRequested();
+    // "Hide On Run" or "Real Time" ticked or cleared.
+    void boxesChanged();
 
 private:
     Emulator* emulator_;
@@ -298,6 +307,9 @@ private:
     QComboBox* cartridgeBank_;
     QCheckBox* followPc_;
     QCheckBox* hideOnRun_;
+    QCheckBox* realTime_;
+    QTimer* realTimer_;
+    bool live_ = false;  // refreshing as the machine runs
     QCheckBox* breakpointsOn_;
     QCheckBox* breakInstructions_;
 

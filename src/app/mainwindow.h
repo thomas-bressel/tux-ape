@@ -4,6 +4,7 @@
 #include <span>
 
 #include <QKeySequence>
+#include <QHash>
 #include <QMainWindow>
 
 #include "discmanager.h"
@@ -92,8 +93,19 @@ public:
     void applySettings(const Settings& settings);
     const Settings& settings() const { return settings_; }
 
+    // TuxAPE's own: the windows where they were when TuxAPE last left
+    // (Settings::windowPlaces). The main window first, before it is shown;
+    // then those that were open, open again. Each goes on the screen it
+    // was on, or, if that screen is not there, on the main window's; and
+    // always whole on a screen there is, made smaller if it must be. Where
+    // the windowing system places windows itself (Wayland), they keep
+    // their size and the system chooses where they go.
+    void placeMainWindow();
+    void reopenWindows();
+
 protected:
     void closeEvent(QCloseEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
 
@@ -112,6 +124,11 @@ private:
     QString snapshotPath_;    // the file "Update Snapshot" writes to
     Settings settings_;
     QString autoTypeText_;  // what the Auto-Type window held last
+    // The windows whose places are kept, by their names in windowPlaces.
+    QHash<QObject*, QString> placeNames_;
+    void placeWindow(QWidget* window, const QString& name);
+    void notePlace(QWidget* window, bool open);
+    void keepWhole(QWidget* window);
 
     QAction* runAction_ = nullptr;
     QAction* pauseAction_ = nullptr;

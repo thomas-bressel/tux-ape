@@ -82,6 +82,12 @@ int main(int argc, char* argv[])
     CHECK(emulator.isPaused());
     DebuggerDialog* debugger = window.debugger();
     CHECK(debugger && debugger->isVisible());
+    // It stays up while the machine runs, at first, and follows it only if
+    // asked to. What follows has it go away while the machine runs.
+    CHECK(debugger && !debugger->hideOnRun() && !debugger->realTime());
+    CHECK(debugger && !debugger->findChild<QCheckBox*>("ckRealTime")->isChecked());
+    if (debugger)
+        debugger->setHideOnRun(true);
     if (!debugger)
         return checkSummary("gui_debugger");
     CHECK(run->isEnabled() && !pause->isEnabled());

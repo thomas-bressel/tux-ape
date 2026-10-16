@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include <functional>
+#include <algorithm>
 #include <cstring>
 #include <QTextBrowser>
 #include <QTextCursor>
@@ -19,6 +20,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QScreen>
 #include <QMimeData>
 #include <QPointer>
 #include <QTimer>
@@ -151,8 +153,156 @@ void MainWindow::closeEvent(QCloseEvent* event)
         return;
     }
     finishTapeRecording(false);
+    // Where the windows are, and which are open, for the next time.
+    notePlace(this, true);
+    for (auto it = placeNames_.cbegin(); it != placeNames_.cend(); ++it)
+        if (auto* window = qobject_cast<QWidget*>(it.key()); window && window->isVisible())
+            notePlace(window, true);
+    if (!settings_.save())
+        report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
     emulator_->stop();
     event->accept();
+}
+
+// ---- Where the windows go ----------------------------------------------------
+
+namespace {
+
+// Where the windowing system lets a program place its windows.
+bool windowsPlaceable()
+{
+    return !QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
+}
+
+// The room a window's title bar takes above it, before it is shown and
+// its frame is known.
+constexpr int kTitleRoom = 40;
+
+}  // namespace
+
+void MainWindow::placeMainWindow()
+{
+    placeWindow(this, QStringLiteral("Main"));
+}
+
+void MainWindow::reopenWindows()
+{
+    const auto wasOpen = [this](const char* name) { return settings_.windowPlaces.value(name).open; };
+    if (wasOpen("Registers"))
+        showRegisters();
+    if (wasOpen("Graphics"))
+        showGraphics();
+    if (wasOpen("Assembler"))
+        showAssembler();
+    // One that goes away while the machine runs waits for it to stop.
+    if (wasOpen("Debugger") && (emulator_->isPaused() || !settings_.debuggerHideOnRun))
+        showDebugger();
+    keepWhole(this);
+    // The main window keeps the keys.
+    activateWindow();
+    raise();
+}
+
+// Once a window is up and its frame known: whole on its screen, frame and
+// all, made smaller if it must be.
+void MainWindow::keepWhole(QWidget* window)
+{
+    QScreen* screen = window->screen();
+    if (!screen || window->isMaximized() || window->isFullScreen() || !window->isVisible())
+        return;
+    const QRect area = screen->availableGeometry();
+    const QRect frame = window->frameGeometry(), inner = window->geometry();
+    const QMargins margins(inner.left() - frame.left(), inner.top() - frame.top(), frame.right() - inner.right(),
+                           frame.bottom() - inner.bottom());
+    const QSize size = window->size().boundedTo(area.size().shrunkBy(margins)).expandedTo(window->minimumSize());
+    if (size != window->size())
+        window->resize(size);
+    if (!windowsPlaceable())
+        return;
+    const QSize whole = size.grownBy(margins);
+    const QPoint at(std::clamp(frame.left(), area.left(), std::max(area.left(), area.right() + 1 - whole.width())),
+                    std::clamp(frame.top(), area.top(), std::max(area.top(), area.bottom() + 1 - whole.height())));
+    if (at != frame.topLeft())
+        window->move(at);
+}
+
+void MainWindow::placeWindow(QWidget* window, const QString& name)
+{
+    if (window != this) {
+        placeNames_.insert(window, name);
+        window->installEventFilter(this);
+    }
+    const Settings::WindowPlace place = settings_.windowPlaces.value(name);
+    if (!place.known())
+        return;
+    // Its own screen, if it is there; else the main window's.
+    QScreen* screen = nullptr;
+    for (QScreen* each : QGuiApplication::screens())
+        if (each->name() == place.screen)
+            screen = each;
+    const bool found = screen != nullptr;
+    if (!screen)
+        screen = window != this && QWidget::screen() ? QWidget::screen() : QGuiApplication::primaryScreen();
+    if (!screen)
+        return;
+    const QRect area = screen->availableGeometry();
+    // Whole on that screen: smaller if it must be, never smaller than it
+    // can be.
+    const QSize most(area.width(), std::max(1, area.height() - kTitleRoom));
+    const QSize size = place.size.boundedTo(most).expandedTo(window->minimumSize());
+    window->resize(size);
+    if (windowsPlaceable()) {
+        // Where it was on its screen; on another, where it was over the
+        // main window, or as near as the screen lets it.
+        QPoint at = screen->geometry().topLeft() + place.offset;
+        if (!found && window != this) {
+            const Settings::WindowPlace main = settings_.windowPlaces.value("Main");
+            at = frameGeometry().topLeft() + (place.offset - main.offset);
+        }
+        const int right = std::max(area.left(), area.right() + 1 - size.width());
+        const int bottom = std::max(area.top(), area.bottom() + 1 - size.height() - kTitleRoom);
+        window->move(std::clamp(at.x(), area.left(), right), std::clamp(at.y(), area.top(), bottom));
+    }
+    if (place.maximized)
+        window->setWindowState(window->windowState() | Qt::WindowMaximized);
+}
+
+void MainWindow::notePlace(QWidget* window, bool open)
+{
+    const QString name = window == this ? QStringLiteral("Main") : placeNames_.value(window);
+    if (name.isEmpty())
+        return;
+    QScreen* screen = window->screen();
+    Settings::WindowPlace place;
+    place.open = open;
+    place.maximized = window->isMaximized();
+    place.screen = screen ? screen->name() : QString();
+    // The place it has when not maximized.
+    const QRect normal = window->isMaximized() && window->normalGeometry().isValid() ? window->normalGeometry() : window->geometry();
+    const QPoint corner = window->isMaximized() ? normal.topLeft() : window->frameGeometry().topLeft();
+    place.offset = screen ? corner - screen->geometry().topLeft() : corner;
+    place.size = normal.size();
+    // Where the system places windows, their places are not known: the
+    // size and the screen are.
+    if (!windowsPlaceable())
+        place.offset = settings_.windowPlaces.value(name).offset;
+    settings_.windowPlaces.insert(name, place);
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    // A window closed: where it was, for when it opens again.
+    if (event->type() == QEvent::Hide && placeNames_.contains(watched))
+        if (auto* window = qobject_cast<QWidget*>(watched); window && !window->isVisible())
+            notePlace(window, false);
+    // A window opened: whole on its screen once its frame is known.
+    if (event->type() == QEvent::Show && placeNames_.contains(watched))
+        if (QPointer<QWidget> window = qobject_cast<QWidget*>(watched))
+            QTimer::singleShot(0, this, [this, window] {
+                if (window)
+                    keepWhole(window);
+            });
+    return QMainWindow::eventFilter(watched, event);
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event)
@@ -484,9 +634,10 @@ void MainWindow::setPaused(bool paused)
     updateDebugActions();
     if (paused) {
         showDebugger();
-    } else if (debugger_ && debugger_->hideOnRun() && debugger_->isVisible()) {
-        debugger_->hide();
-        // The keyboard is the CPC's again.
+    } else if (debugger_ && debugger_->isVisible()) {
+        if (debugger_->hideOnRun())
+            debugger_->hide();
+        // The keyboard is the CPC's again, the debugger's window up or not.
         activateWindow();
         screen_->setFocus();
     }
@@ -507,6 +658,7 @@ void MainWindow::showRegisters()
 {
     if (!registers_) {
         registers_ = new RegistersDialog(emulator_, this);
+        placeWindow(registers_, "Registers");
         // "Row Highlight": where the beam is, on the picture.
         connect(registers_, &RegistersDialog::beamChanged, screen_, &ScreenWidget::setBeamMarker);
         connect(registers_, &RegistersDialog::interruptMarksShown, screen_, &ScreenWidget::setInterruptMarksShown);
@@ -519,6 +671,7 @@ void MainWindow::showGraphics()
 {
     if (!graphics_) {
         graphics_ = new GraphicsDialog(emulator_, this);
+        placeWindow(graphics_, "Graphics");
         // "Mark as data": the debugger's disassembly shows the tiles as
         // bytes. The debugger need not be on the screen for that.
         connect(graphics_, &GraphicsDialog::dataMarked, this, [this](unsigned address, int size) {
@@ -692,6 +845,13 @@ void MainWindow::showDebugger()
 {
     if (!debugger_) {
         debugger_ = new DebuggerDialog(emulator_, this);
+        placeWindow(debugger_, "Debugger");
+        debugger_->setHideOnRun(settings_.debuggerHideOnRun);
+        debugger_->setRealTime(settings_.debuggerRealTime);
+        connect(debugger_, &DebuggerDialog::boxesChanged, this, [this] {
+            settings_.debuggerHideOnRun = debugger_->hideOnRun();
+            settings_.debuggerRealTime = debugger_->realTime();
+        });
         connect(debugger_, &DebuggerDialog::runRequested, this, [this] { setPaused(false); });
         connect(debugger_, &DebuggerDialog::runningOn, this, &MainWindow::updateDebugActions);
         connect(debugger_, &DebuggerDialog::breakpointsRequested, this, &MainWindow::showBreakpoints);
@@ -715,6 +875,10 @@ void MainWindow::showDebugger()
     }
     debugger_->refresh();
     debugger_->show();
+    // The machine stopped, or the window was asked for: the keys are the
+    // debugger's.
+    debugger_->raise();
+    debugger_->activateWindow();
 }
 
 // What the machine prints goes to a tab of the assembler, which need not be
@@ -735,6 +899,7 @@ void MainWindow::showAssembler()
 {
     if (!assembler_) {
         assembler_ = new AssemblerDialog(emulator_, this);
+        placeWindow(assembler_, "Assembler");
         assembler_->setOptions(settings_.assemblerLibraryPath, settings_.assemblerPushPc, settings_.assemblerHideOutput);
         connect(assembler_, &AssemblerDialog::optionsChanged, this, [this] {
             settings_.assemblerLibraryPath = assembler_->libraryPath();

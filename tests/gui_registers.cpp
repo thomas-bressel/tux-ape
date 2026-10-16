@@ -12,16 +12,22 @@
 #include <QApplication>
 #include <QImage>
 #include <QCheckBox>
+#include <QFile>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QList>
 #include <QPoint>
 #include <QTemporaryDir>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QTest>
 #include <QToolButton>
 
 #include "check.h"
+#include "debuggerdialog.h"
+#include "graphicsdialog.h"
+#include "assemblerdialog.h"
 #include "core/cartridge.h"
 #include "core/cpc.h"
 #include "core/setup.h"
@@ -368,6 +374,54 @@ int main(int argc, char* argv[])
         CHECK(!screen->interruptMarksShown());
         registers->setRowHighlight(false);
         emulator.stop();
+    }
+
+    // ---- The windows where they were when TuxAPE last left ----
+    {
+        QScreen* screen = QGuiApplication::primaryScreen();
+        const QRect area = screen->availableGeometry();
+        Settings changed = window.settings();
+        // On its screen, where it was.
+        changed.windowPlaces["Graphics"] = {true, false, screen->name(), QPoint(100, 80), QSize(420, 300)};
+        // On a screen that is not there any more, and wider than any: on
+        // the main window's, whole, and made narrower.
+        changed.windowPlaces["Assembler"] = {true, false, "NO-SUCH-SCREEN", QPoint(9000, 9000), QSize(area.width() + 500, 300)};
+        changed.windowPlaces["Debugger"] = {false, false, screen->name(), QPoint(10, 10), QSize(600, 400)};
+        window.applySettings(changed);
+        registers->hide();
+        window.reopenWindows();
+        QApplication::processEvents();
+        GraphicsDialog* graphics = window.graphics();
+        CHECK(graphics && graphics->isVisible() && graphics->size() == QSize(420, 300));
+        CHECK(graphics && graphics->frameGeometry().topLeft() == screen->geometry().topLeft() + QPoint(100, 80));
+        AssemblerDialog* assembler = window.assembler();
+        CHECK(assembler && assembler->isVisible());
+        CHECK(assembler && assembler->width() <= area.width() && area.contains(assembler->frameGeometry()));
+        CHECK(window.debugger() == nullptr);
+        CHECK(!registers->isVisible());
+        // Moved, then closed: where it was is kept for the next time.
+        if (graphics) {
+            graphics->move(screen->geometry().topLeft() + QPoint(150, 120));
+            graphics->close();
+        }
+        const Settings::WindowPlace noted = window.settings().windowPlaces.value("Graphics");
+        CHECK(!noted.open && noted.offset == QPoint(150, 120) && noted.size == QSize(420, 300));
+        CHECK(noted.screen == screen->name());
+        // TuxAPE leaving writes them all down, with those open then.
+        window.close();
+        Settings read;
+        read.load();
+        CHECK(read.windowPlaces.value("Assembler").open && !read.windowPlaces.value("Graphics").open);
+        CHECK(read.windowPlaces.value("Graphics").offset == QPoint(150, 120));
+        CHECK(read.windowPlaces.value("Main").open && read.windowPlaces.value("Main").known());
+        CHECK(!read.windowPlaces.value("Debugger").open && !read.debuggerHideOnRun && !read.debuggerRealTime);
+        // A profile, which has no windows, leaves them as they are.
+        {
+            QFile profile(folder.filePath("plain.wpf"));
+            CHECK(profile.open(QIODevice::WriteOnly) && profile.write("[Configuration]\r\nCRTC Type=1\r\n") > 0);
+        }
+        CHECK(read.loadProfile(folder.filePath("plain.wpf")));
+        CHECK(read.windowPlaces.value("Graphics").offset == QPoint(150, 120) && read.windowPlaces.value("Assembler").open);
     }
     return checkSummary("gui_registers");
 }
