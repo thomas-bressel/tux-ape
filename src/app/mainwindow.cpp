@@ -20,6 +20,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScreen>
 #include <QMimeData>
 #include <QPointer>
@@ -682,11 +683,15 @@ void MainWindow::createMenus()
     connect(tape, &QMenu::aboutToShow, this, &MainWindow::updateTapeActions);
     updateTapeActions();
     file->addSeparator();
-    loadSnapshotAction_ = addItem(file, tr("&Load Snapshot..."), Qt::Key_F5, [this] { chooseSnapshot(); });
-    saveSnapshotAction_ = addItem(file, tr("Save S&napshot..."), Qt::Key_F6, [this] { saveSnapshotAs(); });
+    // TuxAPE's own: F5 and F6 keep the state and take it back, for players;
+    // the snapshots' windows are on Ctrl.
+    addItem(file, tr("&Quick Save State"), Qt::Key_F5, [this] { quickSaveState(); });
+    addItem(file, tr("Quick Loa&d State"), Qt::Key_F6, [this] { quickLoadState(); });
+    loadSnapshotAction_ = addItem(file, tr("&Load Snapshot..."), CTRL | Qt::Key_F5, [this] { chooseSnapshot(); });
+    saveSnapshotAction_ = addItem(file, tr("Save S&napshot..."), CTRL | Qt::Key_F6, [this] { saveSnapshotAs(); });
     // Writes again to the snapshot last loaded or saved.
-    updateSnapshotAction_ =
-        addItem(file, tr("&Update Snapshot"), CTRL | Qt::Key_F6, [this] { saveSnapshotFile(snapshotPath_); });
+    updateSnapshotAction_ = addItem(file, tr("&Update Snapshot"), CTRL | Qt::ALT | Qt::Key_F6,
+                                    [this] { saveSnapshotFile(snapshotPath_); });
     updateSnapshotAction_->setEnabled(false);
     file->addSeparator();
     playSessionAction_ = addItem(file, tr("Playbac&k Session..."), {}, [this] { toggleSessionPlayback(); });
@@ -711,7 +716,7 @@ void MainWindow::createMenus()
     recordWavAction_->setCheckable(true);
     recordYmAction_->setCheckable(true);
     file->addSeparator();
-    addItem(file, tr("Aut&o Type..."), CTRL | Qt::Key_F5, [this] { autoType(); });
+    addItem(file, tr("Aut&o Type..."), CTRL | Qt::ALT | Qt::Key_F5, [this] { autoType(); });
     pasteAction_ = addItem(file, tr("&Paste"), CTRL | Qt::Key_F11, [this] { paste(); });
     pasteAction_->setEnabled(!QApplication::clipboard()->text().isEmpty());
     file->addSeparator();
@@ -847,8 +852,8 @@ void MainWindow::createControlPanel()
     addButton(IconId::Disc, tr("Change Disc (F2)"), driveSetupAction_);
     addButton(IconId::Cartridge, tr("Change Cartridge (CTRL+F3)"), cartridgeAction_);
     addButton(IconId::Tape, tr("Tape Control"), tapeControlAction_);
-    addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
-    addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
+    addButton(IconId::LoadSnapshot, tr("Load Snapshot (Ctrl+F5)"), loadSnapshotAction_);
+    addButton(IconId::SaveSnapshot, tr("Save Snapshot (Ctrl+F6)"), saveSnapshotAction_);
     addButton(IconId::Photo, tr("Screen to Thumbnail (CTRL+F8)"), thumbnailAction_);
     // The plugins' buttons, after a line of their own: there when a plugin
     // has one.
@@ -2129,7 +2134,7 @@ bool MainWindow::loadSnapshotData(std::span<const uint8_t> data, const QString& 
     return ok;
 }
 
-bool MainWindow::saveSnapshotFile(const QString& path)
+std::vector<uint8_t> MainWindow::snapshotBytes()
 {
     using tuxape::CpcModel;
     using tuxape::SnapshotMachine;
@@ -2139,8 +2144,12 @@ bool MainWindow::saveSnapshotFile(const QString& path)
                                     : model == CpcModel::Plus464  ? SnapshotMachine::Plus464
                                     : model == CpcModel::Plus6128 ? SnapshotMachine::Plus6128
                                                                   : SnapshotMachine::Cpc6128;
-    const std::vector<uint8_t> bytes =
-        emulator_->withMachine([&](tuxape::Cpc& cpc) { return tuxape::saveSnapshot(cpc, machine); });
+    return emulator_->withMachine([&](tuxape::Cpc& cpc) { return tuxape::saveSnapshot(cpc, machine); });
+}
+
+bool MainWindow::saveSnapshotFile(const QString& path)
+{
+    const std::vector<uint8_t> bytes = snapshotBytes();
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly)
         || file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size()))
@@ -2154,23 +2163,97 @@ bool MainWindow::saveSnapshotFile(const QString& path)
     return true;
 }
 
+void MainWindow::whilePaused(const std::function<void()>& ask)
+{
+    const bool wasRunning = !emulator_->isPaused();
+    if (wasRunning) {
+        emulator_->setPaused(true);
+        updateDebugActions();
+    }
+    ask();
+    if (wasRunning) {
+        emulator_->setPaused(false);
+        updateDebugActions();
+    }
+}
+
 void MainWindow::chooseSnapshot()
 {
-    const QString path = QFileDialog::getOpenFileName(this, tr("Load Snapshot"), snapshotFolder_, snapshotFilter());
-    if (!path.isEmpty())
-        loadSnapshotFile(path);
+    // No state is taken nor put back with the machine running under the
+    // window.
+    whilePaused([this] {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Load Snapshot"), snapshotFolder_, snapshotFilter());
+        if (!path.isEmpty())
+            loadSnapshotFile(path);
+    });
     screen_->setFocus();
 }
 
 void MainWindow::saveSnapshotAs()
 {
-    QString path = QFileDialog::getSaveFileName(this, tr("Save Snapshot"), snapshotFolder_, snapshotFilter());
-    if (!path.isEmpty()) {
-        if (QFileInfo(path).suffix().isEmpty())
-            path += QLatin1String(".sna");
-        saveSnapshotFile(path);
-    }
+    whilePaused([this] {
+        QString path = QFileDialog::getSaveFileName(this, tr("Save Snapshot"), snapshotFolder_, snapshotFilter());
+        if (!path.isEmpty()) {
+            if (QFileInfo(path).suffix().isEmpty())
+                path += QLatin1String(".sna");
+            saveSnapshotFile(path);
+        }
+    });
     screen_->setFocus();
+}
+
+QString MainWindow::quickStatePath() const
+{
+    const auto nameOf = [](const QString& path) { return QFileInfo(path).completeBaseName(); };
+    QString name;
+    const tuxape::MachineConfig machine = emulator_->machine();
+    // A Plus's cartridge first: the state is that cartridge's, and needs it.
+    if (machine.isPlus())
+        name = nameOf(QString::fromStdString(machine.cartridge));
+    else if (const DiscManager::Info a = discs_->info(0); a.present && !a.path.isEmpty())
+        name = nameOf(a.path);
+    else if (!tapePath_.isEmpty())
+        name = nameOf(tapePath_);
+    else if (!snapshotPath_.isEmpty())
+        name = nameOf(snapshotPath_);
+    // A name a file can have anywhere.
+    static const QRegularExpression unfit(QStringLiteral(R"([\\/:*?"<>|\x00-\x1F])"));
+    name = name.replace(unfit, QStringLiteral("_")).trimmed();
+    if (name.isEmpty())
+        name = QStringLiteral("quicksave");
+    return Settings::saveStatesFolder() + '/' + name + QStringLiteral(".sna");
+}
+
+bool MainWindow::quickSaveState()
+{
+    const QString path = quickStatePath();
+    const std::vector<uint8_t> bytes = snapshotBytes();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size()))
+               != static_cast<qint64>(bytes.size())) {
+        screen_->showNote(tr("The state could not be saved: %1").arg(file.errorString()));
+        return false;
+    }
+    screen_->showNote(tr("State saved: %1 (F6 goes back to it)").arg(QFileInfo(path).completeBaseName()));
+    return true;
+}
+
+bool MainWindow::quickLoadState()
+{
+    const QString path = quickStatePath();
+    const QString name = QFileInfo(path).completeBaseName();
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        screen_->showNote(tr("No state saved for %1 yet: F5 saves one").arg(name));
+        return false;
+    }
+    const QByteArray data = file.readAll();
+    if (!loadSnapshotData(std::span(reinterpret_cast<const uint8_t*>(data.constData()), static_cast<size_t>(data.size())), name))
+        return false;
+    screen_->showNote(tr("State loaded: %1").arg(name));
+    return true;
 }
 
 void MainWindow::newBlankDisc(int drive)

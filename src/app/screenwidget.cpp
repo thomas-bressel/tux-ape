@@ -10,6 +10,7 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QPen>
+#include <QFontMetrics>
 #include <QScreen>
 #include <QTimer>
 #include <QWindow>
@@ -167,6 +168,7 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
         crt_->overlay = [this](QPainter& painter) {
             paintDriveLight(painter, driveLightRect().translated(-crt_->pos()));
             paintInterruptMarks(painter, crt_->rect());
+            paintNote(painter, crt_->rect());
             paintBeamMarker(painter, crt_->rect());
         };
         // A graphics card that will not have the shaders: plain drawing.
@@ -239,6 +241,43 @@ void ScreenWidget::setBeamMarker(int line, int column)
     update();
     if (crt_)
         crt_->update();
+}
+
+void ScreenWidget::showNote(const QString& text)
+{
+    note_ = text;
+    const int number = ++noteNumber_;
+    QTimer::singleShot(2500, this, [this, number] {
+        if (number != noteNumber_)
+            return;
+        note_.clear();
+        update();
+        if (crt_)
+            crt_->update();
+    });
+    update();
+    if (crt_)
+        crt_->update();
+}
+
+// The note: light text in a dark box at the picture's top left, legible on
+// any picture.
+void ScreenWidget::paintNote(QPainter& painter, const QRect& picture) const
+{
+    if (note_.isEmpty())
+        return;
+    QFont font = painter.font();
+    font.setBold(true);
+    font.setPixelSize(std::max(12, picture.height() / 28));
+    painter.setFont(font);
+    const QFontMetrics metrics(font);
+    const int margin = metrics.height() / 2;
+    const QRect box(picture.left() + margin, picture.top() + margin, metrics.horizontalAdvance(note_) + 2 * margin,
+                    metrics.height() + margin);
+    const QColor back(0, 0, 0, 200);
+    painter.fillRect(box, back);
+    painter.setPen(inkOn(Qt::black));
+    painter.drawText(box, Qt::AlignCenter, note_);
 }
 
 void ScreenWidget::setInterruptMarksShown(bool on)
@@ -381,6 +420,7 @@ void ScreenWidget::paintEvent(QPaintEvent*)
     paintDriveLight(painter, driveLightRect());
     paintInterruptMarks(painter, target);
     paintBeamMarker(painter, target);
+    paintNote(painter, target);
 }
 
 // The drive's light: red, with the drive's letter and its cylinder.

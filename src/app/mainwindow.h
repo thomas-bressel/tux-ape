@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <span>
+#include <vector>
 
 #include <QKeySequence>
 #include <QHash>
@@ -63,6 +64,15 @@ public:
     // user. Return false if it could not be done.
     bool loadSnapshotFile(const QString& path);
     bool saveSnapshotFile(const QString& path);
+    // TuxAPE's own: F5 keeps the machine's state as it is now, F6 takes it
+    // back there. One state for each program, named after it: the Plus's
+    // cartridge, the disc in A:, the tape, the snapshot loaded, or
+    // "quicksave" for none; in Settings::saveStatesFolder(). It holds the
+    // memory the machine has, 64K, 128K or more, and a Plus's ASIC; the
+    // cartridge stays the one that is in.
+    QString quickStatePath() const;
+    bool quickSaveState();
+    bool quickLoadState();
     // Puts a tape (a CDT file) in the deck, rewound and with Play pressed:
     // it runs when the CPC starts the motor.
     bool insertTapeFile(const QString& path);
@@ -264,6 +274,10 @@ private:
     // Snapshots.
     void chooseSnapshot();
     void saveSnapshotAs();
+    // The machine stands still while `ask` asks something of the user, and
+    // goes on afterwards if it was running.
+    void whilePaused(const std::function<void()>& ask);
+    std::vector<uint8_t> snapshotBytes();
     // Screenshots and Auto-Type.
     void saveScreenshot();
     void thumbnailFromScreen();

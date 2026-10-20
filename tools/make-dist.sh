@@ -10,6 +10,7 @@
 #   dist/assembly/   assembler sources
 #   dist/dsk/        disc images
 #   dist/img/        what the cards keep: the X-MASS's disc, the X-MEM's flash
+#   dist/savestates/ the states F5 keeps and F6 takes back
 #
 # Run again, it brings what is newer in the project's folders: a file
 # newer in dist/ is left as it is, and nothing in dist/ is deleted, but in
@@ -28,7 +29,7 @@ cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_RPATH='$ORIGIN/lib' >/dev/null
 cmake --build "$build" -j"$(nproc)" --target tuxape
 
-mkdir -p "$dist/lib" "$dist/dsk" "$dist/img"
+mkdir -p "$dist/lib" "$dist/dsk" "$dist/img" "$dist/savestates"
 cp -f "$build/src/app/tuxape" "$dist/tuxape"
 
 # The libraries found in .deps/ go with it; those of the system stay there.

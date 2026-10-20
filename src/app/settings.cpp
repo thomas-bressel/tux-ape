@@ -477,6 +477,15 @@ QString Settings::xmemFlashFile()
     return besideOrSettings("img", "xmem.flash");
 }
 
+QString Settings::saveStatesFolder()
+{
+    // A folder made by tools/make-dist.sh has its ROMs beside the program.
+    const QDir beside(QCoreApplication::applicationDirPath());
+    if (beside.exists("savestates") || beside.exists("ROM"))
+        return beside.filePath("savestates");
+    return QFileInfo(file()).absolutePath() + "/savestates";
+}
+
 QString Settings::xmassDiscFile()
 {
     return besideOrSettings("img", "xmass.img");

@@ -195,6 +195,10 @@ struct Settings {
     // and the file that is an X-MASS's disc: beside the settings file.
     static QString xmemFlashFile();
     static QString xmassDiscFile();
+    // Where F5 keeps the machine's states: "savestates" beside the program
+    // in a folder made by tools/make-dist.sh, else beside the settings
+    // file.
+    static QString saveStatesFolder();
 
     bool operator==(const Settings&) const = default;
 

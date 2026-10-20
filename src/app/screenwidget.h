@@ -84,6 +84,10 @@ public:
     // picture shown, as Emulator::interruptMarks() gives them, as dashed
     // lines across with a square where the beam was.
     void setInterruptMarksShown(bool on);
+    // A few words over the picture for a moment, as a game shows them: what
+    // a key the user pressed has done.
+    void showNote(const QString& text);
+    QString note() const { return note_; }
     bool interruptMarksShown() const { return interruptsShown_; }
     QList<QPoint> interruptMarks() const { return interrupts_; }
 
@@ -123,6 +127,9 @@ private:
     void paintInterruptMarks(QPainter& painter, const QRect& picture) const;
     bool interruptsShown_ = false;
     QList<QPoint> interrupts_;
+    QString note_;
+    int noteNumber_ = 0;  // which note is up, for the one gone to leave a later one alone
+    void paintNote(QPainter& painter, const QRect& picture) const;
     int beamLine_ = -1;
     int beamColumn_ = -1;
     CrtView* crt_ = nullptr;
