@@ -71,6 +71,12 @@ add_test(NAME snapshot COMMAND snapshot ${CMAKE_CURRENT_SOURCE_DIR}/roms/acid/sn
 add_executable(cpc_boot cpc_boot.cpp)
 target_link_libraries(cpc_boot PRIVATE tuxape_core)
 add_test(NAME cpc_boot COMMAND cpc_boot)
+
+# Auto Type on the CPCs of other languages, with the user's firmwares.
+add_executable(autotype_languages autotype_languages.cpp)
+target_link_libraries(autotype_languages PRIVATE tuxape_core)
+add_test(NAME autotype_languages COMMAND autotype_languages)
+set_tests_properties(autotype_languages PROPERTIES SKIP_RETURN_CODE 77)
 set_tests_properties(cpc_boot PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(core_speed core_speed.cpp)

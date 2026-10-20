@@ -95,11 +95,51 @@ bool cpcKeyForChar(char c, CpcKey& key, bool& shift)
 
 namespace {
 
-bool namedKey(std::string_view name, CpcKey& key)
+// The text's characters: UTF-8 decoded, a byte that is not UTF-8 taken as
+// Latin-1.
+std::u32string decode(std::string_view text)
 {
-    std::string upper(name);
-    for (char& c : upper)
-        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    std::u32string out;
+    for (size_t i = 0; i < text.size();) {
+        const auto byte = static_cast<unsigned char>(text[i]);
+        const int length = byte < 0x80 ? 1 : (byte & 0xE0) == 0xC0 ? 2 : (byte & 0xF0) == 0xE0 ? 3 : (byte & 0xF8) == 0xF0 ? 4 : 0;
+        char32_t c = length == 1 ? byte : length == 2 ? byte & 0x1F : length == 3 ? byte & 0x0F : byte & 0x07;
+        bool good = length > 0 && i + static_cast<size_t>(length) <= text.size();
+        for (int n = 1; good && n < length; ++n) {
+            const auto next = static_cast<unsigned char>(text[i + static_cast<size_t>(n)]);
+            good = (next & 0xC0) == 0x80;
+            c = c << 6 | (next & 0x3F);
+        }
+        if (!good) {
+            out.push_back(byte);
+            ++i;
+            continue;
+        }
+        out.push_back(c);
+        i += static_cast<size_t>(length);
+    }
+    return out;
+}
+
+std::string upperAscii(std::u32string_view text)
+{
+    std::string out;
+    for (const char32_t c : text)
+        out.push_back(c < 0x80 ? static_cast<char>(std::toupper(static_cast<int>(c))) : '?');
+    return out;
+}
+
+}  // namespace
+
+void AutoType::setKeyTables(const KeyTables& tables)
+{
+    tables_ = tables;
+    language_ = keyboardLanguage(tables);
+}
+
+bool AutoType::namedKey(std::u32string_view name, CpcKey& key) const
+{
+    const std::string upper = upperAscii(name);
     for (const NamedKey& entry : kNamed) {
         if (upper == entry.name) {
             key = entry.key;
@@ -107,45 +147,51 @@ bool namedKey(std::string_view name, CpcKey& key)
         }
     }
     // A single character names the key that carries it.
-    bool shift;
-    return name.size() == 1 && cpcKeyForChar(name[0], key, shift);
+    KeyStroke stroke;
+    const int code = name.size() == 1 ? cpcCharCode(name[0], language_) : -1;
+    if (code < 0 || !keyForCode(tables_, static_cast<uint8_t>(code), stroke))
+        return false;
+    key = static_cast<CpcKey>(stroke.key);
+    return true;
 }
 
-}  // namespace
-
-void AutoType::type(std::string_view text)
+void AutoType::type(std::string_view utf8)
 {
+    const std::u32string text = decode(utf8);
     for (size_t i = 0; i < text.size(); ++i) {
-        const char c = text[i];
+        const char32_t c = text[i];
         if (c == '\r')
             continue;  // CR LF counts as one line break
         if (c != '~') {
             addChar(c);
             continue;
         }
-        const size_t end = text.find('~', i + 1);
-        if (end == std::string_view::npos)
+        const size_t end = text.find(U'~', i + 1);
+        if (end == std::u32string::npos)
             break;  // unterminated command: drop the rest
         if (end == i + 1)
             addChar('~');
         else
-            addCommand(text.substr(i + 1, end - i - 1));
+            addCommand(std::u32string_view(text).substr(i + 1, end - i - 1));
         i = end;
     }
 }
 
-void AutoType::addChar(char c)
+void AutoType::addChar(char32_t c)
 {
-    CpcKey key;
-    bool shift;
-    if (cpcKeyForChar(c, key, shift))
-        steps_.push_back({Step::Stroke, key, shift, 0});
+    // The code the machine's language shows it with, and the key that
+    // gives that code.
+    const int code = cpcCharCode(c, language_);
+    KeyStroke stroke;
+    if (code >= 0 && keyForCode(tables_, static_cast<uint8_t>(code), stroke))
+        steps_.push_back({Step::Stroke, static_cast<CpcKey>(stroke.key), stroke.shift, 0, stroke.control});
 }
 
-void AutoType::addCommand(std::string_view command)
+void AutoType::addCommand(std::u32string_view command)
 {
-    if (command.size() > 6 && (command.substr(0, 6) == "PAUSE " || command.substr(0, 6) == "pause ")) {
-        const int frames = std::atoi(std::string(command.substr(6)).c_str());
+    const std::string upper = upperAscii(command);
+    if (upper.size() > 6 && upper.compare(0, 6, "PAUSE ") == 0) {
+        const int frames = std::atoi(upper.c_str() + 6);
         if (frames > 0)
             steps_.push_back({Step::Pause, CpcKey::Space, false, frames});
         return;
@@ -192,6 +238,10 @@ void AutoType::frame()
             if (step.shift) {
                 keyboard_.set(CpcKey::Shift, true);
                 down_.push_back(CpcKey::Shift);
+            }
+            if (step.control) {
+                keyboard_.set(CpcKey::Control, true);
+                down_.push_back(CpcKey::Control);
             }
             wait_ = kDownFrames;
             return;

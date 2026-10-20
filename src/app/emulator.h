@@ -178,6 +178,10 @@ public:
 
     // Types text on the CPC keyboard (WinAPE Auto-Type syntax).
     void autoType(const QString& text);
+    // Whether Auto Type is still typing; and stopping it. It stops by
+    // itself when the machine is reset, set up anew or given a snapshot.
+    bool autoTyping();
+    void cancelAutoType();
 
     // The latest finished picture: 768 x 270, to be shown twice as tall.
     QImage frame();

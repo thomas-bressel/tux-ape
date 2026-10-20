@@ -2128,6 +2128,9 @@ bool MainWindow::loadSnapshotFile(const QString& path)
 bool MainWindow::loadSnapshotData(std::span<const uint8_t> data, const QString& name)
 {
     std::string error;
+    // A snapshot is another machine: what Auto Type had still to type was
+    // not for it.
+    emulator_->cancelAutoType();
     const bool ok = emulator_->withMachine([&](tuxape::Cpc& cpc) { return tuxape::loadSnapshot(cpc, data, &error); });
     if (!ok)
         report(tr("Cannot load %1:\n%2").arg(name, QString::fromStdString(error)));

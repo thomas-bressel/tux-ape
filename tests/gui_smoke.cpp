@@ -166,8 +166,12 @@ int main(int argc, char* argv[])
     // the keyboard is back with the main window.
     CHECK(QTest::qWaitFor([&] { return window.isActiveWindow(); }, 2000));
 
-    // Reset brings the banner back.
+    // Reset brings the banner back, and stops Auto Type: what it had still
+    // to type was for the machine as it was.
+    emulator.autoType(QStringLiteral("10 REM a line long enough to be typed for a while\n"));
+    CHECK(emulator.autoTyping());
     QTest::keyClick(&window, Qt::Key_F9, Qt::ControlModifier);
+    CHECK(!emulator.autoTyping());
     QTest::qWait(200);
     CHECK(waitForText(emulator, "Ready", 5000));
     CHECK(screenText(emulator).find(" 42") == std::string::npos);

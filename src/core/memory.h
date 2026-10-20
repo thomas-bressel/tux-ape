@@ -68,6 +68,13 @@ public:
     // touched that bit.
     void setCartridge(std::span<const uint8_t> pages, bool discRom);
     bool hasCartridge() const { return !cartridge_.empty(); }
+    // The firmware: the lower ROM, or a Plus's cartridge's page 0.
+    std::span<const uint8_t> firmware() const
+    {
+        if (cartridge_.size() >= kBankSize)
+            return std::span<const uint8_t>(cartridge_).first(kBankSize);
+        return lowerRom_;
+    }
     void setRmr2(uint8_t value);
     // The ASIC, whose page of registers RMR2 can show at &4000-&7FFF.
     void setAsic(Asic* asic) { asic_ = asic; }

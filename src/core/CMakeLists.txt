@@ -17,6 +17,7 @@ add_library(tuxape_core STATIC
     ide.cpp
     inifile.cpp
     keymap.cpp
+    keytables.cpp
     memory.cpp
     monitor.cpp
     psg.cpp

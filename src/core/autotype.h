@@ -2,10 +2,12 @@
 
 #include <cstdint>
 #include <deque>
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "core/keyboard.h"
+#include "core/keytables.h"
 
 namespace tuxape {
 
@@ -15,19 +17,30 @@ namespace tuxape {
 bool cpcKeyForChar(char c, CpcKey& key, bool& shift);
 
 // Types text into the emulated machine by pressing keys on its keyboard,
-// using WinAPE's Auto-Type syntax:
+// the keys the machine's own firmware gives each character with (its key
+// tables: English, French, Spanish, Danish, German...), using WinAPE's
+// Auto-Type syntax:
 //
 //   plain text      typed as is; a line break is the RETURN key
 //   ~NAME~          a named key: ~RETURN~, ~ESC~, ~COPY~, ~JOY LEFT~, ~FIRE~...
 //   ~+KEY~ ~-KEY~   hold a key down, release it
 //   ~PAUSE n~       wait n frames (50 per second)
 //   ~~              a tilde
+//
+// The text is UTF-8. An accented letter is typed as the code the
+// machine's language shows it with ("é" is &7B on a French CPC); one the
+// machine has not got is left out.
 class AutoType {
 public:
     explicit AutoType(Keyboard& keyboard)
         : keyboard_(keyboard)
     {
     }
+
+    // The machine's key tables, found in its firmware or its RAM; the
+    // English ones until then.
+    void setKeyTables(const KeyTables& tables);
+    KeyboardLanguage language() const { return language_; }
 
     // Queues text after whatever is still waiting to be typed.
     void type(std::string_view text);
@@ -43,15 +56,19 @@ private:
         CpcKey key;
         bool shift;
         int frames;
+        bool control = false;
     };
 
     Keyboard& keyboard_;
+    KeyTables tables_ = englishKeyTables();
+    KeyboardLanguage language_ = KeyboardLanguage::English;
     std::deque<Step> steps_;
     std::vector<CpcKey> down_;  // keys of the stroke in progress
     int wait_ = 0;
 
-    void addChar(char c);
-    void addCommand(std::string_view command);
+    void addChar(char32_t c);
+    void addCommand(std::u32string_view command);
+    bool namedKey(std::u32string_view name, CpcKey& key) const;
 };
 
 }  // namespace tuxape

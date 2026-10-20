@@ -1,5 +1,7 @@
 #include "emulator.h"
 
+#include "core/keytables.h"
+
 #include <QFileInfo>
 
 #include "core/condition.h"
@@ -84,8 +86,10 @@ QString Emulator::setupMachine(const tuxape::MachineConfig& config, bool reset)
     return withMachine([&](Cpc& cpc) {
         std::string error;
         tuxape::applyMachine(cpc, config, tuxape::defaultRomDir(), &error);
-        if (reset)
+        if (reset) {
+            autoType_.cancel();
             cpc.coldReset();
+        }
         machine_ = config;
         model_ = tuxape::modelOf(config);
         return QString::fromStdString(error);
@@ -891,12 +895,24 @@ bool Emulator::hasMultiface()
 
 void Emulator::reset(bool cold)
 {
-    withMachine([cold](Cpc& cpc) {
+    withMachine([&](Cpc& cpc) {
+        // What was still to be typed was for the machine as it was.
+        autoType_.cancel();
         if (cold)
             cpc.coldReset();
         else
             cpc.reset();
     });
+}
+
+bool Emulator::autoTyping()
+{
+    return withMachine([&](Cpc&) { return autoType_.active(); });
+}
+
+void Emulator::cancelAutoType()
+{
+    withMachine([&](Cpc&) { autoType_.cancel(); });
 }
 
 void Emulator::pcKeyEvent(uint8_t pcKey, bool numLock, bool pressed)
@@ -1006,9 +1022,22 @@ void Emulator::applyJoystick(unsigned bits)
 
 void Emulator::autoType(const QString& text)
 {
-    // The CPC's character set is ASCII for everything Auto-Type can enter.
-    const QByteArray bytes = text.toLatin1();
-    withMachine([&](Cpc&) { autoType_.type(std::string_view(bytes.constData(), static_cast<size_t>(bytes.size()))); });
+    const QByteArray bytes = text.toUtf8();
+    withMachine([&](Cpc& cpc) {
+        // Typed with the machine's own keyboard: the key tables of its
+        // firmware, as its RAM has them if a program changed them.
+        std::vector<uint8_t> ram(0x10000);
+        for (size_t a = 0; a < ram.size(); ++a)
+            ram[a] = cpc.memory().readRam(static_cast<uint16_t>(a));
+        const auto inRom = tuxape::findKeyTables(cpc.memory().firmware());
+        auto inRam = tuxape::findKeyTables(ram);
+        // A copy in RAM is the firmware's own only if it is of the same
+        // language: one left by another firmware before a reset is not.
+        if (inRam && inRom && tuxape::keyboardLanguage(*inRam) != tuxape::keyboardLanguage(*inRom))
+            inRam.reset();
+        autoType_.setKeyTables(inRam ? *inRam : inRom ? *inRom : tuxape::englishKeyTables());
+        autoType_.type(std::string_view(bytes.constData(), static_cast<size_t>(bytes.size())));
+    });
 }
 
 QImage Emulator::frame()
