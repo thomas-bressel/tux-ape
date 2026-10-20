@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRandomGenerator>
@@ -50,11 +51,12 @@ namespace pluginsign {
 
 std::optional<QByteArray> folderManifest(const QString& folder)
 {
-    const QDir root(folder);
+    // From the folder's full path: a relative one would be taken from it.
+    const QDir root(QFileInfo(folder).absoluteFilePath());
     if (!root.exists())
         return std::nullopt;
     std::map<QString, QByteArray> hashes;
-    QDirIterator it(folder, QDir::Files | QDir::Hidden | QDir::System, QDirIterator::Subdirectories);
+    QDirIterator it(root.absolutePath(), QDir::Files | QDir::Hidden | QDir::System, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         const QString path = root.relativeFilePath(it.next());
         if (path == kSignatureFile)

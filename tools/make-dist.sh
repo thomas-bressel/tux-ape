@@ -12,7 +12,8 @@
 #   dist/img/        what the cards keep: the X-MASS's disc, the X-MEM's flash
 #
 # Run again, it brings what is newer in the project's folders: a file
-# newer in dist/ is left as it is, and nothing in dist/ is deleted.
+# newer in dist/ is left as it is, and nothing in dist/ is deleted, but in
+# the folders of the project's plugins, which are made the same.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -47,7 +48,13 @@ copy() {  # copy FROM TO: FROM's content into TO, nothing removed from TO
 copy "$root/WinAPE20B2/ROM" "$dist/ROM"
 copy "$root/WinAPE20B2/Profile" "$dist/Profile"
 copy "$root/roms" "$dist/roms"
-copy "$root/plugins" "$dist/plugins"
+# Each plugin of the project's folder exactly as it is there: a file left
+# from an older version would not be among those its signature was made for.
+mkdir -p "$dist/plugins"
+[ -f "$root/plugins/README.md" ] && rsync -a --update "$root/plugins/README.md" "$dist/plugins/"
+for plugin in "$root"/plugins/*/; do
+    [ -d "$plugin" ] && rsync -a --delete "$plugin" "$dist/plugins/$(basename "$plugin")/"
+done
 copy "$root/assembly" "$dist/assembly"
 # The Library is large: its files are hard links to the project's.
 [ -d "$root/library" ] && rsync -a --update --link-dest="$root/library" "$root/library/" "$dist/library/"

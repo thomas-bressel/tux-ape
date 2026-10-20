@@ -54,6 +54,13 @@ int main()
     CHECK(write(plugin + "/bin/tool", "#!"));
     const auto manifest = pluginsign::folderManifest(plugin);
     CHECK(manifest.has_value());
+    // The same from a path relative to the current folder.
+    {
+        const QString here = QDir::currentPath();
+        QDir::setCurrent(folder.path());
+        CHECK(pluginsign::folderManifest("sample") == manifest);
+        QDir::setCurrent(here);
+    }
     if (!manifest)
         return checkSummary("plugin_sign");
     // The first line, then one line a file, sorted by path.
