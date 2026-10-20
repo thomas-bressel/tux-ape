@@ -6,6 +6,11 @@ trouve dans son dossier `plugins`, vérifie qui l'a signé, le charge, et ne lui
 montre de lui-même qu'une seule chose : l'interface décrite dans
 [`plugin.h`](plugin.h).
 
+Les conventions de nommage, de dossiers et de compatibilité sont dans
+[`PLUGINS.md`](../PLUGINS.md), à la racine de TuxAPE ; `template/` est un plugin
+modèle, complet et testé, à copier pour en commencer un, et `TuxAPEPlugin.cmake`
+le module CMake qui fait respecter ces conventions à la compilation.
+
 Ce dossier `sdk/` est tout ce dont un plugin a besoin de TuxAPE pour être
 compilé. Il ne faut rien inclure d'autre de TuxAPE : le reste peut changer
 d'une version à l'autre, `plugin.h` non.

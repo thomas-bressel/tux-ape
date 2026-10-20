@@ -56,7 +56,9 @@ Un plugin peut tout faire sur l'ordinateur, comme TuxAPE : TuxAPE regarde donc
 qui l'a signé. Signé par un auteur de confiance (celui de TuxAPE, ou un auteur
 que l'utilisateur a accepté), il est chargé ; signé par un inconnu ou pas signé,
 TuxAPE demande d'abord ; modifié après sa signature, il n'est jamais chargé.
-Écrire, compiler et signer un plugin est expliqué dans [`sdk/README.md`](sdk/README.md).
+Écrire, compiler et signer un plugin est expliqué dans [`sdk/README.md`](sdk/README.md) ;
+les conventions à respecter sont dans [`PLUGINS.md`](PLUGINS.md), et `sdk/template/` est un
+plugin modèle à copier.
 
 ## Tests
 
