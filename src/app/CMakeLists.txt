@@ -44,7 +44,7 @@ add_library(tuxape_app STATIC
     librarydialog.h
     mainwindow.cpp
     mainwindow.h
-    plugin.h
+    ${PROJECT_SOURCE_DIR}/sdk/plugin.h
     pluginmanager.cpp
     pluginmanager.h
     registersdialog.cpp
@@ -67,7 +67,8 @@ add_library(tuxape_app STATIC
     welcome.cpp
     welcome.h
 )
-target_include_directories(tuxape_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+# The plugins' contract is the SDK's: what plugins are built against.
+target_include_directories(tuxape_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/sdk)
 target_compile_definitions(tuxape_app PRIVATE
     # The Library's own folder, when TUXAPE_LIBRARY_DIR is not set and there
     # is none beside the program.
@@ -76,7 +77,7 @@ target_compile_definitions(tuxape_app PRIVATE
     # none beside the program.
     TUXAPE_DEV_PLUGIN_DIR="${PROJECT_SOURCE_DIR}/plugins"
 )
-target_link_libraries(tuxape_app PUBLIC tuxape_core Qt6::Widgets Qt6::OpenGLWidgets)
+target_link_libraries(tuxape_app PUBLIC tuxape_core tuxape_sign Qt6::Widgets Qt6::OpenGLWidgets)
 target_link_libraries(tuxape_app PRIVATE SDL2::SDL2)
 
 add_executable(tuxape main.cpp)

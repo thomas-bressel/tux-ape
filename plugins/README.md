@@ -19,3 +19,8 @@ Settings ▸ Plugins, permet de ne plus le charger sans le supprimer.
 
 Un autre dossier peut être indiqué avec la variable d'environnement
 `TUXAPE_PLUGIN_DIR`.
+
+Un plugin signé par un auteur de confiance est chargé sans question ; pour un
+plugin non signé, ou signé par un auteur inconnu, TuxAPE demande d'abord, et le
+bouton **Let In...** de Settings ▸ Plugins sert pour un plugin déposé ici à la
+main. Voir `sdk/README.md`.

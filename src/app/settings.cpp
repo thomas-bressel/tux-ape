@@ -241,6 +241,18 @@ void Settings::read(const tuxape::IniFile& ini)
         disabledPlugins.clear();
         for (int n = 1; ini.has("Plugins", "Disabled" + std::to_string(n)); ++n)
             disabledPlugins << QString::fromStdString(ini.get("Plugins", "Disabled" + std::to_string(n)));
+        trustedAuthors.clear();
+        for (int n = 1; ini.has("Plugins", "Trusted Author" + std::to_string(n)); ++n)
+            trustedAuthors << QString::fromStdString(ini.get("Plugins", "Trusted Author" + std::to_string(n)));
+        // "id digest" each.
+        allowedPlugins.clear();
+        for (int n = 1; ini.has("Plugins", "Allowed" + std::to_string(n)); ++n) {
+            const QString line = QString::fromStdString(ini.get("Plugins", "Allowed" + std::to_string(n)));
+            const int space = line.indexOf(' ');
+            if (space > 0)
+                allowedPlugins.insert(line.left(space), line.mid(space + 1).trimmed());
+        }
+        pluginConsentAsked = ini.has("Plugins", "Allowed");
     }
 }
 
@@ -366,6 +378,15 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt("Plugins", "Disabled", static_cast<int>(disabledPlugins.size()));
         for (qsizetype n = 0; n < disabledPlugins.size(); ++n)
             ini.set("Plugins", "Disabled" + std::to_string(n + 1), disabledPlugins[n].toStdString());
+        ini.setInt("Plugins", "Trusted Authors", static_cast<int>(trustedAuthors.size()));
+        for (qsizetype n = 0; n < trustedAuthors.size(); ++n)
+            ini.set("Plugins", "Trusted Author" + std::to_string(n + 1), trustedAuthors[n].toStdString());
+        if (pluginConsentAsked) {
+            ini.setInt("Plugins", "Allowed", static_cast<int>(allowedPlugins.size()));
+            int n = 0;
+            for (auto it = allowedPlugins.cbegin(); it != allowedPlugins.cend(); ++it)
+                ini.set("Plugins", "Allowed" + std::to_string(++n), (it.key() + ' ' + it.value()).toStdString());
+        }
     }
 }
 

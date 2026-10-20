@@ -6,6 +6,8 @@
 #include <optional>
 #include <vector>
 
+#include <QByteArray>
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -29,6 +31,31 @@ struct PluginInfo {
     bool enabled = true;    // the user's choice
     bool loaded = false;
     QString problem;        // why it cannot be loaded, when that is not the user's choice
+
+    // Who made it, as its signature says (see pluginsignature.h), and what
+    // TuxAPE makes of that.
+    enum class Seal {
+        Unsigned,  // no signature
+        Trusted,   // signed by an author TuxAPE trusts, its files those that were signed
+        Unknown,   // signed by an author TuxAPE has not been told to trust
+        Broken,    // its files are not those its signature was made for
+    };
+    Seal seal = Seal::Unsigned;
+    QString signer;           // the name it is signed with
+    QByteArray signerKey;     // the author's public key
+    QString digest;           // its files' manifest, as an allowance keeps it
+    // Not signed, or signed by an author not trusted: the user let it be
+    // loaded all the same, as its files now are.
+    bool allowed = false;
+    // It cannot be loaded for that alone: the user has not let it in.
+    bool waitsForConsent = false;
+};
+
+// An author whose signature lets a plugin in: TuxAPE's own, and those the
+// user said to trust.
+struct TrustedAuthor {
+    QString name;
+    QByteArray key;
 };
 
 // A plugin's host for as long as it is loaded: what the plugin added to
@@ -89,6 +116,32 @@ public:
     void setDisabled(const QStringList& ids);
     QStringList disabled() const { return disabled_; }
 
+    // ---- Who is let in ----
+    // A plugin is loaded only if it is signed by an author TuxAPE trusts,
+    // its files those that were signed; or if the user let it in, as its
+    // files are, when it was installed or since. One whose files are not
+    // those its signature was made for is never loaded.
+    //
+    // The authors TuxAPE trusts of itself: its own publisher's key.
+    static QList<TrustedAuthor> builtInAuthors();
+    // The user's word, as the settings keep it: the authors they trust
+    // ("<key in base64> <name>"), and the plugins they let in (by id, the
+    // digest of their files then).
+    void setTrust(const QStringList& authors, const QMap<QString, QString>& allowed);
+    QStringList trustedAuthors() const;
+    QMap<QString, QString> allowedPlugins() const { return allowed_; }
+    bool trusts(const QByteArray& key) const;
+    // What an archive holds and who signed it, before it is installed: its
+    // description, with its seal and digest. Nothing, with the reason, if
+    // it does not hold a plugin.
+    std::optional<PluginInfo> check(const QString& archive, QString* error = nullptr) const;
+    // The user's word given: an author trusted from now on; a plugin let in
+    // as its files are (its digest); every plugin there that waits for
+    // their word, let in (for those installed before TuxAPE asked).
+    void trustAuthor(const TrustedAuthor& author);
+    void allow(const QString& id, const QString& digest);
+    void allowAll();
+
     // Loads the plugins that are not disabled. From then on what is
     // installed, enabled, disabled or removed takes effect at once.
     void start();
@@ -106,6 +159,9 @@ public:
 signals:
     // The list, or what it says of a plugin, is no longer what it was.
     void changed();
+    // The authors trusted or the plugins let in are no longer what they
+    // were: for the settings to keep them.
+    void trustChanged();
 
 private:
     struct Loaded {
@@ -118,7 +174,12 @@ private:
     std::vector<PluginInfo> plugins_;
     std::map<QString, Loaded> loaded_;
     QStringList disabled_;
+    QList<TrustedAuthor> authors_;   // the user's
+    QMap<QString, QString> allowed_;
     bool started_ = false;
+
+    // A plugin's seal, from its files' manifest and its signature.json.
+    void seal(PluginInfo& info, const std::optional<QByteArray>& manifest, const std::optional<QByteArray>& signature) const;
 
     PluginInfo* find(const QString& id);
     void load(PluginInfo& info);

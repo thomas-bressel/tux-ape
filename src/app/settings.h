@@ -95,6 +95,13 @@ struct Settings {
     // The plugins of the plugins folder that are not to be loaded, by the
     // names of their folders.
     QStringList disabledPlugins;
+    // Who is let in (PluginManager::setTrust): the authors the user trusts,
+    // "<key in base64> <name>", and the plugins they let in, by id, with
+    // the digest of their files then. Whether TuxAPE has asked yet: those
+    // installed before it did are let in as they are.
+    QStringList trustedAuthors;
+    QMap<QString, QString> allowedPlugins;
+    bool pluginConsentAsked = false;
 
     // The assembler's options: where files named by read and incbin are
     // looked for (folders between semicolons), whether Run pushes the

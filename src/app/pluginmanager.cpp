@@ -15,6 +15,7 @@
 
 #include "core/files.h"
 #include "core/zip.h"
+#include "pluginsignature.h"
 
 namespace {
 
@@ -68,6 +69,10 @@ std::optional<Archived> archived(const tuxape::ZipArchive& zip, QString* error)
 }
 
 }  // namespace
+
+// The key of TuxAPE's publisher: the plugins it signs are let in on every
+// TuxAPE.
+const char kPublisherKey[] = "IVzCnIqqc3Z9mmyJGOdNlIYTFercbfsRm6ore4K+sBU=";
 
 PluginManager::PluginManager(SessionMaker maker, QObject* parent)
     : QObject(parent)
@@ -198,6 +203,10 @@ void PluginManager::scan()
         // The folder's name is what the plugin goes by here.
         info.id = entry.fileName();
         info.folder = entry.filePath();
+        // Who made it, and whether it is let in.
+        QFile signature(entry.filePath() + '/' + pluginsign::kSignatureFile);
+        seal(info, pluginsign::folderManifest(info.folder),
+             signature.open(QIODevice::ReadOnly) ? std::optional<QByteArray>(signature.readAll()) : std::nullopt);
         info.enabled = !disabled_.contains(info.id);
         info.loaded = loaded_.count(info.id) != 0;
         plugins_.push_back(info);
@@ -205,6 +214,138 @@ void PluginManager::scan()
     std::stable_sort(plugins_.begin(), plugins_.end(), [](const PluginInfo& a, const PluginInfo& b) {
         return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
     });
+}
+
+QList<TrustedAuthor> PluginManager::builtInAuthors()
+{
+    return {{QStringLiteral("TuxAPE"), QByteArray::fromBase64(kPublisherKey)}};
+}
+
+bool PluginManager::trusts(const QByteArray& key) const
+{
+    for (const QList<TrustedAuthor>& list : {builtInAuthors(), authors_})
+        for (const TrustedAuthor& author : list)
+            if (author.key == key)
+                return true;
+    return false;
+}
+
+void PluginManager::seal(PluginInfo& info, const std::optional<QByteArray>& manifest,
+                         const std::optional<QByteArray>& signature) const
+{
+    info.digest = manifest ? pluginsign::digest(*manifest) : QString();
+    info.seal = PluginInfo::Seal::Unsigned;
+    if (signature) {
+        const auto read = pluginsign::parse(*signature);
+        info.seal = PluginInfo::Seal::Broken;
+        if (read) {
+            info.signer = read->signer;
+            info.signerKey = read->key;
+            if (manifest && pluginsign::verify(*read, *manifest))
+                info.seal = trusts(read->key) ? PluginInfo::Seal::Trusted : PluginInfo::Seal::Unknown;
+        }
+    }
+    info.allowed = !info.digest.isEmpty() && allowed_.value(info.id) == info.digest;
+    info.waitsForConsent = false;
+    if (!info.problem.isEmpty())
+        return;
+    if (!manifest)
+        info.problem = tr("its files cannot be read");
+    else if (info.seal == PluginInfo::Seal::Broken)
+        info.problem = tr("its files are not those its signature was made for: it was changed after it was signed");
+    else if (info.seal != PluginInfo::Seal::Trusted && !info.allowed) {
+        info.waitsForConsent = true;
+        info.problem = info.seal == PluginInfo::Seal::Unknown
+                           ? tr("it is signed by %1, an author you have not said to trust").arg(info.signer)
+                           : tr("it is not signed, and you have not let it in");
+    }
+}
+
+std::optional<PluginInfo> PluginManager::check(const QString& archive, QString* error) const
+{
+    const auto zip = tuxape::ZipArchive::open(archive.toStdString());
+    if (!zip) {
+        if (error)
+            *error = tr("it is not a .zip archive");
+        return std::nullopt;
+    }
+    auto found = archived(*zip, error);
+    if (!found)
+        return std::nullopt;
+    PluginInfo info = found->info;
+    std::optional<QByteArray> signature;
+    if (const auto json = zip->read((found->prefix + pluginsign::kSignatureFile).toStdString()))
+        signature = QByteArray(reinterpret_cast<const char*>(json->data()), static_cast<qsizetype>(json->size()));
+    // An earlier problem stays the one said; the seal is had all the same.
+    const QString problem = info.problem;
+    info.problem.clear();
+    seal(info, pluginsign::archiveManifest(*zip, found->prefix), signature);
+    if (!problem.isEmpty()) {
+        info.problem = problem;
+        info.waitsForConsent = false;
+    }
+    return info;
+}
+
+void PluginManager::setTrust(const QStringList& authors, const QMap<QString, QString>& allowed)
+{
+    authors_.clear();
+    for (const QString& line : authors) {
+        const int space = line.indexOf(' ');
+        const QByteArray key = QByteArray::fromBase64(line.left(space).toLatin1());
+        if (space > 0 && key.size() == pluginsign::kKeySize)
+            authors_.push_back({line.mid(space + 1).trimmed(), key});
+    }
+    allowed_ = allowed;
+    scan();
+    settle();
+    emit changed();
+}
+
+QStringList PluginManager::trustedAuthors() const
+{
+    QStringList lines;
+    for (const TrustedAuthor& author : authors_)
+        lines << QString::fromLatin1(author.key.toBase64()) + ' ' + author.name;
+    return lines;
+}
+
+void PluginManager::trustAuthor(const TrustedAuthor& author)
+{
+    if (author.key.size() != pluginsign::kKeySize || trusts(author.key))
+        return;
+    authors_.push_back(author);
+    scan();
+    settle();
+    emit trustChanged();
+    emit changed();
+}
+
+void PluginManager::allow(const QString& id, const QString& digest)
+{
+    if (id.isEmpty() || digest.isEmpty() || allowed_.value(id) == digest)
+        return;
+    allowed_[id] = digest;
+    scan();
+    settle();
+    emit trustChanged();
+    emit changed();
+}
+
+void PluginManager::allowAll()
+{
+    bool any = false;
+    for (const PluginInfo& info : plugins_)
+        if (info.waitsForConsent && !info.digest.isEmpty()) {
+            allowed_[info.id] = info.digest;
+            any = true;
+        }
+    if (!any)
+        return;
+    scan();
+    settle();
+    emit trustChanged();
+    emit changed();
 }
 
 void PluginManager::setDisabled(const QStringList& ids)
@@ -354,6 +495,9 @@ bool PluginManager::remove(const QString& id, QString* error)
     const QString place = info->folder;
     unload(id);
     const bool gone = QDir(place).removeRecursively();
+    // Gone, it is not let in any more.
+    if (gone && allowed_.remove(id))
+        emit trustChanged();
     if (!gone && error)
         *error = tr("%1 cannot be deleted").arg(QDir::toNativeSeparators(place));
     scan();

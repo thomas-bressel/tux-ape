@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 project(TuxAPE
     VERSION 0.1.0
     DESCRIPTION "Cross-platform Amstrad CPC / Plus emulator modelled on WinAPE"
-    LANGUAGES CXX)
+    LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,6 +27,8 @@ add_subdirectory(src/core)
 add_subdirectory(src/tools)
 
 if(TUXAPE_BUILD_APP)
+    # The plugins' signatures, and the tool their authors sign them with.
+    add_subdirectory(src/sign)
     add_subdirectory(src/app)
 endif()
 

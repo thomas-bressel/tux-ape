@@ -13,6 +13,7 @@
 #include "settings.h"
 
 class PluginManager;
+struct PluginInfo;
 class QAbstractButton;
 class QCheckBox;
 class QGroupBox;
@@ -135,6 +136,10 @@ public:
     // done at once, not at OK. False, with the reason, if it could not be.
     bool installPlugin(const QString& archive, QString* error = nullptr);
     bool removePlugin(const QString& id, QString* error = nullptr);
+    // The user's word given on a plugin that is not signed by an author
+    // TuxAPE trusts: its author trusted from now on if it is signed, or
+    // else the plugin let in as its files are.
+    void letIn(const PluginInfo& info);
 
 protected:
     // An archive dropped on the Plugins page is installed.
@@ -147,6 +152,7 @@ private:
     QTreeWidget* pluginList_ = nullptr;
     QPushButton* installPlugin_ = nullptr;
     QPushButton* removePlugin_ = nullptr;
+    QPushButton* letInPlugin_ = nullptr;
     QGroupBox* pluginBox_ = nullptr;
     QLabel* pluginInfo_ = nullptr;
     QWidget* createPluginsPage();
@@ -154,6 +160,10 @@ private:
     void showPluginInfo();
     // Shows what an archive holds and installs it if the user agrees.
     void askInstallPlugin(const QString& archive);
+    // What the user is told of a plugin's signature, and what they are
+    // asked when it is not one TuxAPE trusts; false if they do not agree.
+    QString signatureText(const PluginInfo& info) const;
+    bool askConsent(const PluginInfo& info, const QString& file, bool installing);
 
     QComboBox* profile_ = nullptr;
     QTabWidget* tabs_ = nullptr;

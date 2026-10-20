@@ -39,7 +39,7 @@ TuxAPE charge les plugins du dossier `plugins`, à la racine du dépôt ou à c�
 du programme (ou d'un autre dossier indiqué par `TUXAPE_PLUGIN_DIR`). Un plugin
 s'installe depuis son fichier `.zip` par **Settings ▸ Plugins ▸ Install from
 ZIP...**, ou en décompressant ce fichier à la main dans le dossier. Ce qu'un
-plugin doit fournir est décrit dans `src/app/plugin.h`.
+plugin doit fournir est décrit dans `sdk/plugin.h`.
 
 Un plugin ajoute ses entrées au menu **Plugins** et ses boutons au panneau du
 bas. Il peut aussi en ajouter une au menu du bouton droit de **Find Graphics**,
@@ -51,6 +51,12 @@ disquettes des lecteurs et peut y en poser, et il trouve les autres plugins
 chargés, par leur nom, pour appeler ce qu'ils offrent : c'est ainsi que TuxCMP
 met ses fichiers compressés sur la disquette du lecteur A: ou sur celle de
 TuxDSK.
+
+Un plugin peut tout faire sur l'ordinateur, comme TuxAPE : TuxAPE regarde donc
+qui l'a signé. Signé par un auteur de confiance (celui de TuxAPE, ou un auteur
+que l'utilisateur a accepté), il est chargé ; signé par un inconnu ou pas signé,
+TuxAPE demande d'abord ; modifié après sa signature, il n'est jamais chargé.
+Écrire, compiler et signer un plugin est expliqué dans [`sdk/README.md`](sdk/README.md).
 
 ## Tests
 

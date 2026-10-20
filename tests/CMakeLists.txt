@@ -195,11 +195,22 @@ if(TUXAPE_BUILD_APP)
     target_compile_definitions(gui_setup PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")
 
     # A plugin for gui_plugins to pack into an archive and install. It is
-    # built as a plugin is: against src/app/plugin.h and Qt, nothing else.
+    # built as a plugin is: against the SDK's plugin.h and Qt, nothing else.
     add_library(plugin_sample MODULE plugin_sample.cpp)
     set_target_properties(plugin_sample PROPERTIES AUTOMOC ON)
-    target_include_directories(plugin_sample PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
+    target_include_directories(plugin_sample PRIVATE ${PROJECT_SOURCE_DIR}/sdk)
     target_link_libraries(plugin_sample PRIVATE Qt6::Widgets)
     add_dependencies(gui_plugins plugin_sample)
     target_compile_definitions(gui_plugins PRIVATE TUXAPE_TEST_PLUGIN="$<TARGET_FILE:plugin_sample>")
+
+    # The plugins' signatures.
+    add_executable(plugin_sign plugin_sign.cpp)
+    target_link_libraries(plugin_sign PRIVATE tuxape_sign)
+    add_test(NAME plugin_sign COMMAND plugin_sign)
+
+    # The layout of the structures plugins are given, which never changes.
+    add_executable(plugin_abi plugin_abi.cpp)
+    target_include_directories(plugin_abi PRIVATE ${PROJECT_SOURCE_DIR}/sdk)
+    target_link_libraries(plugin_abi PRIVATE Qt6::Gui)
+    add_test(NAME plugin_abi COMMAND plugin_abi)
 endif()

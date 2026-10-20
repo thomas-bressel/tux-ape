@@ -32,6 +32,7 @@
 #include <QTreeWidget>
 
 #include "check.h"
+#include "testzip.h"
 #include "core/discfiles.h"
 #include "core/screen_text.h"
 #include "emulator.h"
@@ -40,78 +41,14 @@
 #include "mainwindow.h"
 #include "plugin.h"
 #include "pluginmanager.h"
+#include "pluginsignature.h"
+#include "core/zip.h"
 #include "settings.h"
 #include "setupdialog.h"
 
 namespace {
 
-uint32_t crc32(const QByteArray& data)
-{
-    static const auto table = [] {
-        std::array<uint32_t, 256> made{};
-        for (uint32_t n = 0; n < 256; ++n) {
-            uint32_t c = n;
-            for (int bit = 0; bit < 8; ++bit)
-                c = c & 1 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
-            made[n] = c;
-        }
-        return made;
-    }();
-    uint32_t crc = 0xFFFFFFFFu;
-    for (const char byte : data)
-        crc = table[(crc ^ static_cast<uint8_t>(byte)) & 0xFF] ^ (crc >> 8);
-    return ~crc;
-}
-
-void put(QByteArray& out, uint32_t value, int bytes)
-{
-    for (int i = 0; i < bytes; ++i)
-        out.append(static_cast<char>(value >> (8 * i)));
-}
-
-// A .zip archive of files stored as they are.
-bool writeZip(const QString& path, const std::vector<std::pair<QString, QByteArray>>& files)
-{
-    QByteArray body, directory;
-    for (const auto& [name, data] : files) {
-        const QByteArray label = name.toUtf8();
-        const auto offset = static_cast<uint32_t>(body.size());
-        const auto size = static_cast<uint32_t>(data.size());
-        const auto fields = [&](QByteArray& out) {
-            put(out, 20, 2);  // version needed
-            put(out, 0, 2);   // flags
-            put(out, 0, 2);   // stored
-            put(out, 0, 4);   // time and date
-            put(out, crc32(data), 4);
-            put(out, size, 4);
-            put(out, size, 4);
-            put(out, static_cast<uint32_t>(label.size()), 2);
-            put(out, 0, 2);   // no extra field
-        };
-        put(body, 0x04034B50, 4);
-        fields(body);
-        body += label + data;
-        put(directory, 0x02014B50, 4);
-        put(directory, 20, 2);  // made by
-        fields(directory);
-        put(directory, 0, 2);   // no comment
-        put(directory, 0, 2);   // disc
-        put(directory, 0, 2);   // attributes
-        put(directory, 0, 4);
-        put(directory, offset, 4);
-        directory += label;
-    }
-    QByteArray end;
-    put(end, 0x06054B50, 4);
-    put(end, 0, 4);
-    put(end, static_cast<uint32_t>(files.size()), 2);
-    put(end, static_cast<uint32_t>(files.size()), 2);
-    put(end, static_cast<uint32_t>(directory.size()), 4);
-    put(end, static_cast<uint32_t>(body.size()), 4);
-    put(end, 0, 2);
-    QFile file(path);
-    return file.open(QIODevice::WriteOnly) && file.write(body + directory + end) == body.size() + directory.size() + end.size();
-}
+using testzip::writeZip;
 
 QByteArray manifest(const QString& id, int api, const QString& platform, const QString& library)
 {
@@ -182,11 +119,46 @@ int main(int argc, char* argv[])
     const QString libraryPath = platform + "/libsample.so";
     const QByteArray good = manifest("sample", tuxape::kPluginApi, platform, libraryPath);
     const QString archive = folder.filePath("sample-1.2.zip");
-    // The plugin in a folder of the archive, as an archive of a folder is made.
-    CHECK(writeZip(archive, {{"sample/plugin.json", good},
-                             {"sample/" + libraryPath, library},
-                             {"sample/bin/tool", "#!/bin/sh\n"},
-                             {"sample/README.txt", "A plugin to try TuxAPE with.\n"}}));
+    // An archive signed: its files, and a signature.json over them made with
+    // a key's secret.
+    const auto testKeys = pluginsign::keysFromSeed(QByteArray(32, 7));
+    const auto strangerKeys = pluginsign::keysFromSeed(QByteArray(32, 9));
+    const QString testAuthor = QString::fromLatin1(testKeys.key.toBase64()) + " TuxAPE's tests";
+    const auto writeSigned = [&](const QString& path, std::vector<std::pair<QString, QByteArray>> files,
+                                 const QString& prefix, const QString& signer, const pluginsign::KeyPair& keys) {
+        if (!writeZip(path, files))
+            return false;
+        const auto zip = tuxape::ZipArchive::open(path.toStdString());
+        const auto signedOver = zip ? pluginsign::archiveManifest(*zip, prefix) : std::nullopt;
+        if (!signedOver)
+            return false;
+        files.push_back({prefix + pluginsign::kSignatureFile,
+                         pluginsign::toJson({signer, keys.key, pluginsign::sign(*signedOver, keys.secret)})});
+        return writeZip(path, files);
+    };
+    // The plugin in a folder of the archive, as an archive of a folder is
+    // made; signed by the tests' own author.
+    const std::vector<std::pair<QString, QByteArray>> sampleFiles = {{"sample/plugin.json", good},
+                                                                     {"sample/" + libraryPath, library},
+                                                                     {"sample/bin/tool", "#!/bin/sh\n"},
+                                                                     {"sample/README.txt", "A plugin to try TuxAPE with.\n"}};
+    CHECK(writeSigned(archive, sampleFiles, "sample/", "TuxAPE's tests", testKeys));
+    // Signed by an author TuxAPE has not been told of.
+    const QString stranger = folder.filePath("stranger.zip");
+    CHECK(writeSigned(stranger, sampleFiles, "sample/", "Stranger", strangerKeys));
+    // Signed, then changed: a byte of its library.
+    const QString tampered = folder.filePath("tampered.zip");
+    {
+        CHECK(writeSigned(tampered, sampleFiles, "sample/", "TuxAPE's tests", testKeys));
+        const auto zip = tuxape::ZipArchive::open(tampered.toStdString());
+        const auto json = zip ? zip->read("sample/signature.json") : std::nullopt;
+        std::vector<std::pair<QString, QByteArray>> changed = sampleFiles;
+        changed[1].second[100] = static_cast<char>(changed[1].second[100] ^ 1);
+        if (json)
+            changed.push_back({"sample/signature.json", QByteArray(reinterpret_cast<const char*>(json->data()),
+                                                                  static_cast<qsizetype>(json->size()))});
+        CHECK(json && writeZip(tampered, changed));
+    }
     // And at the archive's top.
     const QString flat = folder.filePath("flat.zip");
     CHECK(writeZip(flat, {{"plugin.json", good}, {libraryPath, library}}));
@@ -217,6 +189,15 @@ int main(int argc, char* argv[])
     {
         PluginManager manager;
         CHECK(manager.plugins().empty());
+        // TuxAPE trusts its publisher of itself; the tests' author is one
+        // the user said to trust.
+        CHECK(PluginManager::builtInAuthors().size() == 1 && PluginManager::builtInAuthors()[0].key.size() == 32);
+        manager.setTrust({testAuthor}, {});
+        CHECK(manager.trusts(testKeys.key) && !manager.trusts(strangerKeys.key));
+        CHECK(manager.trusts(PluginManager::builtInAuthors()[0].key));
+        CHECK(manager.trustedAuthors() == QStringList{testAuthor});
+        int trustChanges = 0;
+        QObject::connect(&manager, &PluginManager::trustChanged, [&trustChanges] { ++trustChanges; });
         int changes = 0;
         QObject::connect(&manager, &PluginManager::changed, [&changes] { ++changes; });
         QString error;
@@ -249,6 +230,69 @@ int main(int argc, char* argv[])
         CHECK_EQ(manager.plugins().size(), 1);
         CHECK(!QFile::exists(plugins + "/sample/README.txt") && QFile::exists(plugins + "/sample/" + libraryPath));
 
+        // ---- Who is let in ----
+        // Before it is installed, what an archive's signature says.
+        {
+            const auto trusted = manager.check(archive), unsigned_ = manager.check(flat), unknown = manager.check(stranger),
+                       broken = manager.check(tampered);
+            CHECK(trusted && trusted->seal == PluginInfo::Seal::Trusted && trusted->signer == "TuxAPE's tests");
+            CHECK(trusted && trusted->problem.isEmpty() && !trusted->waitsForConsent && trusted->digest.size() == 64);
+            CHECK(unsigned_ && unsigned_->seal == PluginInfo::Seal::Unsigned && unsigned_->waitsForConsent);
+            CHECK(unknown && unknown->seal == PluginInfo::Seal::Unknown && unknown->signer == "Stranger");
+            CHECK(unknown && unknown->signerKey == strangerKeys.key && unknown->waitsForConsent);
+            CHECK(unknown && unknown->problem.contains("Stranger"));
+            CHECK(broken && broken->seal == PluginInfo::Seal::Broken && !broken->waitsForConsent);
+            CHECK(broken && broken->problem.contains("changed after it was signed"));
+            // The same files signed by one or by another: the same digest.
+            CHECK(trusted && unknown && trusted->digest == unknown->digest);
+        }
+        // Not signed: installed, but not let in until the user says so; then
+        // let in as its files are, and not once they have changed.
+        {
+            const PluginInfo* flatOne = manager.plugin("sample");
+            CHECK(flatOne && flatOne->seal == PluginInfo::Seal::Unsigned && flatOne->waitsForConsent);
+            CHECK(flatOne && flatOne->problem.contains("not signed"));
+            const QString digest = flatOne ? flatOne->digest : QString();
+            manager.allow("sample", digest);
+            CHECK_EQ(trustChanges, 1);
+            CHECK(manager.allowedPlugins().value("sample") == digest);
+            CHECK(manager.plugin("sample")->allowed && manager.plugin("sample")->problem.isEmpty());
+            QFile added(plugins + "/sample/extra.txt");
+            CHECK(added.open(QIODevice::WriteOnly) && added.write("x") == 1);
+            added.close();
+            manager.scan();
+            CHECK(!manager.plugin("sample")->allowed && manager.plugin("sample")->waitsForConsent);
+            CHECK(QFile::remove(plugins + "/sample/extra.txt"));
+            manager.scan();
+            CHECK(manager.plugin("sample")->allowed);
+        }
+        // Signed by a stranger: let in once the user trusts them, with all
+        // they sign.
+        CHECK(manager.install(stranger, &error));
+        CHECK(manager.plugin("sample")->waitsForConsent && !manager.plugin("sample")->allowed);
+        manager.trustAuthor({"Stranger", strangerKeys.key});
+        CHECK_EQ(trustChanges, 2);
+        CHECK(manager.plugin("sample")->seal == PluginInfo::Seal::Trusted && manager.plugin("sample")->problem.isEmpty());
+        CHECK_EQ(manager.trustedAuthors().size(), 2);
+        // Changed after it was signed: never let in, whatever the user says.
+        CHECK(manager.install(tampered, &error));
+        CHECK(manager.plugin("sample")->seal == PluginInfo::Seal::Broken && !manager.plugin("sample")->waitsForConsent);
+        manager.allow("sample", manager.plugin("sample")->digest);
+        CHECK(!manager.plugin("sample")->problem.isEmpty());
+        // The settings keep the user's word.
+        {
+            Settings kept;
+            kept.trustedAuthors = manager.trustedAuthors();
+            kept.allowedPlugins = manager.allowedPlugins();
+            kept.pluginConsentAsked = true;
+            CHECK(kept.save());
+            Settings read;
+            read.load();
+            CHECK(read.trustedAuthors == kept.trustedAuthors && read.allowedPlugins == kept.allowedPlugins);
+            CHECK(read.pluginConsentAsked);
+            CHECK(Settings().save());
+        }
+
         CHECK(!manager.remove("nothing"));
         CHECK(manager.remove("sample", &error));
         CHECK(manager.plugins().empty() && !QDir(plugins + "/sample").exists());
@@ -273,6 +317,7 @@ int main(int argc, char* argv[])
         CHECK(!setup.installPlugin(archive));
 
         PluginManager manager;
+        manager.setTrust({testAuthor}, {});
         setup.setPlugins(&manager);
         CHECK(install && install->isEnabled() && remove && !remove->isEnabled());
         CHECK(list && list->topLevelItemCount() == 0 && setup.selectedPlugin().isEmpty());
@@ -295,6 +340,9 @@ int main(int argc, char* argv[])
         CHECK(text && text->text().contains("Counts how often it is chosen.") && text->text().contains("GPL-2.0"));
         CHECK(text && text->text().contains("Loaded when TuxAPE starts")
               && text->text().contains(QDir::toNativeSeparators(plugins + "/sample")));
+        CHECK(text && text->text().contains("an author TuxAPE trusts"));
+        auto* letIn = setup.findChild<QPushButton*>("bLetInPlugin");
+        CHECK(letIn && !letIn->isEnabled());
 
         // Its box is a setting: cleared, the plugin is among those not to load.
         CHECK(setup.settings().disabledPlugins.isEmpty());
@@ -552,9 +600,21 @@ int main(int argc, char* argv[])
         CHECK(menu && menu->menuAction()->isVisible() && entry(menu, "&Sample Plugin...") != nullptr);
         CHECK(window.graphics() && window.graphics()->extraActions().size() == 1);
 
-        // A newer one installed over it is the one loaded from then on.
+        // Put there by hand before TuxAPE asked who to let in: let in as it
+        // was, and kept so.
+        CHECK(window.plugins()->allowedPlugins().contains("sample"));
+        // A newer one installed over it is the one loaded from then on:
+        // signed by the tests' author, once the user trusts them.
         QString error;
         CHECK(window.plugins()->install(archive, &error));
+        CHECK(window.plugins()->plugin("sample")->waitsForConsent);
+        window.plugins()->trustAuthor({"TuxAPE's tests", testKeys.key});
+        {
+            Settings read;
+            read.load();
+            CHECK(read.trustedAuthors.size() == 1 && read.trustedAuthors[0].endsWith(" TuxAPE's tests"));
+            CHECK(read.pluginConsentAsked && read.allowedPlugins.contains("sample"));
+        }
         CHECK(window.plugins()->plugin("sample")->loaded && window.property("sampleStarted").toBool());
         CHECK(QFile::exists(plugins + "/sample/README.txt"));
         QAction* again = entry(menu, "&Sample Plugin...");

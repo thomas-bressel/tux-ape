@@ -342,6 +342,15 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
     setCentralWidget(central);
     // The plugins are found now; they are loaded when the application asks.
     plugins_ = new PluginManager([this](const QString& id) { return std::make_unique<PluginLink>(this, id); }, this);
+    // The user's word on who to let in, given in the Setup window or as a
+    // plugin is installed, is kept at once.
+    connect(plugins_, &PluginManager::trustChanged, this, [this] {
+        settings_.trustedAuthors = plugins_->trustedAuthors();
+        settings_.allowedPlugins = plugins_->allowedPlugins();
+        settings_.pluginConsentAsked = true;
+        if (!settings_.save())
+            report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+    });
 
     connect(emulator_, &Emulator::statsChanged, this, &MainWindow::updateStats, Qt::QueuedConnection);
     connect(emulator_, &Emulator::stopped, this, &MainWindow::machineStopped, Qt::QueuedConnection);
@@ -373,7 +382,16 @@ MainWindow::~MainWindow()
 void MainWindow::loadPlugins()
 {
     plugins_->setDisabled(settings_.disabledPlugins);
+    plugins_->setTrust(settings_.trustedAuthors, settings_.allowedPlugins);
     plugins_->start();
+    // The plugins installed before TuxAPE asked who to let in are let in as
+    // they are now: the user put them there.
+    if (!settings_.pluginConsentAsked) {
+        settings_.pluginConsentAsked = true;
+        plugins_->allowAll();
+        settings_.allowedPlugins = plugins_->allowedPlugins();
+        settings_.save();
+    }
 }
 
 // The Plugins menu and the plugins' part of the control panel are there

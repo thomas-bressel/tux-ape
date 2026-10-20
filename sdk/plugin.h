@@ -34,6 +34,14 @@ namespace tuxape {
 constexpr int kPluginApi = 3;
 constexpr int kOldestPluginApi = 1;
 
+// The structures that follow go between TuxAPE and a plugin as they are,
+// by value: once a version has one, it never changes. No field is added to
+// it, moved or taken away, nor does one change its type: a plugin built
+// against it would read the fields where they no longer are, and nothing
+// would tell. A version that has more to say adds a structure of its own,
+// and the functions of PluginHost that give it. TuxAPE's test plugin_abi
+// checks that their layout is still the one plugins were built with.
+
 // The picture the machine is showing, as a program has to know it to read
 // it out of memory.
 struct PluginScreen {

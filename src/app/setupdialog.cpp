@@ -40,6 +40,7 @@
 #include <QWheelEvent>
 
 #include "pluginmanager.h"
+#include "pluginsignature.h"
 
 #include "contrast.h"
 #include "core/files.h"
@@ -1642,6 +1643,13 @@ Settings SetupDialog::settings() const
     settings.amxMouse = amxMouse_->isChecked();
     settings.keyboardFile = keyboardFile_;
     settings.disabledPlugins = disabledPlugins_;
+    // Who is let in is kept at once, as it is given: this page does not
+    // wait for OK for it.
+    if (plugins_) {
+        settings.trustedAuthors = plugins_->trustedAuthors();
+        settings.allowedPlugins = plugins_->allowedPlugins();
+        settings.pluginConsentAsked = true;
+    }
     return settings;
 }
 
@@ -2121,6 +2129,16 @@ QWidget* SetupDialog::createPluginsPage()
         if (!removePlugin(selectedPlugin(), &error))
             QMessageBox::warning(this, windowTitle(), tr("%1 could not be removed: %2.").arg(name, error));
     });
+    // A plugin put in the folder by hand, or one whose author is not
+    // trusted, waits for the user's word.
+    letInPlugin_ = new QPushButton(tr("Let In..."));
+    letInPlugin_->setObjectName("bLetInPlugin");
+    letInPlugin_->setToolTip(tr("Lets in the plugin chosen, which is not signed by an author TuxAPE trusts"));
+    connect(letInPlugin_, &QPushButton::clicked, this, [this] {
+        const PluginInfo* info = plugins_ ? plugins_->plugin(selectedPlugin()) : nullptr;
+        if (info && info->waitsForConsent && askConsent(*info, QString(), false))
+            letIn(*info);
+    });
     auto* openFolder = new QPushButton(tr("Open Plugins Folder"));
     openFolder->setObjectName("bPluginFolder");
     connect(openFolder, &QPushButton::clicked, this, [] {
@@ -2135,6 +2153,7 @@ QWidget* SetupDialog::createPluginsPage()
     auto* buttons = new QHBoxLayout;
     buttons->addWidget(installPlugin_);
     buttons->addWidget(removePlugin_);
+    buttons->addWidget(letInPlugin_);
     buttons->addStretch(1);
     buttons->addWidget(openFolder);
     auto* listLayout = new QVBoxLayout(listBox);
@@ -2210,6 +2229,7 @@ void SetupDialog::showPluginInfo()
 {
     const PluginInfo* info = plugins_ ? plugins_->plugin(selectedPlugin()) : nullptr;
     removePlugin_->setEnabled(info != nullptr);
+    letInPlugin_->setEnabled(info && info->waitsForConsent);
     if (!info) {
         pluginBox_->setTitle(tr("No Plugin"));
         pluginInfo_->setText(plugins_ ? tr("A plugin comes as a .zip file. Install from ZIP unpacks it into the plugins "
@@ -2235,7 +2255,7 @@ void SetupDialog::showPluginInfo()
     pluginBox_->setTitle(info->name);
     pluginInfo_->setText(
         (info->description.isEmpty() ? QString() : "<p>" + info->description.toHtmlEscaped() + "</p>") + "<table>"
-        + row(tr("Status"), status) + row(tr("Licence"), info->licence)
+        + row(tr("Status"), status) + row(tr("Signed"), signatureText(*info)) + row(tr("Licence"), info->licence)
         + row(tr("Needs"), tr("TuxAPE plugin API %1").arg(info->api))
         + row(tr("Installed in"), QDir::toNativeSeparators(info->folder)) + "</table>");
 }
@@ -2259,30 +2279,97 @@ bool SetupDialog::removePlugin(const QString& id, QString* error)
     return true;
 }
 
+QString SetupDialog::signatureText(const PluginInfo& info) const
+{
+    const QString key = info.signerKey.isEmpty() ? QString() : pluginsign::fingerprint(info.signerKey);
+    switch (info.seal) {
+    case PluginInfo::Seal::Trusted:
+        return tr("by %1, an author TuxAPE trusts (key %2)").arg(info.signer, key);
+    case PluginInfo::Seal::Unknown:
+        return info.allowed ? tr("by %1 (key %2), an author you have not said to trust; you let this version in")
+                                  .arg(info.signer, key)
+                            : tr("by %1 (key %2), an author you have not said to trust").arg(info.signer, key);
+    case PluginInfo::Seal::Broken:
+        return tr("its signature does not match its files: they were changed after it was made");
+    case PluginInfo::Seal::Unsigned:
+        break;
+    }
+    return info.allowed ? tr("not signed; you let this version in") : tr("not signed");
+}
+
+bool SetupDialog::askConsent(const PluginInfo& info, const QString& file, bool installing)
+{
+    const bool signedByUnknown = info.seal == PluginInfo::Seal::Unknown;
+    QMessageBox box(QMessageBox::Warning, installing ? tr("Install Plugin") : tr("Let In Plugin"),
+                    installing ? tr("Install %1 %2?").arg(info.name, info.version)
+                               : tr("Let %1 %2 in?").arg(info.name, info.version),
+                    QMessageBox::NoButton, this);
+    const QString where = installing ? QDir::toNativeSeparators(PluginManager::folder() + '/' + info.id)
+                                     : QDir::toNativeSeparators(info.folder);
+    const QString about = (file.isEmpty() ? QString() : file + "\n\n")
+                          + tr("Licence: %1\nMade for: %2\nIn: %3")
+                                .arg(info.licence.isEmpty() ? tr("not said") : info.licence, info.platforms.join(", "), where);
+    const QString warning =
+        signedByUnknown
+            ? tr("It is signed by %1, with the key %2. TuxAPE has not been told to trust this author. A plugin is a "
+                 "program: it can do on this computer all that TuxAPE can. Trust them only if you know them, and the "
+                 "key is theirs: they can tell you its fingerprint. Their plugins are let in from then on.")
+                  .arg(info.signer, pluginsign::fingerprint(info.signerKey))
+            : tr("It is not signed: nothing tells who made it, nor that it is still as they made it. A plugin is a "
+                 "program: it can do on this computer all that TuxAPE can. Let it in only if you trust where it "
+                 "comes from. A later version will be asked about again.");
+    box.setInformativeText(about + "\n\n" + warning);
+    QPushButton* agree = box.addButton(signedByUnknown ? (installing ? tr("Trust %1 and Install").arg(info.signer)
+                                                                     : tr("Trust %1").arg(info.signer))
+                                                       : (installing ? tr("Install Anyway") : tr("Let In Anyway")),
+                                       QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.exec();
+    return box.clickedButton() == agree;
+}
+
+void SetupDialog::letIn(const PluginInfo& info)
+{
+    if (!plugins_)
+        return;
+    if (info.seal == PluginInfo::Seal::Unknown)
+        plugins_->trustAuthor({info.signer, info.signerKey});
+    else if (info.seal == PluginInfo::Seal::Unsigned)
+        plugins_->allow(info.id, info.digest);
+}
+
 void SetupDialog::askInstallPlugin(const QString& archive)
 {
     const QString file = QFileInfo(archive).fileName();
     QString error;
-    const auto info = PluginManager::inspect(archive, &error);
-    if (!info || !info->problem.isEmpty()) {
+    const auto info = plugins_ ? plugins_->check(archive, &error) : std::nullopt;
+    // What cannot be used, or has been changed since it was signed, is not
+    // installed.
+    if (!info || (!info->problem.isEmpty() && !info->waitsForConsent)) {
         QMessageBox::warning(this, windowTitle(),
                              tr("%1 cannot be installed: %2.").arg(file, info ? info->problem : error));
         return;
     }
-    QMessageBox box(QMessageBox::Warning, tr("Install Plugin"),
-                    tr("Install %1 %2?").arg(info->name, info->version), QMessageBox::NoButton, this);
-    box.setInformativeText(
-        tr("%1\n\nLicence: %2\nMade for: %3\nGoes into: %4\n\n"
-           "A plugin is a program: it can do on this computer all that TuxAPE can. "
-           "Install it only if you trust where it comes from.")
-            .arg(file, info->licence.isEmpty() ? tr("not said") : info->licence, info->platforms.join(", "),
-                 QDir::toNativeSeparators(PluginManager::folder() + '/' + info->id)));
-    QPushButton* install = box.addButton(tr("Install"), QMessageBox::AcceptRole);
-    box.addButton(QMessageBox::Cancel);
-    box.setDefaultButton(QMessageBox::Cancel);
-    box.exec();
-    if (box.clickedButton() != install)
-        return;
+    if (info->waitsForConsent) {
+        if (!askConsent(*info, file, true))
+            return;
+        letIn(*info);
+    } else {
+        // Signed by an author TuxAPE trusts: said, and asked once.
+        QMessageBox box(QMessageBox::Question, tr("Install Plugin"), tr("Install %1 %2?").arg(info->name, info->version),
+                        QMessageBox::NoButton, this);
+        box.setInformativeText(tr("%1\n\nSigned %2.\nLicence: %3\nMade for: %4\nGoes into: %5")
+                                   .arg(file, signatureText(*info), info->licence.isEmpty() ? tr("not said") : info->licence,
+                                        info->platforms.join(", "),
+                                        QDir::toNativeSeparators(PluginManager::folder() + '/' + info->id)));
+        QPushButton* install = box.addButton(tr("Install"), QMessageBox::AcceptRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(install);
+        box.exec();
+        if (box.clickedButton() != install)
+            return;
+    }
     if (!installPlugin(archive, &error)) {
         QMessageBox::warning(this, windowTitle(), tr("%1 could not be installed: %2.").arg(file, error));
         return;
