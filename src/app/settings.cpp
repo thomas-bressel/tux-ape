@@ -237,6 +237,11 @@ void Settings::read(const tuxape::IniFile& ini)
     libraryThumbnailSize = ini.getInt("Library", "Thumbnail Size", libraryThumbnailSize);
     darkTheme = ini.getBool("Interface", "Dark Theme", darkTheme);
     windowsThroughX11 = ini.getBool("Interface", "Windows Through X11", windowsThroughX11);
+    if (!ini.keys("Plugins").empty()) {
+        disabledPlugins.clear();
+        for (int n = 1; ini.has("Plugins", "Disabled" + std::to_string(n)); ++n)
+            disabledPlugins << QString::fromStdString(ini.get("Plugins", "Disabled" + std::to_string(n)));
+    }
 }
 
 void Settings::write(tuxape::IniFile& ini, unsigned parts) const
@@ -356,6 +361,11 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt("Library", "Thumbnail Size", libraryThumbnailSize);
         ini.setBool("Interface", "Dark Theme", darkTheme);
         ini.setBool("Interface", "Windows Through X11", windowsThroughX11);
+        for (const std::string& key : ini.keys("Plugins"))
+            ini.remove("Plugins", key);
+        ini.setInt("Plugins", "Disabled", static_cast<int>(disabledPlugins.size()));
+        for (qsizetype n = 0; n < disabledPlugins.size(); ++n)
+            ini.set("Plugins", "Disabled" + std::to_string(n + 1), disabledPlugins[n].toStdString());
     }
 }
 

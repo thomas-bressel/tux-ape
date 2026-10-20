@@ -280,6 +280,27 @@ int main(int argc, char* argv[])
     CHECK(copied.pixel(1, 0) == graphics->colour(1) && copied.pixel(4, 0) == graphics->colour(1));
     CHECK(graphics->selectionPicture(false).size() == QSize(9, 4) && graphics->selectionPicture(true).size() == QSize(8, 4));
 
+    // Their bytes as memory has them, for who wants them as a file.
+    CHECK(graphics->selectionBytes() == QByteArray("\x40\x00\x01\x00\xC0\xC0\x03\x03", 8));
+    graphics->select(1);
+    CHECK(graphics->selectionBytes() == QByteArray("\xC0\xC0\x03\x03", 4));
+    // An entry of someone else's, a plugin's: after the window's own, to be
+    // chosen while tiles are selected, and gone when its owner deletes it.
+    {
+        CHECK(graphics->extraActions().isEmpty());
+        auto* extra = new QAction("To &Elsewhere...", &window);
+        graphics->addExtraAction(extra);
+        graphics->addExtraAction(nullptr);
+        CHECK(graphics->extraActions() == QList<QAction*>{extra} && extra->isEnabled());
+        CHECK_EQ(graphics->tileActions().size(), 7);
+        graphics->clearSelection();
+        CHECK(!extra->isEnabled() && graphics->selectionBytes().isEmpty());
+        graphics->select(0, 2);
+        CHECK(extra->isEnabled());
+        delete extra;
+        CHECK(graphics->extraActions().isEmpty());
+    }
+
     // Mark as data: the debugger shows those bytes as data, without
     // having to be on the screen.
     graphics->select(1, 2);

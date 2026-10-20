@@ -677,13 +677,17 @@ void AssemblerDialog::updateStatus()
 bool AssemblerDialog::openFile(const QString& path)
 {
     const QString absolute = QFileInfo(path).absoluteFilePath();
+    QFile file(absolute);
     for (int i = 0; i < fileCount(); ++i) {
         if (files_[i].path == absolute) {
+            // Written again since it was read, by another program, and not
+            // touched here: what is shown is the file as it is now.
+            if (!files_[i].editor->document()->isModified() && file.open(QIODevice::ReadOnly))
+                showText(i, file.readAll());
             setCurrentFile(i);
             return true;
         }
     }
-    QFile file(absolute);
     if (!file.open(QIODevice::ReadOnly))
         return false;
     const QByteArray data = file.readAll();
@@ -693,18 +697,27 @@ bool AssemblerDialog::openFile(const QString& path)
         && !files_[index].editor->document()->isModified();
     if (!spare)
         index = newFile();
-    Source& source = files_[index];
-    source.path = absolute;
-    source.title = titleOf(absolute);
-    source.crlf = data.contains("\r\n");
-    QString text = QString::fromLatin1(data);
-    text.replace("\r\n", "\n");
-    source.editor->setPlainText(text);
-    source.editor->document()->setModified(false);
+    files_[index].path = absolute;
+    files_[index].title = titleOf(absolute);
+    showText(index, data);
     updateTab(index);
     setCurrentFile(index);
     updateStatus();
     return true;
+}
+
+// Puts what a file holds in its tab, as text not yet changed. Text that is
+// already there is left alone, with its cursor and what can be undone.
+void AssemblerDialog::showText(int index, const QByteArray& data)
+{
+    Source& source = files_[index];
+    source.crlf = data.contains("\r\n");
+    QString text = QString::fromLatin1(data);
+    text.replace("\r\n", "\n");
+    if (source.editor->toPlainText() == text)
+        return;
+    source.editor->setPlainText(text);
+    source.editor->document()->setModified(false);
 }
 
 bool AssemblerDialog::saveFile(int index)

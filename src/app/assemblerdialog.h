@@ -114,7 +114,8 @@ public:
     int currentFile() const;
     void setCurrentFile(int index);
     int newFile();
-    // Opens a file in a new tab, or goes to the tab it is already in.
+    // Opens a file in a new tab, or goes to the tab it is already in: there
+    // it is read again if it was not changed here.
     bool openFile(const QString& path);
     // Saving asks for a name when the file has none. False if it could not
     // be written or the user gave up.
@@ -191,6 +192,7 @@ private:
     };
 
     void buildMenus(class QMenuBar* bar);
+    void showText(int index, const QByteArray& data);
     void updateTab(int index);
     void updateStatus();
     QString sourceName(int index) const;

@@ -33,6 +33,25 @@ TuxAPE ne contient aucune ROM. Il lit celles de WinAPE : placez le dossier
 `WinAPE20B2` de la distribution d'origine à la racine du dépôt, ou indiquez un
 autre dossier avec la variable d'environnement `TUXAPE_ROM_DIR`.
 
+## Plugins
+
+TuxAPE charge les plugins du dossier `plugins`, à la racine du dépôt ou à côté
+du programme (ou d'un autre dossier indiqué par `TUXAPE_PLUGIN_DIR`). Un plugin
+s'installe depuis son fichier `.zip` par **Settings ▸ Plugins ▸ Install from
+ZIP...**, ou en décompressant ce fichier à la main dans le dossier. Ce qu'un
+plugin doit fournir est décrit dans `src/app/plugin.h`.
+
+Un plugin ajoute ses entrées au menu **Plugins** et ses boutons au panneau du
+bas. Il peut aussi en ajouter une au menu du bouton droit de **Find Graphics**,
+pour recevoir les tuiles qui y sont sélectionnées : c'est ainsi que TuxDSK les
+copie sur son disque. L'entrée n'est là que tant que le plugin est chargé.
+
+Depuis la version 3 de cette interface, un plugin voit les fichiers des
+disquettes des lecteurs et peut y en poser, et il trouve les autres plugins
+chargés, par leur nom, pour appeler ce qu'ils offrent : c'est ainsi que TuxCMP
+met ses fichiers compressés sur la disquette du lecteur A: ou sur celle de
+TuxDSK.
+
 ## Tests
 
 ```sh

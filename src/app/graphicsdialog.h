@@ -5,9 +5,11 @@
 #include <functional>
 #include <vector>
 
+#include <QByteArray>
 #include <QDialog>
 #include <QImage>
 #include <QList>
+#include <QPointer>
 #include <QRgb>
 #include <QSize>
 
@@ -103,6 +105,8 @@ public:
     QImage selectionPicture(bool merged) const;
     // Their bytes, as lines of DB for the assembler.
     QString selectionText() const;
+    // Their bytes as memory has them: tile after tile, each line after line.
+    QByteArray selectionBytes() const;
     // To the clipboard: the picture, and the text for where text goes.
     void copySelection(bool merged);
     void markSelectionAsData();
@@ -112,6 +116,11 @@ public:
     void turnSelection(Turn turn);
     // The menu's entries, in its order.
     QList<QAction*> tileActions() const { return actions_; }
+    // An entry more, of someone else's: a plugin's. It comes after the
+    // window's own, under a line, can be chosen while tiles are selected,
+    // and is gone from the menu when its owner deletes it.
+    void addExtraAction(QAction* action);
+    QList<QAction*> extraActions() const;
 
 signals:
     // "Mark as data": memory the disassembler is to show as bytes.
@@ -151,6 +160,7 @@ private:
     QLabel* penSwatch_;
     QLabel* paperSwatch_;
     QList<QAction*> actions_;
+    QList<QPointer<QAction>> extraActions_;
     QWidget* swatches_;
 
     MemoryView memoryView_;

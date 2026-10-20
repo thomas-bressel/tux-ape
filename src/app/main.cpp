@@ -83,6 +83,8 @@ int main(int argc, char* argv[])
 
     MainWindow window(&emulator);
     window.applySettings(settings);
+    // The plugins of the plugins folder, but for those the user turned off.
+    window.loadPlugins();
     const auto open = [&] {
         // Where the windows were when TuxAPE last left, and those that were
         // open open again.

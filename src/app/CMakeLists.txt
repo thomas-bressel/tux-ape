@@ -44,6 +44,9 @@ add_library(tuxape_app STATIC
     librarydialog.h
     mainwindow.cpp
     mainwindow.h
+    plugin.h
+    pluginmanager.cpp
+    pluginmanager.h
     registersdialog.cpp
     registersdialog.h
     crtview.cpp
@@ -69,6 +72,9 @@ target_compile_definitions(tuxape_app PRIVATE
     # The Library's own folder, when TUXAPE_LIBRARY_DIR is not set and there
     # is none beside the program.
     TUXAPE_DEV_LIBRARY_DIR="${PROJECT_SOURCE_DIR}/library"
+    # The plugins folder, when TUXAPE_PLUGIN_DIR is not set and there is
+    # none beside the program.
+    TUXAPE_DEV_PLUGIN_DIR="${PROJECT_SOURCE_DIR}/plugins"
 )
 target_link_libraries(tuxape_app PUBLIC tuxape_core Qt6::Widgets Qt6::OpenGLWidgets)
 target_link_libraries(tuxape_app PRIVATE SDL2::SDL2)

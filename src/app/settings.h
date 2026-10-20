@@ -92,6 +92,9 @@ struct Settings {
     int libraryThumbnailSize = 360;  // the side of a picture's box there
     // TuxAPE's own: the dark look of its windows, in place of the light one.
     bool darkTheme = false;
+    // The plugins of the plugins folder that are not to be loaded, by the
+    // names of their folders.
+    QStringList disabledPlugins;
 
     // The assembler's options: where files named by read and incbin are
     // looked for (folders between semicolons), whether Run pushes the

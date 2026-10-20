@@ -5,7 +5,9 @@
 
 #include <QKeySequence>
 #include <QHash>
+#include <QList>
 #include <QMainWindow>
+#include <QPointer>
 
 #include "discmanager.h"
 #include "settings.h"
@@ -26,6 +28,7 @@ class BreakpointsDialog;
 class TimersDialog;
 class DebuggerDialog;
 class GraphicsDialog;
+class PluginManager;
 class RegistersDialog;
 class AsicDialog;
 class ScreenWidget;
@@ -40,6 +43,7 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(Emulator* emulator, QWidget* parent = nullptr);
+    ~MainWindow() override;
 
     ScreenWidget* screen() const { return screen_; }
     DiscManager* discs() const { return discs_; }
@@ -105,6 +109,14 @@ public:
     void placeMainWindow();
     void reopenWindows();
 
+    // TuxAPE's own: the plugins of the plugins folder (see plugin.h). Those
+    // loaded have their entries in the Plugins menu, which shows when there
+    // is one, and their buttons on the control panel. Loading them is for
+    // the application to ask for, once the settings say which are wanted.
+    PluginManager* plugins() const { return plugins_; }
+    void loadPlugins();
+    QMenu* pluginsMenu() const { return pluginsMenu_; }
+
 protected:
     void closeEvent(QCloseEvent* event) override;
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -112,8 +124,20 @@ protected:
     void dropEvent(QDropEvent* event) override;
 
 private:
+    // What a plugin is given of the window (PluginHost), for as long as it
+    // is loaded.
+    class PluginLink;
+
     Emulator* emulator_;
     DiscManager* discs_;
+    PluginManager* plugins_ = nullptr;
+    QMenu* pluginsMenu_ = nullptr;
+    QAction* pluginsEnd_ = nullptr;      // the line the plugins' entries come above
+    QWidget* pluginButtons_ = nullptr;   // their buttons on the control panel
+    // Their entries of Find Graphics' menu: kept here for the window to
+    // have them when it is first shown.
+    QList<QPointer<QAction>> pluginTilesActions_;
+    void updatePluginsMenu();
     ScreenWidget* screen_ = nullptr;
     QWidget* controlPanel_ = nullptr;
     QLabel* statusLabel_ = nullptr;

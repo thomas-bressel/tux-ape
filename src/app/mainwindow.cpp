@@ -41,6 +41,7 @@
 #include "emulator.h"
 #include "icons.h"
 #include "librarydialog.h"
+#include "pluginmanager.h"
 #include "screenwidget.h"
 #include "setupdialog.h"
 #include "tapedialog.h"
@@ -49,6 +50,7 @@
 
 #include "core/version.h"
 #include "core/cartridge.h"
+#include "core/discfiles.h"
 #include "core/files.h"
 #include "core/session.h"
 #include "core/setup.h"
@@ -91,6 +93,220 @@ QFrame* separator(QWidget* parent)
 
 }  // namespace
 
+// A loaded plugin's hold on the window: the machine through the window's
+// own ways, and a place in the Plugins menu and on the control panel for
+// what the plugin adds, which goes when the plugin does.
+class MainWindow::PluginLink : public PluginSession {
+public:
+    PluginLink(MainWindow* window, const QString& id)
+        : window_(window)
+        , id_(id)
+    {
+    }
+
+    ~PluginLink() override
+    {
+        for (const QPointer<QObject>& added : added_)
+            delete added;
+        window_->updatePluginsMenu();
+    }
+
+    QWidget* window() override { return window_; }
+
+    QAction* addAction(const QString& text, const QKeySequence& shortcut) override
+    {
+        auto* action = new QAction(text, window_);
+        if (!shortcut.isEmpty()) {
+            action->setShortcut(shortcut);
+            // On the window too, as the keys of the other menus are: they
+            // work when the menu bar is hidden.
+            window_->addAction(action);
+        }
+        window_->pluginsMenu_->insertAction(window_->pluginsEnd_, action);
+        added_ << action;
+        window_->updatePluginsMenu();
+        return action;
+    }
+
+    void addButton(QAction* action, const QIcon& icon) override
+    {
+        // Asked again for the same entry, its button takes the new picture.
+        if (QToolButton* there = buttons_.value(action)) {
+            there->setIcon(icon);
+            return;
+        }
+        auto* button = new QToolButton(window_->pluginButtons_);
+        buttons_.insert(action, button);
+        button->setIcon(icon);
+        button->setIconSize(QSize(20, 20));
+        button->setFixedSize(kButtonSize, kButtonSize);
+        button->setAutoRaise(true);
+        // The buttons must not take the keyboard away from the emulated machine.
+        button->setFocusPolicy(Qt::NoFocus);
+        const auto follow = [button, action] {
+            QString hint = QString(action->text()).remove('&').remove("...");
+            if (!action->shortcut().isEmpty())
+                hint += " (" + action->shortcut().toString(QKeySequence::NativeText) + ')';
+            button->setToolTip(hint);
+            button->setEnabled(action->isEnabled());
+        };
+        QObject::connect(button, &QToolButton::clicked, action, &QAction::trigger);
+        QObject::connect(action, &QAction::changed, button, follow);
+        follow();
+        window_->pluginButtons_->layout()->addWidget(button);
+        added_ << button;
+        window_->updatePluginsMenu();
+    }
+
+    bool insertDisc(int drive, const QString& path) override
+    {
+        return drive >= 0 && drive < window_->discs_->drives() && window_->saveBeforeLeaving(drive)
+               && window_->insertDiscFile(drive, path);
+    }
+
+    bool loadSnapshot(const QString& path) override { return window_->loadSnapshotFile(path); }
+    void autoType(const QString& text) override { window_->emulator_->autoType(text); }
+    void reset(bool cold) override { window_->emulator_->reset(cold); }
+
+    QByteArray readMemory(int address, int size) override
+    {
+        QByteArray bytes(std::clamp(size, 0, 0x10000), '\0');
+        window_->emulator_->withMachine([&](tuxape::Cpc& cpc) {
+            for (qsizetype i = 0; i < bytes.size(); ++i)
+                bytes[i] = static_cast<char>(cpc.memory().readRam(static_cast<uint16_t>(address + i)));
+        });
+        return bytes;
+    }
+
+    tuxape::PluginScreen screen() override
+    {
+        tuxape::PluginScreen screen;
+        window_->emulator_->withMachine([&](tuxape::Cpc& cpc) {
+            screen.mode = cpc.gateArray().mode() & 3;
+            for (int pen = 0; pen <= 16; ++pen)
+                screen.inks << cpc.gateArray().ink(pen);
+            if (cpc.plus() && cpc.asic().unlocked())
+                for (int pen = 0; pen <= 16; ++pen)
+                    screen.plusColours << cpc.asic().colour(pen);
+            // The CRTC counts characters; a character is two bytes of the
+            // 16K its address picks.
+            const int start = (cpc.crtc().reg(12) & 0x3F) << 8 | cpc.crtc().reg(13);
+            screen.address = (start & 0x3000) << 2 | (start & 0x03FF) << 1;
+            screen.crtcStart = start;
+            screen.columns = cpc.crtc().reg(1);
+            screen.rows = cpc.crtc().reg(6) & 0x7F;
+            screen.rowHeight = (cpc.crtc().reg(9) & 0x1F) + 1;
+        });
+        return screen;
+    }
+
+    void openInAssembler(const QString& path) override
+    {
+        window_->showAssembler();
+        window_->assembler_->openFile(path);
+    }
+
+    QString dataFolder() override
+    {
+        const QString folder = QFileInfo(Settings::file()).absolutePath() + "/Plugins/" + id_;
+        QDir().mkpath(folder);
+        return folder;
+    }
+
+    bool assembleAndRun(const QString& path) override
+    {
+        window_->showAssembler();
+        return window_->assembler_->openFile(path) && window_->assembler_->run();
+    }
+
+    QAction* addTilesAction(const QString& text) override
+    {
+        auto* action = new QAction(text, window_);
+        // Nothing is selected in a window that is not there yet.
+        action->setEnabled(false);
+        // Those of plugins that were stopped are no longer.
+        window_->pluginTilesActions_.removeIf([](const QPointer<QAction>& gone) { return gone.isNull(); });
+        window_->pluginTilesActions_ << action;
+        if (window_->graphics_)
+            window_->graphics_->addExtraAction(action);
+        added_ << action;
+        return action;
+    }
+
+    tuxape::PluginTiles selectedTiles() override
+    {
+        tuxape::PluginTiles tiles;
+        const GraphicsDialog* graphics = window_->graphics_;
+        if (!graphics || graphics->selectionCount() == 0)
+            return tiles;
+        tiles.bytes = graphics->selectionBytes();
+        tiles.count = graphics->selectionCount();
+        tiles.width = graphics->tileWidth();
+        tiles.height = graphics->tileHeight();
+        tiles.address = static_cast<int>(graphics->tileAddress(graphics->selectionStart()));
+        tiles.mode = graphics->mode();
+        return tiles;
+    }
+
+    int drives() override { return window_->discs_->drives(); }
+
+    tuxape::PluginDisc disc(int drive) override
+    {
+        tuxape::PluginDisc disc;
+        if (drive < 0 || drive >= window_->discs_->drives())
+            return disc;
+        disc.name = QFileInfo(window_->discs_->info(drive).path).fileName();
+        window_->emulator_->withMachine([&](tuxape::Cpc& cpc) {
+            tuxape::Disc* inside = cpc.fdc().drive(drive).disc.get();
+            disc.present = inside != nullptr;
+            if (!inside)
+                return;
+            const tuxape::DiscFiles files(*inside);
+            if (!files.valid())
+                return;
+            disc.writable = !inside->writeProtected;
+            disc.freeBytes = files.freeBytes();
+            for (const tuxape::DiscFile& file : files.list())
+                if (file.user == 0)
+                    disc.files << QString::fromStdString(file.name);
+        });
+        return disc;
+    }
+
+    QString putFile(int drive, const QString& name, const QByteArray& content) override
+    {
+        if (drive < 0 || drive >= window_->discs_->drives())
+            return MainWindow::tr("The machine has no drive %1:.").arg(driveLetter(drive));
+        const std::string file = name.toUpper().toStdString();
+        if (!tuxape::DiscFiles::directoryName(file))
+            return MainWindow::tr("%1 is not a name a file can have on a disc.").arg(name);
+        const auto bytes = std::span(reinterpret_cast<const uint8_t*>(content.constData()), static_cast<size_t>(content.size()));
+        return window_->emulator_->withMachine([&](tuxape::Cpc& cpc) {
+            tuxape::Disc* disc = cpc.fdc().drive(drive).disc.get();
+            if (!disc)
+                return MainWindow::tr("There is no disc in drive %1:.").arg(driveLetter(drive));
+            if (disc->writeProtected)
+                return MainWindow::tr("The disc in drive %1: cannot be written to.").arg(driveLetter(drive));
+            tuxape::DiscFiles files(*disc);
+            if (!files.valid())
+                return MainWindow::tr("The format of the disc in drive %1: is not one files can be put on.")
+                    .arg(driveLetter(drive));
+            return files.write(file, bytes) ? QString()
+                                            : MainWindow::tr("There is no room for %1 on the disc in drive %2:.")
+                                                  .arg(name.toUpper())
+                                                  .arg(driveLetter(drive));
+        });
+    }
+
+    QObject* plugin(const QString& id) override { return window_->plugins_->instance(id); }
+
+private:
+    MainWindow* window_;
+    QString id_;
+    QList<QPointer<QObject>> added_;
+    QHash<QAction*, QPointer<QToolButton>> buttons_;
+};
+
 MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
     : QMainWindow(parent)
     , emulator_(emulator)
@@ -124,6 +340,8 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
     createControlPanel();
     layout->addWidget(controlPanel_);
     setCentralWidget(central);
+    // The plugins are found now; they are loaded when the application asks.
+    plugins_ = new PluginManager([this](const QString& id) { return std::make_unique<PluginLink>(this, id); }, this);
 
     connect(emulator_, &Emulator::statsChanged, this, &MainWindow::updateStats, Qt::QueuedConnection);
     connect(emulator_, &Emulator::stopped, this, &MainWindow::machineStopped, Qt::QueuedConnection);
@@ -144,6 +362,26 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
     // Open at the picture's natural size. (Left to itself Qt caps a new
     // window at two thirds of the screen.)
     resize(sizeHint());
+}
+
+MainWindow::~MainWindow()
+{
+    // While there is still a window for them to let go of.
+    plugins_->stopAll();
+}
+
+void MainWindow::loadPlugins()
+{
+    plugins_->setDisabled(settings_.disabledPlugins);
+    plugins_->start();
+}
+
+// The Plugins menu and the plugins' part of the control panel are there
+// when a plugin has put something in them.
+void MainWindow::updatePluginsMenu()
+{
+    pluginsMenu_->menuAction()->setVisible(pluginsMenu_->actions().constFirst() != pluginsEnd_);
+    pluginButtons_->setVisible(pluginButtons_->layout()->count() > 1);
 }
 
 void MainWindow::closeEvent(QCloseEvent* event)
@@ -474,6 +712,8 @@ void MainWindow::createMenus()
     addItem(settings, tr("&Memory"), {}, [this] { showSetup(SetupDialog::Memory); });
     addItem(settings, tr("&Input"), {}, [this] { showSetup(SetupDialog::Input); });
     addItem(settings, tr("&Other"), {}, [this] { showSetup(SetupDialog::Other); });
+    // TuxAPE's own: the page plugins are installed on.
+    addItem(settings, tr("&Plugins"), {}, [this] { showSetup(SetupDialog::Plugins); });
     settings->addSeparator();
     addItem(settings, tr("&Normal Speed (100%)"), SHIFT | Qt::Key_F3, [this] { setSpeed(100); });
     addItem(settings, tr("&High Speed (1000%)"), SHIFT | Qt::Key_F4, [this] { setSpeed(1000); });
@@ -535,6 +775,14 @@ void MainWindow::createMenus()
     QMenu* assembler = menuBar()->addMenu(tr("&Assembler"));
     assemblerAction_ = addItem(assembler, tr("Show &Assembler"), Qt::Key_F3, [this] { showAssembler(); });
 
+    // ---- Plugins: TuxAPE's own ----
+    // The loaded plugins put their entries above the line. With none, the
+    // menu is not shown.
+    pluginsMenu_ = menuBar()->addMenu(tr("&Plugins"));
+    pluginsEnd_ = pluginsMenu_->addSeparator();
+    addItem(pluginsMenu_, tr("&Manage Plugins..."), {}, [this] { showSetup(SetupDialog::Plugins); });
+    pluginsMenu_->menuAction()->setVisible(false);
+
     // ---- Help ----
     QMenu* help = menuBar()->addMenu(tr("&Help"));
     helpAction_ = addItem(help, tr("&Contents"), Qt::Key_F1, [this] { showHelp(); });
@@ -584,6 +832,15 @@ void MainWindow::createControlPanel()
     addButton(IconId::LoadSnapshot, tr("Load Snapshot (F5)"), loadSnapshotAction_);
     addButton(IconId::SaveSnapshot, tr("Save Snapshot (F6)"), saveSnapshotAction_);
     addButton(IconId::Photo, tr("Screen to Thumbnail (CTRL+F8)"), thumbnailAction_);
+    // The plugins' buttons, after a line of their own: there when a plugin
+    // has one.
+    pluginButtons_ = new QWidget(controlPanel_);
+    auto* pluginRow = new QHBoxLayout(pluginButtons_);
+    pluginRow->setContentsMargins(0, 0, 0, 0);
+    pluginRow->setSpacing(0);
+    pluginRow->addWidget(separator(pluginButtons_));
+    pluginButtons_->setVisible(false);
+    row->addWidget(pluginButtons_);
     row->addWidget(separator(controlPanel_));
     addButton(IconId::Settings, tr("Settings (F12)"), setupAction_);
     addButton(IconId::FullScreen, tr("Toggle Full Screen (F10)"), fullScreenAction_);
@@ -707,6 +964,9 @@ void MainWindow::showGraphics()
         graphics_->setMemoryView([this](tuxape::Memory& memory, const std::function<void()>& use) {
             return debugger_ && debugger_->throughAnyView(memory, use);
         });
+        // What the plugins loaded do with the tiles selected.
+        for (const QPointer<QAction>& action : pluginTilesActions_)
+            graphics_->addExtraAction(action);
     }
     graphics_->show();
     graphics_->raise();
@@ -748,7 +1008,7 @@ QString MainWindow::helpText() const
     };
     html += "<table>";
     for (const QAction* top : menuBar()->actions())
-        if (top->menu())
+        if (top->menu() && top->isVisible())
             list(top->menu(), QString(top->text()).remove('&') + " &gt; ");
     html += "</table>";
     html += tr("<h3>In the debugger</h3>"
@@ -1039,6 +1299,7 @@ void MainWindow::showSetup(int page)
     dialog.setPreview(emulator_->frame());
     const tuxape::KeyMap keysBefore = emulator_->keyMap();
     dialog.setKeyMap(keysBefore);
+    dialog.setPlugins(plugins_);
     dialog.showPage(static_cast<SetupDialog::Page>(page));
     // The shader's sliders show on the picture as they move.
     connect(&dialog, &SetupDialog::shaderChanged, this, [this, &dialog](bool on, const CrtLook& look) {
@@ -1070,6 +1331,8 @@ void MainWindow::showSetup(int page)
     if (!emulator_->writeXmemRoms(dialog.xmemEdits(), QString::fromStdString(settings_.machine.xmemFlash)))
         report(tr("Cannot write the X-MEM's flash memory to %1.")
                    .arg(QDir::toNativeSeparators(QString::fromStdString(settings_.machine.xmemFlash))));
+    // The plugins whose boxes were ticked or cleared are loaded or unloaded.
+    plugins_->setDisabled(settings_.disabledPlugins);
     // The keyboard layout is kept as it now is, for the next run too.
     if (!(dialog.keyMap() == keysBefore)) {
         emulator_->setKeyMap(dialog.keyMap());

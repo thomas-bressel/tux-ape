@@ -639,6 +639,16 @@ QString GraphicsDialog::selectionText() const
     return text;
 }
 
+QByteArray GraphicsDialog::selectionBytes() const
+{
+    QByteArray bytes;
+    for (int tile = selected_; selected_ >= 0 && tile < selected_ + selectedCount_; ++tile)
+        for (int line = 0; line < tileHeight(); ++line)
+            for (int column = 0; column < tileWidth(); ++column)
+                bytes += static_cast<char>(memory_[byteAddress(tile, column, line)]);
+    return bytes;
+}
+
 void GraphicsDialog::copySelection(bool merged)
 {
     if (selected_ < 0)
@@ -699,12 +709,32 @@ void GraphicsDialog::turnSelection(Turn turn)
     drawView();
 }
 
+void GraphicsDialog::addExtraAction(QAction* action)
+{
+    if (!action)
+        return;
+    extraActions_.removeIf([](const QPointer<QAction>& gone) { return gone.isNull(); });
+    extraActions_ << action;
+    updateActions();
+}
+
+QList<QAction*> GraphicsDialog::extraActions() const
+{
+    QList<QAction*> actions;
+    for (const QPointer<QAction>& action : extraActions_)
+        if (action)
+            actions << action;
+    return actions;
+}
+
 void GraphicsDialog::updateActions()
 {
     for (QAction* action : actions_) {
         const bool rotates = action->objectName().startsWith("Rotate");
         action->setEnabled(selected_ >= 0 && (!rotates || canRotate()));
     }
+    for (QAction* action : extraActions())
+        action->setEnabled(selected_ >= 0);
 }
 
 // The tile and the pixel at a place of the view.
@@ -768,6 +798,11 @@ bool GraphicsDialog::eventFilter(QObject* watched, QEvent* event)
                     menu.addSeparator();
                 menu.addAction(action);
             }
+            // What plugins do with the tiles, under a line of their own.
+            const QList<QAction*> extra = extraActions();
+            if (!extra.isEmpty())
+                menu.addSeparator();
+            menu.addActions(extra);
             menu.exec(static_cast<QContextMenuEvent*>(event)->globalPos());
         }
         return true;

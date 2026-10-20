@@ -8,8 +8,10 @@
 #include <QLineEdit>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QDragEnterEvent>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFrame>
@@ -20,8 +22,10 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStyle>
@@ -31,8 +35,11 @@
 #include <QTextBrowser>
 #include <QToolButton>
 #include <QTreeWidget>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWheelEvent>
+
+#include "pluginmanager.h"
 
 #include "contrast.h"
 #include "core/files.h"
@@ -205,6 +212,8 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     tabs_->addTab(createMemoryPage(), tr("Memory"));
     tabs_->addTab(createInputPage(), tr("Input"));
     tabs_->addTab(createOtherPage(), tr("Other"));
+    tabs_->addTab(createPluginsPage(), tr("Plugins"));
+    setAcceptDrops(true);
     tabs_->addTab(createExpansionsPage(), tr("Expansions"));
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Help);
@@ -1389,6 +1398,9 @@ void SetupDialog::setSettings(const Settings& settings)
     updateTotalRam();
     updateRomRows();
     roms_->viewport()->update();
+
+    disabledPlugins_ = settings.disabledPlugins;
+    fillPlugins();
 }
 
 // ---- Profiles ---------------------------------------------------------
@@ -1629,6 +1641,7 @@ Settings SetupDialog::settings() const
     settings.joystick = joystick_->isChecked();
     settings.amxMouse = amxMouse_->isChecked();
     settings.keyboardFile = keyboardFile_;
+    settings.disabledPlugins = disabledPlugins_;
     return settings;
 }
 
@@ -2057,4 +2070,240 @@ void SetupDialog::chooseXmassDisc()
                                         tr("Disc images (*.img *.ima *.dsk *.bin);;All files (*)"));
     if (!file.isEmpty())
         setXmassDisc(file);
+}
+
+// ---- Plugins: TuxAPE's own page -----------------------------------------
+
+QWidget* SetupDialog::createPluginsPage()
+{
+    auto* page = new QWidget;
+
+    auto* listBox = new QGroupBox(tr("Installed Plugins"));
+    pluginList_ = new QTreeWidget;
+    pluginList_->setObjectName("lvPlugins");
+    pluginList_->setRootIsDecorated(false);
+    pluginList_->setUniformRowHeights(true);
+    pluginList_->setHeaderLabels({tr("On"), tr("Plugin"), tr("Version"), tr("From")});
+    pluginList_->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    pluginList_->header()->setSectionResizeMode(1, QHeaderView::Stretch);
+    pluginList_->header()->setStretchLastSection(false);
+    connect(pluginList_, &QTreeWidget::currentItemChanged, this, [this] { showPluginInfo(); });
+    // A box ticked or not is a setting like the others: it waits for OK.
+    connect(pluginList_, &QTreeWidget::itemChanged, this, [this](QTreeWidgetItem* item) {
+        const QString id = item->data(0, Qt::UserRole).toString();
+        disabledPlugins_.removeAll(id);
+        if (item->checkState(0) != Qt::Checked)
+            disabledPlugins_ << id;
+        showPluginInfo();
+    });
+
+    installPlugin_ = new QPushButton(tr("Install from ZIP..."));
+    installPlugin_->setObjectName("bInstallPlugin");
+    connect(installPlugin_, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Install Plugin"), QString(),
+                                                          tr("Plugins (*.zip);;All files (*)"));
+        if (!path.isEmpty())
+            askInstallPlugin(path);
+    });
+    removePlugin_ = new QPushButton(tr("Remove"));
+    removePlugin_->setObjectName("bRemovePlugin");
+    connect(removePlugin_, &QPushButton::clicked, this, [this] {
+        const PluginInfo* info = plugins_ ? plugins_->plugin(selectedPlugin()) : nullptr;
+        if (!info)
+            return;
+        const QString name = info->name;
+        if (QMessageBox::question(this, windowTitle(),
+                                  tr("Remove %1?\n\nIts folder is deleted:\n%2")
+                                      .arg(name, QDir::toNativeSeparators(info->folder)))
+            != QMessageBox::Yes)
+            return;
+        QString error;
+        if (!removePlugin(selectedPlugin(), &error))
+            QMessageBox::warning(this, windowTitle(), tr("%1 could not be removed: %2.").arg(name, error));
+    });
+    auto* openFolder = new QPushButton(tr("Open Plugins Folder"));
+    openFolder->setObjectName("bPluginFolder");
+    connect(openFolder, &QPushButton::clicked, this, [] {
+        const QString folder = PluginManager::folder();
+        if (!folder.isEmpty() && QDir().mkpath(folder))
+            QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
+    });
+    auto* hint = new QLabel(tr("A plugin's .zip file dropped on this page is installed too. "
+                               "One installed over an older version replaces it."));
+    hint->setWordWrap(true);
+
+    auto* buttons = new QHBoxLayout;
+    buttons->addWidget(installPlugin_);
+    buttons->addWidget(removePlugin_);
+    buttons->addStretch(1);
+    buttons->addWidget(openFolder);
+    auto* listLayout = new QVBoxLayout(listBox);
+    listLayout->addWidget(pluginList_, 1);
+    listLayout->addLayout(buttons);
+    listLayout->addWidget(hint);
+
+    pluginBox_ = new QGroupBox;
+    pluginBox_->setObjectName("gbPlugin");
+    pluginInfo_ = new QLabel;
+    pluginInfo_->setObjectName("lPluginInfo");
+    pluginInfo_->setWordWrap(true);
+    pluginInfo_->setTextFormat(Qt::RichText);
+    pluginInfo_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    pluginInfo_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    auto* infoLayout = new QVBoxLayout(pluginBox_);
+    infoLayout->addWidget(pluginInfo_);
+
+    auto* layout = new QVBoxLayout(page);
+    layout->addWidget(listBox, 1);
+    layout->addWidget(pluginBox_);
+    fillPlugins();
+    return page;
+}
+
+void SetupDialog::setPlugins(PluginManager* plugins)
+{
+    if (plugins_)
+        disconnect(plugins_, nullptr, this, nullptr);
+    plugins_ = plugins;
+    if (plugins_)
+        connect(plugins_, &PluginManager::changed, this, &SetupDialog::fillPlugins);
+    fillPlugins();
+}
+
+QString SetupDialog::selectedPlugin() const
+{
+    const QTreeWidgetItem* item = pluginList_->currentItem();
+    return item ? item->data(0, Qt::UserRole).toString() : QString();
+}
+
+void SetupDialog::selectPlugin(const QString& id)
+{
+    for (int row = 0; row < pluginList_->topLevelItemCount(); ++row)
+        if (pluginList_->topLevelItem(row)->data(0, Qt::UserRole).toString() == id)
+            pluginList_->setCurrentItem(pluginList_->topLevelItem(row));
+}
+
+void SetupDialog::fillPlugins()
+{
+    const QString chosen = selectedPlugin();
+    {
+        const QSignalBlocker blocker(pluginList_);
+        pluginList_->clear();
+        if (plugins_) {
+            for (const PluginInfo& info : plugins_->plugins()) {
+                auto* item = new QTreeWidgetItem(pluginList_, {QString(), info.name, info.version, info.author});
+                item->setData(0, Qt::UserRole, info.id);
+                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                item->setCheckState(0, disabledPlugins_.contains(info.id) ? Qt::Unchecked : Qt::Checked);
+                if (info.id == chosen)
+                    pluginList_->setCurrentItem(item);
+            }
+        }
+        if (!pluginList_->currentItem() && pluginList_->topLevelItemCount() > 0)
+            pluginList_->setCurrentItem(pluginList_->topLevelItem(0));
+    }
+    installPlugin_->setEnabled(plugins_ != nullptr);
+    showPluginInfo();
+}
+
+void SetupDialog::showPluginInfo()
+{
+    const PluginInfo* info = plugins_ ? plugins_->plugin(selectedPlugin()) : nullptr;
+    removePlugin_->setEnabled(info != nullptr);
+    if (!info) {
+        pluginBox_->setTitle(tr("No Plugin"));
+        pluginInfo_->setText(plugins_ ? tr("A plugin comes as a .zip file. Install from ZIP unpacks it into the plugins "
+                                           "folder, where one can also be put by hand:<br>%1")
+                                            .arg(QDir::toNativeSeparators(PluginManager::folder()).toHtmlEscaped())
+                                      : QString());
+        return;
+    }
+    QString status;
+    if (!info->problem.isEmpty())
+        status = tr("Cannot be used: %1.").arg(info->problem);
+    else if (disabledPlugins_.contains(info->id))
+        status = info->loaded ? tr("Loaded. It is unloaded at OK: its box is not ticked.")
+                              : tr("Not loaded: its box is not ticked.");
+    else if (info->loaded)
+        status = tr("Loaded. It is in the Plugins menu.");
+    else
+        status = plugins_->started() ? tr("Loaded at OK.") : tr("Loaded when TuxAPE starts.");
+    const auto row = [](const QString& label, const QString& value) {
+        return value.isEmpty() ? QString()
+                               : QString("<tr><td>%1&nbsp;&nbsp;</td><td>%2</td></tr>").arg(label, value.toHtmlEscaped());
+    };
+    pluginBox_->setTitle(info->name);
+    pluginInfo_->setText(
+        (info->description.isEmpty() ? QString() : "<p>" + info->description.toHtmlEscaped() + "</p>") + "<table>"
+        + row(tr("Status"), status) + row(tr("Licence"), info->licence)
+        + row(tr("Needs"), tr("TuxAPE plugin API %1").arg(info->api))
+        + row(tr("Installed in"), QDir::toNativeSeparators(info->folder)) + "</table>");
+}
+
+bool SetupDialog::installPlugin(const QString& archive, QString* error)
+{
+    if (!plugins_)
+        return false;
+    const auto info = PluginManager::inspect(archive, error);
+    if (!info || !plugins_->install(archive, error))
+        return false;
+    selectPlugin(info->id);
+    return true;
+}
+
+bool SetupDialog::removePlugin(const QString& id, QString* error)
+{
+    if (!plugins_ || !plugins_->remove(id, error))
+        return false;
+    disabledPlugins_.removeAll(id);
+    return true;
+}
+
+void SetupDialog::askInstallPlugin(const QString& archive)
+{
+    const QString file = QFileInfo(archive).fileName();
+    QString error;
+    const auto info = PluginManager::inspect(archive, &error);
+    if (!info || !info->problem.isEmpty()) {
+        QMessageBox::warning(this, windowTitle(),
+                             tr("%1 cannot be installed: %2.").arg(file, info ? info->problem : error));
+        return;
+    }
+    QMessageBox box(QMessageBox::Warning, tr("Install Plugin"),
+                    tr("Install %1 %2?").arg(info->name, info->version), QMessageBox::NoButton, this);
+    box.setInformativeText(
+        tr("%1\n\nLicence: %2\nMade for: %3\nGoes into: %4\n\n"
+           "A plugin is a program: it can do on this computer all that TuxAPE can. "
+           "Install it only if you trust where it comes from.")
+            .arg(file, info->licence.isEmpty() ? tr("not said") : info->licence, info->platforms.join(", "),
+                 QDir::toNativeSeparators(PluginManager::folder() + '/' + info->id)));
+    QPushButton* install = box.addButton(tr("Install"), QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(QMessageBox::Cancel);
+    box.exec();
+    if (box.clickedButton() != install)
+        return;
+    if (!installPlugin(archive, &error)) {
+        QMessageBox::warning(this, windowTitle(), tr("%1 could not be installed: %2.").arg(file, error));
+        return;
+    }
+    // Installed, it may still not have loaded: its library says why.
+    const PluginInfo* installed = plugins_->plugin(info->id);
+    if (installed && !installed->problem.isEmpty())
+        QMessageBox::warning(this, windowTitle(),
+                             tr("%1 is installed but cannot be used: %2.").arg(installed->name, installed->problem));
+}
+
+void SetupDialog::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (plugins_ && tabs_->currentIndex() == Plugins && event->mimeData()->hasUrls())
+        event->acceptProposedAction();
+}
+
+void SetupDialog::dropEvent(QDropEvent* event)
+{
+    for (const QUrl& url : event->mimeData()->urls())
+        if (url.isLocalFile() && url.toLocalFile().endsWith(".zip", Qt::CaseInsensitive))
+            askInstallPlugin(url.toLocalFile());
+    event->acceptProposedAction();
 }

@@ -1433,11 +1433,13 @@ void testDialog(const QString& picture)
     }
     speed->setValue(300);
 
-    // Six pages as in WinAPE; only the first is there yet.
-    CHECK_EQ(tabs->count(), 7);
+    // Six pages as in WinAPE; only the first is there yet. And a seventh,
+    // TuxAPE's own, for its plugins (see gui_plugins).
+    CHECK_EQ(tabs->count(), 8);
     CHECK(tabs->tabText(0) == "General");
     CHECK(tabs->tabText(3) == "Memory");
-    CHECK(tabs->tabText(6) == "Expansions");
+    CHECK(tabs->tabText(6) == "Plugins");
+    CHECK(tabs->tabText(7) == "Expansions");
     CHECK(tabs->isTabEnabled(0));
     CHECK(tabs->isTabEnabled(1));
     CHECK(tabs->isTabEnabled(2));

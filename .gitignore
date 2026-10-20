@@ -33,5 +33,10 @@ CMakeUserPresets.json
 # ROM images the user keeps for the emulated machine: not ours to version.
 /roms/
 
+# The plugins the user installed: programs of their own makers. The folder
+# itself is kept, for a plugin to be put in by hand.
+/plugins/*
+!/plugins/README.md
+
 # What tools/make-dist.sh makes: TuxAPE ready to run, with its folders.
 /dist/

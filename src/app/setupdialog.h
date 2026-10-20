@@ -12,6 +12,7 @@
 #include "core/keymap.h"
 #include "settings.h"
 
+class PluginManager;
 class QAbstractButton;
 class QCheckBox;
 class QGroupBox;
@@ -29,12 +30,13 @@ class QTreeWidget;
 // WinAPE's Setup window: a profile selector above six pages of settings
 // (General, Display, Sound, Memory, Input, Other). The pages and controls
 // carry the object names of WinAPE's own form (cbCRTCType, ckFastDisc...).
-// What TuxAPE cannot do yet is shown greyed out.
+// What TuxAPE cannot do yet is shown greyed out. A seventh page is TuxAPE's
+// own: Plugins.
 class SetupDialog : public QDialog {
     Q_OBJECT
 
 public:
-    enum Page { General, Display, Sound, Memory, Input, Other, Expansions };
+    enum Page { General, Display, Sound, Memory, Input, Other, Plugins, Expansions };
 
     explicit SetupDialog(const Settings& settings, QWidget* parent = nullptr);
 
@@ -120,7 +122,39 @@ public:
     QString xmassDisc() const { return xmassDisc_; }
     void setXmassDisc(const QString& file);
 
+    // The Plugins page: the plugins of the plugins folder, each with a box
+    // to tick for it to be loaded, and the buttons that install one from
+    // the .zip archive it comes in and remove one. The page stays empty
+    // until it is told whose plugins they are.
+    void setPlugins(PluginManager* plugins);
+    // The plugin chosen in the list, by its id; empty for none.
+    QString selectedPlugin() const;
+    void selectPlugin(const QString& id);
+    // What the page's buttons do once the user has agreed: the plugin an
+    // archive holds is installed, or the one of that id removed. That is
+    // done at once, not at OK. False, with the reason, if it could not be.
+    bool installPlugin(const QString& archive, QString* error = nullptr);
+    bool removePlugin(const QString& id, QString* error = nullptr);
+
+protected:
+    // An archive dropped on the Plugins page is installed.
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+
 private:
+    PluginManager* plugins_ = nullptr;
+    QStringList disabledPlugins_;  // those whose box is not ticked
+    QTreeWidget* pluginList_ = nullptr;
+    QPushButton* installPlugin_ = nullptr;
+    QPushButton* removePlugin_ = nullptr;
+    QGroupBox* pluginBox_ = nullptr;
+    QLabel* pluginInfo_ = nullptr;
+    QWidget* createPluginsPage();
+    void fillPlugins();
+    void showPluginInfo();
+    // Shows what an archive holds and installs it if the user agrees.
+    void askInstallPlugin(const QString& archive);
+
     QComboBox* profile_ = nullptr;
     QTabWidget* tabs_ = nullptr;
     QComboBox* crtcType_ = nullptr;
