@@ -236,6 +236,7 @@ void Settings::read(const tuxape::IniFile& ini)
     libraryThumbnailView = ini.getBool("Library", "Thumbnail View", libraryThumbnailView);
     libraryThumbnailSize = ini.getInt("Library", "Thumbnail Size", libraryThumbnailSize);
     darkTheme = ini.getBool("Interface", "Dark Theme", darkTheme);
+    language = QString::fromStdString(ini.get("Interface", "Language", language.toStdString()));
     windowsThroughX11 = ini.getBool("Interface", "Windows Through X11", windowsThroughX11);
     if (!ini.keys("Plugins").empty()) {
         disabledPlugins.clear();
@@ -372,6 +373,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool("Library", "Thumbnail View", libraryThumbnailView);
         ini.setInt("Library", "Thumbnail Size", libraryThumbnailSize);
         ini.setBool("Interface", "Dark Theme", darkTheme);
+        ini.set("Interface", "Language", language.toStdString());
         ini.setBool("Interface", "Windows Through X11", windowsThroughX11);
         for (const std::string& key : ini.keys("Plugins"))
             ini.remove("Plugins", key);

@@ -5,6 +5,7 @@
 #include <cstring>
 #include <QTextBrowser>
 #include <QTextCursor>
+#include <QActionGroup>
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -41,6 +42,7 @@
 #include "discmanager.h"
 #include "emulator.h"
 #include "icons.h"
+#include "language.h"
 #include "librarydialog.h"
 #include "pluginmanager.h"
 #include "screenwidget.h"
@@ -763,6 +765,16 @@ void MainWindow::createMenus()
     });
     darkThemeAction_->setCheckable(true);
     darkThemeAction_->setChecked(settings_.darkTheme);
+    // Each language by its own name, whatever the language of the menus.
+    QMenu* languages = settings->addMenu(tr("&Language"));
+    auto* languageGroup = new QActionGroup(languages);
+    for (const Language& language : availableLanguages()) {
+        QAction* entry = languages->addAction(language.name);
+        entry->setCheckable(true);
+        entry->setChecked(language.code == currentLanguage());
+        languageGroup->addAction(entry);
+        connect(entry, &QAction::triggered, this, [this, code = language.code] { changeLanguage(code); });
+    }
     multifaceAction_ = addItem(settings, tr("M&ultiface Stop"), Qt::Key_F11, [this] { emulator_->multifaceStop(); });
     multifaceAction_->setEnabled(emulator_->hasMultiface());
 
@@ -2248,6 +2260,69 @@ QString MainWindow::quickStatePath() const
     if (name.isEmpty())
         name = QStringLiteral("quicksave");
     return Settings::saveStatesFolder() + '/' + name + QStringLiteral(".sna");
+}
+
+void MainWindow::changeLanguage(const QString& code)
+{
+    if (code == settings_.language)
+        return;
+    settings_.language = code;
+    if (!settings_.save())
+        report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+    QMessageBox box(QMessageBox::Question, tr("Language"),
+                    tr("TuxAPE starts again to change its language. The machine keeps its state, its discs and its "
+                       "tape, and the windows open again where they are."),
+                    QMessageBox::NoButton, this);
+    QPushButton* now = box.addButton(tr("Start Again Now"), QMessageBox::AcceptRole);
+    box.addButton(tr("At the Next Start"), QMessageBox::RejectRole);
+    box.setDefaultButton(now);
+    whilePaused([&] { box.exec(); });
+    if (box.clickedButton() != now)
+        return;
+    restartArguments_ = startAgainArguments();
+    // Closing asks about the discs and the sources not saved, as when
+    // TuxAPE quits; the user may stay instead.
+    if (restartArguments_.isEmpty() || !close())
+        restartArguments_.clear();
+}
+
+QStringList MainWindow::startAgainArguments()
+{
+    // Written as a snapshot, but not one the user saved: the snapshot of
+    // File > Update Snapshot stays theirs.
+    const QString state = QDir(QDir::tempPath())
+                              .filePath(QString("tuxape-%1-restart.sna").arg(QCoreApplication::applicationPid()));
+    const std::vector<uint8_t> bytes = snapshotBytes();
+    QFile file(state);
+    if (!file.open(QIODevice::WriteOnly)
+        || file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size()))
+               != static_cast<qint64>(bytes.size())) {
+        report(tr("Cannot write %1:\n%2").arg(QDir::toNativeSeparators(state), file.errorString()));
+        return {};
+    }
+    QStringList arguments{"--resume", state};
+    for (int drive = 0; drive < DiscManager::kDrives; ++drive) {
+        const DiscManager::Info disc = discs_->info(drive);
+        // A disc that came out of an archive has no file to be put in again.
+        if (disc.present && QFileInfo::exists(disc.path))
+            arguments << "--insert" << QString("%1:%2").arg(QChar('A' + drive), disc.path);
+    }
+    if (!tapePath_.isEmpty() && QFileInfo::exists(tapePath_))
+        arguments << "--tape" << tapePath_;
+    return arguments;
+}
+
+bool MainWindow::resumeFrom(const QString& stateFile)
+{
+    QFile file(stateFile);
+    if (!file.open(QIODevice::ReadOnly)) {
+        report(tr("Cannot read %1:\n%2").arg(QDir::toNativeSeparators(stateFile), file.errorString()));
+        return false;
+    }
+    const QByteArray bytes = file.readAll();
+    file.remove();
+    return loadSnapshotData({reinterpret_cast<const uint8_t*>(bytes.constData()), static_cast<size_t>(bytes.size())},
+                            QDir::toNativeSeparators(stateFile));
 }
 
 bool MainWindow::quickSaveState()

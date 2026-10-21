@@ -109,7 +109,7 @@ public:
     {
         setObjectName("SpriteBoard");
         setFixedSize(8 * kCellWidth, 2 * kCellHeight);
-        setToolTip(tr("The sixteen hardware sprites, as the machine has them: click one to see its registers"));
+        setToolTip(AsicDialog::tr("The sixteen hardware sprites, as the machine has them: click one to see its registers"));
     }
     std::function<void(int)> chosen;
 
@@ -137,7 +137,7 @@ protected:
             face.setBold(n == state_.selected);
             painter.setFont(face);
             painter.setPen(text);
-            const QString what = shown ? QString("%1  %2×%3").arg(n).arg(sprite.magX).arg(sprite.magY) : tr("%1  off").arg(n);
+            const QString what = shown ? QString("%1  %2×%3").arg(n).arg(sprite.magX).arg(sprite.magY) : AsicDialog::tr("%1  off").arg(n);
             painter.drawText(QRect(box.left(), picture.bottom() + 2, box.width(), box.bottom() - picture.bottom() - 2),
                              Qt::AlignHCenter | Qt::AlignTop, what);
             // The one whose registers are shown: a frame round it, and its
@@ -172,7 +172,7 @@ public:
     {
         setObjectName("SpriteMap");
         setFixedSize(400, 240);
-        setToolTip(tr("Where the sprites stand on the picture, the border round it: click one to see its registers"));
+        setToolTip(AsicDialog::tr("Where the sprites stand on the picture, the border round it: click one to see its registers"));
     }
     std::function<void(int)> chosen;
 

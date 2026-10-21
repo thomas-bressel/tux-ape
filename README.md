@@ -13,7 +13,7 @@ système : il se compile et se teste seul.
 Dépendances sous Debian / Ubuntu :
 
 ```sh
-sudo apt install build-essential cmake qt6-base-dev libsdl2-dev
+sudo apt install build-essential cmake qt6-base-dev qt6-tools-dev qt6-l10n-tools libsdl2-dev
 ```
 
 Puis :
@@ -32,6 +32,30 @@ développement Qt dans `.deps/`, où le preset `dev` les trouve.
 TuxAPE ne contient aucune ROM. Il lit celles de WinAPE : placez le dossier
 `WinAPE20B2` de la distribution d'origine à la racine du dépôt, ou indiquez un
 autre dossier avec la variable d'environnement `TUXAPE_ROM_DIR`.
+
+## Langues
+
+L'interface est en anglais, la langue des sources, ou en français : on la
+choisit dans **Settings ▸ Language**. TuxAPE redémarre alors dans la nouvelle
+langue, en gardant l'état de la machine, ses disquettes et sa cassette.
+
+Les traductions sont celles de Qt : un fichier
+`src/app/translations/tuxape_<langue>.ts` par langue, qui se modifie avec Qt
+Linguist et se compile dans le programme. Pour ajouter une langue :
+
+```sh
+printf '<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE TS>\n<TS version="2.1" language="es_ES"></TS>\n' \
+    > src/app/translations/tuxape_es.ts                # un fichier vide pour l'espagnol
+cmake --preset dev                                   # le nouveau fichier est trouvé
+cmake --build build --target update_translations     # lupdate : les textes des sources
+linguist src/app/translations/tuxape_es.ts            # traduire, y compris le nom de la langue
+cmake --build build
+```
+
+Le texte « English » du contexte `Language` se traduit par le nom de la
+langue, écrit dans cette langue : c'est lui que montre le menu. Une
+traduction compilée (`tuxape_<langue>.qm`) posée dans un dossier `languages`
+à côté du programme s'ajoute aussi au menu, sans recompiler TuxAPE.
 
 ## Plugins
 

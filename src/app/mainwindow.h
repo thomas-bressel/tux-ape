@@ -73,6 +73,18 @@ public:
     QString quickStatePath() const;
     bool quickSaveState();
     bool quickLoadState();
+    // Settings > Language: the windows in another language. TuxAPE starts
+    // again for that, the machine as it is: what the next TuxAPE is to be
+    // started with is in restartArguments(), once the window has closed.
+    void changeLanguage(const QString& code);
+    // The arguments that give the next TuxAPE the machine as it is now:
+    // its state (written to a file for it), the discs in the drives, the
+    // tape. Empty if the state could not be written.
+    QStringList startAgainArguments();
+    QStringList restartArguments() const { return restartArguments_; }
+    // What the arguments of startAgainArguments() ask for, the discs and
+    // tape put in first: the state is loaded, then its file deleted.
+    bool resumeFrom(const QString& stateFile);
     // Puts a tape (a CDT file) in the deck, rewound and with Play pressed:
     // it runs when the CPC starts the motor.
     bool insertTapeFile(const QString& path);
@@ -192,6 +204,7 @@ private:
     QAction* helpAction_ = nullptr;
     QAction* amxMouseAction_ = nullptr;
     QAction* darkThemeAction_ = nullptr;
+    QStringList restartArguments_;  // for the TuxAPE that comes next, if any
     QDialog* help_ = nullptr;
     QAction* registersAction_ = nullptr;
     QAction* cartridgeAction_ = nullptr;

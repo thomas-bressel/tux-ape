@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs the Qt 6 development files into .deps/qt6 without root access.
 #
-# The normal way to get them is:  sudo apt install qt6-base-dev
+# The normal way to get them is:
+#   sudo apt install qt6-base-dev qt6-tools-dev qt6-l10n-tools
 # Use this script only when you cannot (or do not want to) install system
 # packages. It downloads the -dev packages matching the Qt runtime already
 # installed, unpacks them locally, and links them to the system libraries.
@@ -17,6 +18,8 @@ packages=(
     libqt6openglwidgets6 libqt6printsupport6 libqt6test6
     libqt6concurrent6 libqt6sql6
     libopengl-dev libvulkan-dev
+    # The translations of the interface: lupdate, lrelease and their CMake files.
+    qt6-tools-dev qt6-tools-dev-tools qt6-l10n-tools
 )
 
 mkdir -p "$prefix" "$debs"

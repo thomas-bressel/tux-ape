@@ -25,7 +25,8 @@
 namespace {
 
 // The CPC's devices by the address lines they answer to. Some are a part
-// of what a port takes, told by the value written.
+// of what a port takes, told by the value written. Their names are shown
+// translated; a breakpoint keeps the English one.
 struct Device {
     const char* name;
     unsigned port, mask;
@@ -33,29 +34,29 @@ struct Device {
     const char* filter;
 };
 const Device kDevices[] = {
-    {"Gate Array", 0x7F00, 0xC000, false, true, ""},
-    {"  Palette Register Select", 0x7F00, 0xC000, false, true, "value and #C0 = #00"},
-    {"  Palette Write", 0x7F00, 0xC000, false, true, "value and #C0 = #40"},
-    {"  Interrupt, ROM and Mode", 0x7F00, 0xC000, false, true, "value and #C0 = #80"},
-    {"  Secondary ROM Mapping", 0x7F00, 0xC000, false, true, "value and #E0 = #A0"},
-    {"PAL (RAM Bank Select)", 0x7F00, 0x8000, false, true, "value and #C0 = #C0"},
-    {"CRTC (6845)", 0xBC00, 0x4000, true, true, ""},
-    {"  Register Select", 0xBC00, 0x4300, false, true, ""},
-    {"  Register Write", 0xBD00, 0x4300, false, true, ""},
-    {"  Register Read", 0xBF00, 0x4300, true, false, ""},
-    {"  Status Register Read", 0xBE00, 0x4300, true, false, ""},
-    {"Upper ROM Select", 0xDF00, 0x2000, false, true, ""},
-    {"Printer Port", 0xEF00, 0x1000, false, true, ""},
-    {"PPI (8255)", 0xF400, 0x0800, true, true, ""},
-    {"  Port A", 0xF400, 0x0B00, true, true, ""},
-    {"  Port B", 0xF500, 0x0B00, true, true, ""},
-    {"  Port C", 0xF600, 0x0B00, true, true, ""},
-    {"  Control", 0xF700, 0x0B00, true, true, ""},
-    {"FDC (uPD765)", 0xFB7E, 0x0580, true, true, ""},
-    {"  Status", 0xFB7E, 0x0581, true, false, ""},
-    {"  Data", 0xFB7F, 0x0581, true, true, ""},
-    {"FDC Motor", 0xFA7E, 0x0580, true, true, ""},
-    {"User Defined Port", 0, 0xFFFF, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "Gate Array"), 0x7F00, 0xC000, false, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Palette Register Select"), 0x7F00, 0xC000, false, true, "value and #C0 = #00"},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Palette Write"), 0x7F00, 0xC000, false, true, "value and #C0 = #40"},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Interrupt, ROM and Mode"), 0x7F00, 0xC000, false, true, "value and #C0 = #80"},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Secondary ROM Mapping"), 0x7F00, 0xC000, false, true, "value and #E0 = #A0"},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "PAL (RAM Bank Select)"), 0x7F00, 0x8000, false, true, "value and #C0 = #C0"},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "CRTC (6845)"), 0xBC00, 0x4000, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Register Select"), 0xBC00, 0x4300, false, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Register Write"), 0xBD00, 0x4300, false, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Register Read"), 0xBF00, 0x4300, true, false, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Status Register Read"), 0xBE00, 0x4300, true, false, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "Upper ROM Select"), 0xDF00, 0x2000, false, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "Printer Port"), 0xEF00, 0x1000, false, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "PPI (8255)"), 0xF400, 0x0800, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Port A"), 0xF400, 0x0B00, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Port B"), 0xF500, 0x0B00, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Port C"), 0xF600, 0x0B00, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Control"), 0xF700, 0x0B00, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "FDC (uPD765)"), 0xFB7E, 0x0580, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Status"), 0xFB7E, 0x0581, true, false, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "  Data"), 0xFB7F, 0x0581, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "FDC Motor"), 0xFA7E, 0x0580, true, true, ""},
+    {QT_TRANSLATE_NOOP("BreakpointsDialog", "User Defined Port"), 0, 0xFFFF, true, true, ""},
 };
 constexpr int kDeviceCount = static_cast<int>(sizeof kDevices / sizeof kDevices[0]);
 
@@ -172,7 +173,7 @@ QStringList BreakpointsDialog::devices()
 {
     QStringList names;
     for (const Device& device : kDevices)
-        names << device.name;
+        names << tr(device.name);
     return names;
 }
 
