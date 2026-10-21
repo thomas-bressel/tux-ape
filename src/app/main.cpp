@@ -9,6 +9,7 @@
 #include "audiooutput.h"
 #include "core/version.h"
 #include "emulator.h"
+#include "filedialogs.h"
 #include "language.h"
 #include "mainwindow.h"
 #include "theme.h"
@@ -23,6 +24,8 @@ int main(int argc, char* argv[])
         && Settings::windowsThroughX11Wanted())
         qputenv("QT_QPA_PLATFORM", "xcb");
     QApplication app(argc, argv);
+    // Qt's file windows, for TuxAPE and its plugins (see filedialogs.h).
+    useOwnFileDialogs();
     QApplication::setApplicationName("TuxAPE");
     QApplication::setApplicationVersion(tuxape::versionString());
     QApplication::setOrganizationName("TuxAPE");

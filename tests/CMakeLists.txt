@@ -194,13 +194,15 @@ endif()
 
 if(TUXAPE_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Test Widgets)
-    foreach(test gui_smoke gui_discs gui_sound gui_snapshot gui_setup gui_tools gui_library gui_tape gui_plus gui_debugger gui_session gui_disceditor gui_assembler gui_registers gui_breakpoints gui_memtools gui_graphics gui_crt gui_multiface gui_theme gui_plugins gui_language)
+    foreach(test gui_smoke gui_discs gui_sound gui_snapshot gui_setup gui_tools gui_library gui_tape gui_plus gui_debugger gui_session gui_disceditor gui_assembler gui_registers gui_breakpoints gui_memtools gui_graphics gui_crt gui_multiface gui_theme gui_plugins gui_language gui_filedialogs)
         add_executable(${test} ${test}.cpp)
         target_link_libraries(${test} PRIVATE tuxape_app Qt6::Test)
         add_test(NAME ${test} COMMAND ${test})
+        # A configuration folder of the test's own: what Qt's file windows
+        # keep (the folders last seen) goes there, not to the user's.
         set_tests_properties(${test} PROPERTIES
             SKIP_RETURN_CODE 77
-            ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config/${test}")
     endforeach()
     target_compile_definitions(gui_setup PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")
 
@@ -213,7 +215,9 @@ if(TUXAPE_BUILD_APP)
             --build-options "-DTUXAPE_SDK=${PROJECT_SOURCE_DIR}/sdk" "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
                 "-DCMAKE_BUILD_TYPE=Release" "-DTUXAPE_DIST_DIR=${CMAKE_BINARY_DIR}/sdk-template/dist"
             --test-command ${CMAKE_CTEST_COMMAND} --output-on-failure)
-    set_tests_properties(sdk_template PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen LABELS slow TIMEOUT 600)
+    set_tests_properties(sdk_template PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config/sdk_template"
+        LABELS slow TIMEOUT 600)
 
     # A plugin for gui_plugins to pack into an archive and install. It is
     # built as a plugin is: against the SDK's plugin.h and Qt, nothing else.

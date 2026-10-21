@@ -30,6 +30,8 @@ add_library(tuxape_app STATIC
     drivesound.h
     emulator.cpp
     emulator.h
+    filedialogs.cpp
+    filedialogs.h
     graphicsdialog.cpp
     graphicsdialog.h
     help.cpp
