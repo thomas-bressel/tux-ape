@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
     at = runs();
     CHECK(at.pc == 0x8003 && at.a == 8);
     // A symbol of the last assembly may be named.
-    emulator.setSymbols({{"LOOP", 0x8002}});
+    emulator.setAssembledSymbols({tuxape::AsmSymbol{"loop", 0x8002, true, "prog.asm", 3}});
     CHECK(dialog->setProperties(Page::Code, 0, "pc = loop + 1 and a = #10", 0));
     at = runs();
     CHECK(at.pc == 0x8003 && at.a == 0x10);

@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <set>
 #include <vector>
 
@@ -13,6 +14,7 @@
 
 #include "core/disasm.h"
 #include "core/memory.h"
+#include "core/symbols.h"
 
 class Emulator;
 class QCheckBox;
@@ -29,9 +31,12 @@ class QRadioButton;
 using DebugMemory = std::array<uint8_t, 0x10000>;
 
 // The debugger's upper pane: memory as Z80 instructions, one to a line,
-// with the address, the instruction, its bytes and what they are as
-// characters. The line of the program counter is in red; a dot in the
-// margin marks a breakpoint, and a click there sets or clears one.
+// with the address, the instruction, its bytes, what they are as
+// characters, and the names of the program's symbols whose value is the
+// address. With the symbols shown, an instruction's addresses are their
+// names: CALL TXT_OUTPUT, not CALL #BB5A. The line of the program counter
+// is in red; a dot in the margin marks a breakpoint, and a click there
+// sets or clears one.
 class DisassemblyView : public QAbstractScrollArea {
     Q_OBJECT
 
@@ -54,15 +59,24 @@ public:
         QString instruction;  // "LD (HL),C"
         QString bytes;        // "71"
         QString characters;
+        QString names;        // "start, main"
     };
     std::vector<Line> lines(int count) const;
     int visibleLines() const;
 
-    // Regions shown as data, not as instructions: bytes (DB) or words (DW).
+    // The program's symbols, and whether their names are shown.
+    void setSymbols(const std::vector<tuxape::AsmSymbol>& symbols);
+    void setShowSymbols(bool on);
+    bool showsSymbols() const { return showSymbols_; }
+    const tuxape::SymbolNames& symbols() const { return symbols_; }
+
+    // Regions shown as data, not as instructions: bytes (DB) or words (DW);
+    // with `labels`, a value that is a symbol's is its name.
     struct DataArea {
         uint16_t start = 0;
         int size = 0;
         bool words = false;
+        bool labels = false;
     };
     void setDataAreas(const std::vector<DataArea>& areas);
     // The instruction at an address, or the line of data of the area it
@@ -87,17 +101,21 @@ private:
     uint16_t pc_ = 0;
     std::set<uint16_t> breakpoints_;
     std::vector<DataArea> dataAreas_;
+    tuxape::SymbolNames symbols_;
+    bool showSymbols_ = true;
 
     int lineHeight() const;
     uint16_t before(uint16_t address) const;
     void scrollLines(int count);
+    bool inData(uint16_t address) const;
 };
 
 // The lower pane: memory sixteen bytes to a line, in hexadecimal and as
 // characters. Typing changes the byte under the cursor, in the column that
 // was clicked: hexadecimal digits in the first, characters in the second.
 // Ctrl+Tab goes from one to the other. A line under the cursor shows where
-// what is typed will go.
+// what is typed will go. The mouse on a byte names the program's symbols
+// whose value is its address.
 class MemoryDumpView : public QAbstractScrollArea {
     Q_OBJECT
 
@@ -133,11 +151,16 @@ public:
         bool write = false;
     };
     void setMarks(const std::vector<Mark>& marks);
+    // The symbols the mouse names, or none.
+    void setSymbols(const tuxape::SymbolNames* symbols) { symbols_ = symbols; }
+    // What the mouse at `position` says: the names of the byte's address.
+    QString toolTipAt(const QPointF& position) const;
 
 signals:
     void byteEdited(uint16_t address, uint8_t value);
 
 protected:
+    bool viewportEvent(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -149,6 +172,7 @@ protected:
 
 private:
     const DebugMemory* memory_ = nullptr;
+    const tuxape::SymbolNames* symbols_ = nullptr;
     uint16_t top_ = 0;     // a multiple of 16
     uint16_t cursor_ = 0;
     int anchor_ = -1;  // the other end of the selection, or -1
@@ -204,6 +228,12 @@ public:
     // gets them: Ctrl+Shift+G, where Ctrl+G is for the pane one is in.
     void goTo(uint16_t address);
     void goToMemory(uint16_t address);
+    // An address as Goto takes it: in hexadecimal, after '#' or '&' or
+    // not, or the name of one of the program's symbols.
+    std::optional<uint16_t> addressOf(const QString& text) const;
+    // A file of symbols added to the program's: false, and the user told
+    // why, if it holds none.
+    bool loadSymbols(const QString& path);
 
     // ---- The tools of the memory dump's menu, on its selection ----
     enum class FindKind { Text, Hex, Assembler };
@@ -322,6 +352,7 @@ private:
     void askGoTo();
     void askGoToMemory();
     void askGoToIn(bool memory);
+    void askLoadSymbols();
     void dumpMenu(const QPoint& at);
     void showSelectBlock();
     void showFill();

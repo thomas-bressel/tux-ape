@@ -20,6 +20,7 @@
 #include <QObject>
 #include <QString>
 
+#include "core/assembler.h"
 #include "drivesound.h"
 #include "avirecorder.h"
 #include "hostjoystick.h"
@@ -294,9 +295,21 @@ public:
 
     // Whether a condition can be made sense of.
     bool conditionValid(const std::string& condition);
-    // The symbols conditions may name: those of the last assembly, in
-    // upper case.
-    void setSymbols(std::map<std::string, int32_t> symbols);
+    // The program's symbols: those of the last assembly, and those loaded
+    // from symbol files, which stay until they are cleared (a name loaded
+    // again takes its new value). Breakpoint conditions may name them, in
+    // any case; the debugger shows them. A name both have is the
+    // assembly's. symbols() has them all, in alphabetical order.
+    void setAssembledSymbols(std::vector<tuxape::AsmSymbol> symbols);
+    void addLoadedSymbols(const std::vector<tuxape::AsmSymbol>& symbols);
+    // The symbols of a file (any of the kinds core/symbols.h reads) added
+    // to those loaded; false if the file cannot be read or holds none.
+    bool loadSymbolFile(const QString& path);
+    void clearLoadedSymbols();
+    const std::vector<tuxape::AsmSymbol>& symbols() const { return symbols_; }
+    bool hasLoadedSymbols() const { return !loadedSymbols_.empty(); }
+    // Whether a symbol of symbols() is one loaded from a file.
+    bool symbolLoaded(const std::string& name) const;
 
     // ED FF in a program pauses the machine after it.
     void setBreakInstructions(bool on);
@@ -324,6 +337,8 @@ signals:
     void playbackFinished();
     // Sent about once a second: achieved speed and pictures per second.
     void statsChanged(int speedPercent, int framesPerSecond);
+    // The program's symbols are other than they were.
+    void symbolsChanged();
 
 private:
     class MachineLock {
@@ -386,7 +401,12 @@ private:
     std::map<uint16_t, BreakProps> breakProps_;
     std::vector<MemoryBreak> memoryBreaks_;
     std::vector<IoBreak> ioBreaks_;
-    std::map<std::string, int32_t> symbols_;
+    std::map<std::string, int32_t> conditionSymbols_;  // by name in upper case, for the emulation thread
+    std::vector<tuxape::AsmSymbol> assembledSymbols_;
+    std::map<std::string, tuxape::AsmSymbol> loadedSymbols_;  // by name in upper case
+    std::vector<tuxape::AsmSymbol> symbols_;                  // both, as symbols() gives them
+    std::set<std::string> fromFiles_;                         // those of symbols_ loaded, in upper case
+    void mergeSymbols();
     struct Timer {
         TimerState state;
         uint64_t started = 0;

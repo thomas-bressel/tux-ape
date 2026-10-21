@@ -3,12 +3,15 @@
 // and memory changed by hand. Runs without a display
 // (QT_QPA_PLATFORM=offscreen), on a program of its own: no ROM is needed.
 //
-//   gui_debugger [prefix]   also saves a picture of the window as
-//                           <prefix>debugger.png
+//   gui_debugger [prefix]   also saves pictures of the window as
+//                           <prefix>debugger.png, and with a program's
+//                           symbols as <prefix>debugger_symbols.png
 
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QFile>
+#include <QFontMetrics>
 #include <QFontMetricsF>
 #include <QInputDialog>
 #include <QKeyEvent>
@@ -148,6 +151,75 @@ int main(int argc, char* argv[])
         CHECK(lines[5].instruction == "LDIR");
         CHECK(lines[6].instruction == "JR #800D");
         CHECK(lines[8].instruction == "INC B" && lines[8].address == 0x8010);
+    }
+
+    // ---- The program's symbols, loaded from a file ----
+    {
+        QFile file(folder.filePath("prog.sym"));
+        CHECK(file.open(QIODevice::WriteOnly));
+        file.write("; as assemblers write them\nstart equ #8000\nloop #8002\nDEF counter 8010\n"
+                   "table: EQU 0x9000\npointer = #2211\n");
+        file.close();
+        CHECK(debugger->loadSymbols(folder.filePath("prog.sym")));
+        CHECK(emulator.hasLoadedSymbols() && emulator.symbolLoaded("LOOP"));
+        // The addresses of instructions are their names, and each line says
+        // the names of its own.
+        code->setTop(0x8000);
+        const auto named = code->lines(4);
+        CHECK_EQ(named.size(), 4);
+        if (named.size() == 4) {
+            CHECK(named[0].instruction == "LD A,#03" && named[0].names == "start");
+            CHECK(named[1].instruction == "CALL counter" && named[1].names == "loop");
+            CHECK(named[2].names.isEmpty());
+            CHECK(named[3].instruction == "JR NZ,loop");
+        }
+        if (!prefix.isEmpty()) {
+            QTest::qWait(50);
+            debugger->grab().save(prefix + "debugger_symbols.png");
+        }
+        // Goto takes a name as well as an address.
+        CHECK(debugger->addressOf("counter") == 0x8010 && debugger->addressOf(" #8000 ") == 0x8000);
+        CHECK(debugger->addressOf("TABLE") == 0x9000 && !debugger->addressOf("nowhere"));
+        // The mouse on a byte of the memory names it.
+        MemoryDumpView* memory = debugger->memoryDump();
+        debugger->goToMemory(0x9000);
+        int row = -1;
+        for (int at = 0; at < memory->visibleLines() && row < 0; ++at)
+            if (memory->lineText(at).startsWith("9000"))
+                row = at;
+        CHECK(row >= 0);
+        const qreal across = QFontMetricsF(memory->font()).horizontalAdvance('0');
+        const int high = QFontMetrics(memory->font()).height();  // as the dump's lines are
+        CHECK(memory->toolTipAt(QPointF(4 + across * 5.5, row * high + 2)) == "#9000: table");
+        CHECK(memory->toolTipAt(QPointF(4 + across * 8.5, row * high + 2)).isEmpty());
+        // A data area of words, its values as names.
+        debugger->setDataAreas({{0x9000, 2, true, true}});
+        code->setTop(0x9000);
+        CHECK(code->lines(1).front().instruction == "DW pointer");
+        debugger->setDataAreas({{0x9000, 2, true, false}});
+        CHECK(code->lines(1).front().instruction == "DW #2211");
+        debugger->setDataAreas({});
+        // Shown or not.
+        code->setTop(0x8000);
+        code->setShowSymbols(false);
+        CHECK(code->lines(2).back().instruction == "CALL #8010" && code->lines(1).front().names.isEmpty());
+        code->setShowSymbols(true);
+        // The assembly's symbol of a name goes over the file's; cleared, the
+        // file's go.
+        emulator.setAssembledSymbols({tuxape::AsmSymbol{"start", 0x8005, true, "prog.asm", 1}});
+        CHECK(code->lines(1).front().names.isEmpty() && code->lines(3).back().names == "start");
+        CHECK(!emulator.symbolLoaded("start"));
+        emulator.clearLoadedSymbols();
+        CHECK(code->lines(2).back().instruction == "CALL #8010");
+        CHECK(emulator.symbols().size() == 1);
+        emulator.setAssembledSymbols({});
+        // A file of no symbols is none.
+        QFile none(folder.filePath("none.sym"));
+        CHECK(none.open(QIODevice::WriteOnly));
+        none.write("hello\n");
+        none.close();
+        CHECK(!emulator.loadSymbolFile(folder.filePath("none.sym")) && !emulator.hasLoadedSymbols());
+        code->setTop(0x8000);
     }
     CHECK(debugger->registerText("PC") == "8000");
     CHECK(debugger->registerText("SP") == "BFF0");

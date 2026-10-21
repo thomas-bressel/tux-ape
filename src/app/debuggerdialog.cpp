@@ -7,11 +7,13 @@
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFile>
+#include <QDir>
 #include <QFileDialog>
 #include <QFontMetricsF>
 #include <QFileInfo>
 #include <QFontDatabase>
 #include <QFormLayout>
+#include <QHelpEvent>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -33,6 +35,7 @@
 #include <QTimer>
 #include <QTabWidget>
 #include <QToolButton>
+#include <QToolTip>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -117,6 +120,26 @@ void DisassemblyView::setDataAreas(const std::vector<DataArea>& areas)
     viewport()->update();
 }
 
+void DisassemblyView::setSymbols(const std::vector<tuxape::AsmSymbol>& symbols)
+{
+    symbols_.set(symbols);
+    viewport()->update();
+}
+
+void DisassemblyView::setShowSymbols(bool on)
+{
+    showSymbols_ = on;
+    viewport()->update();
+}
+
+bool DisassemblyView::inData(uint16_t address) const
+{
+    for (const DataArea& area : dataAreas_)
+        if (static_cast<uint16_t>(address - area.start) < area.size)
+            return true;
+    return false;
+}
+
 tuxape::Instruction DisassemblyView::instructionAt(uint16_t address) const
 {
     if (!memory_)
@@ -126,17 +149,23 @@ tuxape::Instruction DisassemblyView::instructionAt(uint16_t address) const
         const int offset = static_cast<uint16_t>(address - area.start);
         if (offset >= area.size)
             continue;
-        // A word to a line, or up to four bytes.
+        // A word to a line, or up to four bytes; a value that is a
+        // symbol's as its name, if the area says.
+        const auto value = [&](unsigned number, int digits) {
+            const std::vector<std::string>& names = area.labels ? symbols_.at(static_cast<uint16_t>(number))
+                                                                : std::vector<std::string>{};
+            return names.empty() ? "#" + hex(number, digits).toStdString() : names.front();
+        };
         const int left = area.size - offset;
         tuxape::Instruction data;
         if (area.words && left >= 2) {
             data.length = 2;
-            data.text = "DW #" + hex(static_cast<unsigned>(byte(0) | byte(1) << 8), 4).toStdString();
+            data.text = "DW " + value(static_cast<unsigned>(byte(0) | byte(1) << 8), 4);
         } else {
             data.length = area.words ? 1 : std::min(left, 4);
             data.text = "DB ";
             for (int n = 0; n < data.length; ++n)
-                data.text += (n ? ",#" : "#") + hex(byte(n), 2).toStdString();
+                data.text += (n ? "," : "") + value(byte(n), 2);
         }
         return data;
     }
@@ -155,6 +184,15 @@ std::vector<DisassemblyView::Line> DisassemblyView::lines(int count) const
         line.address = address;
         line.length = instruction.length;
         line.instruction = QString::fromLatin1(instruction.text.c_str());
+        if (showSymbols_ && !symbols_.empty()) {
+            // Data say their values as their area says, not as instructions.
+            if (!inData(address))
+                line.instruction = QString::fromLatin1(symbols_.named(instruction.text).c_str());
+            QStringList names;
+            for (const std::string& name : symbols_.at(address))
+                names << QString::fromLatin1(name.c_str());
+            line.names = names.join(QStringLiteral(", "));
+        }
         for (int b = 0; b < instruction.length; ++b) {
             const uint8_t byte = (*memory_)[static_cast<uint16_t>(address + b)];
             line.bytes += (b ? " " : "") + hex(byte, 2);
@@ -237,11 +275,20 @@ void DisassemblyView::paintEvent(QPaintEvent*)
         const int left = kMargin + 4;
         painter.drawText(left, y + ascent, hex(line.address, 4));
         painter.drawText(left + character * 5, y + ascent, mnemonic);
-        painter.drawText(left + character * 10, y + ascent, operands);
+        // Up to the bytes: a long name is cut short there.
+        painter.drawText(left + character * 10, y + ascent,
+                         fontMetrics().elidedText(operands, Qt::ElideRight, character * 17));
         painter.drawText(left + character * 28, y + ascent, line.bytes);
-        if (line.address != pc_ && line.address != selected_)
+        const bool plain = line.address != pc_ && line.address != selected_;
+        if (plain)
             painter.setPen(readable(QColor(0x00, 0x80, 0x00), palette().color(QPalette::Base)));
         painter.drawText(left + character * 41, y + ascent, line.characters);
+        // The symbols of the address, in blue as the symbols' window has
+        // their values.
+        if (!line.names.isEmpty()) {
+            painter.setPen(plain ? readable(QColor(0, 102, 204), palette().color(QPalette::Base)) : text);
+            painter.drawText(left + character * 46, y + ascent, line.names);
+        }
         y += height;
     }
 }
@@ -503,6 +550,31 @@ int MemoryDumpView::byteAt(const QPointF& position, bool* characters) const
     if (characters)
         *characters = column >= 53;
     return index >= 0 && row >= 0 && top_ + row * 16 + index < limit_ ? top_ + row * 16 + index : -1;
+}
+
+QString MemoryDumpView::toolTipAt(const QPointF& position) const
+{
+    const int at = byteAt(position);
+    if (!symbols_ || at < 0)
+        return {};
+    QStringList names;
+    for (const std::string& name : symbols_->at(static_cast<uint16_t>(at)))
+        names << QString::fromLatin1(name.c_str());
+    return names.isEmpty() ? QString() : QStringLiteral("#%1: %2").arg(hex(static_cast<unsigned>(at), 4), names.join(QStringLiteral(", ")));
+}
+
+bool MemoryDumpView::viewportEvent(QEvent* event)
+{
+    if (event->type() == QEvent::ToolTip) {
+        const auto* help = static_cast<QHelpEvent*>(event);
+        const QString text = toolTipAt(help->pos());
+        if (text.isEmpty())
+            QToolTip::hideText();
+        else
+            QToolTip::showText(help->globalPos(), text, viewport());
+        return true;
+    }
+    return QAbstractScrollArea::viewportEvent(event);
 }
 
 void MemoryDumpView::mousePressEvent(QMouseEvent* event)
@@ -845,6 +917,14 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     resize(800, 620);
 
     connect(disassembly_, &DisassemblyView::breakpointToggled, this, &DebuggerDialog::toggleBreakpoint);
+    // The program's symbols, as the assembler and the symbol files give
+    // them.
+    dump_->setSymbols(&disassembly_->symbols());
+    disassembly_->setSymbols(emulator_->symbols());
+    connect(emulator_, &Emulator::symbolsChanged, this, [this] {
+        disassembly_->setSymbols(emulator_->symbols());
+        dump_->viewport()->update();
+    });
     connect(dump_, &MemoryDumpView::byteEdited, this, [this](uint16_t address, uint8_t value) {
         writeBytes(address, QByteArray(1, static_cast<char>(value)));
     });
@@ -871,6 +951,11 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
         QMenu menu(this);
         menu.addAction(tr("Find"), Qt::CTRL | Qt::Key_F, this, &DebuggerDialog::showFind);
         menu.addAction(tr("Goto"), Qt::CTRL | Qt::Key_G, this, &DebuggerDialog::askGoTo);
+        menu.addSeparator();
+        QAction* show = menu.addAction(tr("Show &Symbols"), this, [this](bool on) { disassembly_->setShowSymbols(on); });
+        show->setCheckable(true);
+        show->setChecked(disassembly_->showsSymbols());
+        menu.addAction(tr("&Load Symbols..."), this, &DebuggerDialog::askLoadSymbols);
         menu.exec(disassembly_->viewport()->mapToGlobal(at));
     });
     connect(new QShortcut(Qt::Key_F5, this), &QShortcut::activated, this,
@@ -1091,6 +1176,32 @@ void DebuggerDialog::goToMemory(uint16_t address)
 
 // Ctrl+G is for the pane one is in, Ctrl+Shift+G for the lower one from
 // anywhere.
+std::optional<uint16_t> DebuggerDialog::addressOf(const QString& text) const
+{
+    const QString typed = text.trimmed();
+    if (const std::optional<uint16_t> named = disassembly_->symbols().value(typed.toStdString()))
+        return named;
+    bool ok = false;
+    const unsigned address = QString(typed).remove('#').remove('&').toUInt(&ok, 16);
+    return ok && address <= 0xFFFF ? std::optional<uint16_t>(static_cast<uint16_t>(address)) : std::nullopt;
+}
+
+bool DebuggerDialog::loadSymbols(const QString& path)
+{
+    if (emulator_->loadSymbolFile(path))
+        return true;
+    QMessageBox::warning(this, windowTitle(), tr("Invalid Symbol File: %1").arg(QDir::toNativeSeparators(path)));
+    return false;
+}
+
+void DebuggerDialog::askLoadSymbols()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Load Symbols"), QString(),
+                                                      tr("Symbol Files (*.sym *.noi);;All Files (*)"));
+    if (!path.isEmpty())
+        loadSymbols(path);
+}
+
 void DebuggerDialog::askGoTo()
 {
     askGoToIn(dump_->hasFocus());
@@ -1108,9 +1219,12 @@ void DebuggerDialog::askGoToIn(bool memory)
     bool ok = false;
     const QString text = QInputDialog::getText(this, tr("Goto"), memory ? tr("Memory address:") : tr("Address:"),
                                                QLineEdit::Normal, QString(), &ok);
-    const unsigned address = text.trimmed().remove('#').remove('&').toUInt(&ok, 16);
-    if (!ok || address > 0xFFFF)
+    if (!ok)
         return;
+    const std::optional<uint16_t> found = addressOf(text);
+    if (!found)
+        return;
+    const unsigned address = *found;
     if (memory) {
         goToMemory(static_cast<uint16_t>(address));
     } else {
@@ -1733,7 +1847,7 @@ void DebuggerDialog::showDataAreas()
     auto* layout = new QVBoxLayout(&box);
     auto* list = new QTreeWidget;
     list->setObjectName("lvDataAreas");
-    list->setHeaderLabels({tr("Start"), tr("End"), tr("Type")});
+    list->setHeaderLabels({tr("Start"), tr("End"), tr("Type"), tr("Label")});
     list->setRootIsDecorated(false);
     const auto fill = [&] {
         list->clear();
@@ -1748,6 +1862,18 @@ void DebuggerDialog::showDataAreas()
             connect(type, &QComboBox::currentIndexChanged, this, [this, i](int index) {
                 if (i < dataAreas_.size()) {
                     dataAreas_[i].words = index == 1;
+                    disassembly_->setDataAreas(dataAreas_);
+                }
+            });
+            // Values that are symbols' shown as their names.
+            auto* labels = new QCheckBox;
+            labels->setObjectName("ckLabel");
+            labels->setChecked(area.labels);
+            labels->setToolTip(tr("Values that are those of the program's symbols are shown as their names"));
+            list->setItemWidget(item, 3, labels);
+            connect(labels, &QCheckBox::toggled, this, [this, i](bool on) {
+                if (i < dataAreas_.size()) {
+                    dataAreas_[i].labels = on;
                     disassembly_->setDataAreas(dataAreas_);
                 }
             });

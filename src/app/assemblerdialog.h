@@ -71,20 +71,24 @@ struct FindOptions {
     bool entireScope = false;   // from the start (or the end), not from the cursor
 };
 
-// The symbols of the last assembly: name, value, and whether the program
-// uses them.
+// The program's symbols: those of the last assembly and those loaded from
+// symbol files, with their values, and whether the program uses them. A
+// right click loads a file of them (for the debugger and the breakpoints'
+// conditions), saves them, or clears those loaded.
 class SymbolsDialog : public QDialog {
     Q_OBJECT
 
 public:
-    explicit SymbolsDialog(QWidget* parent = nullptr);
-    void setSymbols(const std::vector<tuxape::AsmSymbol>& symbols);
+    explicit SymbolsDialog(Emulator* emulator, QWidget* parent = nullptr);
     // Names that start as the filter says, '*' and '?' standing for any
     // characters.
     void setFilter(const QString& filter);
     QStringList listed() const;  // "name value", in the order shown
     void select(int row);
     bool saveSymbols(const QString& path) const;
+    // The symbols of a file added to the program's: false, and the user
+    // told why, if the file cannot be read or holds none.
+    bool loadSymbols(const QString& path);
 
 signals:
     void sourceRequested(const QString& file, int line);
@@ -94,6 +98,7 @@ private:
     void showSelected();
     const tuxape::AsmSymbol* selected() const;
 
+    Emulator* emulator_;
     std::vector<tuxape::AsmSymbol> symbols_;
     QLineEdit* filter_;
     QTreeWidget* list_;

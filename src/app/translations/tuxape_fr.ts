@@ -996,6 +996,26 @@
         <translation>Aller à</translation>
     </message>
     <message>
+        <source>Show &amp;Symbols</source>
+        <translation>Afficher les &amp;symboles</translation>
+    </message>
+    <message>
+        <source>&amp;Load Symbols...</source>
+        <translation>&amp;Charger des symboles...</translation>
+    </message>
+    <message>
+        <source>Invalid Symbol File: %1</source>
+        <translation>Fichier de symboles non valide : %1</translation>
+    </message>
+    <message>
+        <source>Load Symbols</source>
+        <translation>Charger des symboles</translation>
+    </message>
+    <message>
+        <source>Symbol Files (*.sym *.noi);;All Files (*)</source>
+        <translation>Fichiers de symboles (*.sym *.noi);;Tous les fichiers (*)</translation>
+    </message>
+    <message>
         <source>Memory address:</source>
         <translation>Adresse mémoire :</translation>
     </message>
@@ -1164,12 +1184,20 @@
         <translation>Type</translation>
     </message>
     <message>
+        <source>Label</source>
+        <translation>Étiquette</translation>
+    </message>
+    <message>
         <source>Bytes</source>
         <translation>Octets</translation>
     </message>
     <message>
         <source>Words</source>
         <translation>Mots</translation>
+    </message>
+    <message>
+        <source>Values that are those of the program&apos;s symbols are shown as their names</source>
+        <translation>Les valeurs qui sont celles des symboles du programme sont montrées par leur nom</translation>
     </message>
     <message>
         <source>Clear</source>
@@ -2745,6 +2773,10 @@ Enregistrer les modifications dans %2 ?</translation>
         <translation>Une cassette à mettre dans le lecteur.</translation>
     </message>
     <message>
+        <source>Load a file of assembler symbols, for the debugger.</source>
+        <translation>Charger un fichier de symboles d&apos;assembleur, pour le débogueur.</translation>
+    </message>
+    <message>
         <source>Disc image to put in drive A:.</source>
         <translation>Image de disquette à mettre dans le lecteur A:.</translation>
     </message>
@@ -2763,6 +2795,10 @@ Choose other ROM images in Settings &gt; Memory.</source>
         <translation>%1
 
 Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translation>
+    </message>
+    <message>
+        <source>Invalid Symbol File: %1</source>
+        <translation>Fichier de symboles non valide : %1</translation>
     </message>
 </context>
 <context>
@@ -3993,6 +4029,18 @@ Va dans : %5</translation>
         <translation>Aller au &amp;source</translation>
     </message>
     <message>
+        <source>&amp;Load Symbols...</source>
+        <translation>&amp;Charger des symboles...</translation>
+    </message>
+    <message>
+        <source>Load Symbols</source>
+        <translation>Charger des symboles</translation>
+    </message>
+    <message>
+        <source>Symbol Files (*.sym *.noi);;All Files (*)</source>
+        <translation>Fichiers de symboles (*.sym *.noi);;Tous les fichiers (*)</translation>
+    </message>
+    <message>
         <source>Sa&amp;ve Symbols...</source>
         <translation>Enregistrer les sym&amp;boles...</translation>
     </message>
@@ -4007,6 +4055,18 @@ Va dans : %5</translation>
     <message>
         <source>Cannot write %1.</source>
         <translation>Impossible d&apos;écrire %1.</translation>
+    </message>
+    <message>
+        <source>&amp;Clear Loaded Symbols</source>
+        <translation>&amp;Effacer les symboles chargés</translation>
+    </message>
+    <message>
+        <source>Invalid Symbol File: %1</source>
+        <translation>Fichier de symboles non valide : %1</translation>
+    </message>
+    <message>
+        <source>Loaded from %1</source>
+        <translation>Chargé depuis %1</translation>
     </message>
     <message>
         <source>Used by the program</source>

@@ -418,6 +418,20 @@ int main(int argc, char* argv[])
     CHECK(symbols->saveSymbols(folder.filePath("prog.sym")));
     CHECK(readHost(folder.filePath("prog.sym")) == "badtime equ #8001\nstack equ #1234\nstart equ #8000\n");
     symbols->setFilter(QString());
+    // Symbols of another assembler, loaded: beside the assembly's, without
+    // a mark of use; the assembly's go over a name both have. Cleared, they
+    // go.
+    {
+        QFile other(folder.filePath("firmware.noi"));
+        CHECK(other.open(QIODevice::WriteOnly));
+        other.write("DEF TXT_OUTPUT BB5A\nDEF start 4000\n");
+        other.close();
+    }
+    CHECK(symbols->loadSymbols(folder.filePath("firmware.noi")));
+    CHECK(symbols->listed() == (QStringList{"badtime 8001", "stack 1234", "start 8000", "TXT_OUTPUT BB5A"}));
+    CHECK(list->topLevelItemCount() == 4 && list->topLevelItem(3)->text(2).isEmpty());
+    emulator.clearLoadedSymbols();
+    CHECK(symbols->listed() == (QStringList{"badtime 8001", "stack 1234", "start 8000"}));
     if (!prefix.isEmpty())
         symbols->grab().save(prefix + "symbols.png");
     symbols->close();

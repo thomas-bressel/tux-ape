@@ -129,6 +129,10 @@ add_executable(disasm disasm.cpp)
 target_link_libraries(disasm PRIVATE tuxape_core)
 add_test(NAME disasm COMMAND disasm)
 
+add_executable(symbols symbols.cpp)
+target_link_libraries(symbols PRIVATE tuxape_core)
+add_test(NAME symbols COMMAND symbols)
+
 add_executable(plus plus.cpp)
 target_link_libraries(plus PRIVATE tuxape_core)
 add_test(NAME plus COMMAND plus)

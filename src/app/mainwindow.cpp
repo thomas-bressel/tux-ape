@@ -2311,6 +2311,15 @@ QStringList MainWindow::startAgainArguments()
     }
     if (!tapePath_.isEmpty() && QFileInfo::exists(tapePath_))
         arguments << "--tape" << tapePath_;
+    // The symbol files loaded, read again.
+    QStringList symbolFiles;
+    for (const tuxape::AsmSymbol& symbol : emulator_->symbols()) {
+        const QString file = QString::fromStdString(symbol.file);
+        if (emulator_->symbolLoaded(symbol.name) && !symbolFiles.contains(file) && QFileInfo::exists(file))
+            symbolFiles << file;
+    }
+    for (const QString& file : symbolFiles)
+        arguments << "--sym" << file;
     return arguments;
 }
 

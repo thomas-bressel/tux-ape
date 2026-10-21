@@ -8,6 +8,7 @@
 #include "core/disasm.h"
 #include "core/files.h"
 #include "core/snapshot.h"
+#include "core/symbols.h"
 
 #include "audiooutput.h"
 
@@ -550,8 +551,8 @@ bool Emulator::counts(BreakProps& props, uint32_t address, uint32_t value, uint3
         context.value = value;
         context.previous = previous;
         context.symbol = [this](const std::string& name) -> std::optional<int32_t> {
-            const auto found = symbols_.find(name);
-            return found == symbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
+            const auto found = conditionSymbols_.find(name);
+            return found == conditionSymbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
         };
         context.function = [this](const std::string& name, const std::vector<int32_t>& args) {
             return conditionFunction(name, args, true);
@@ -712,8 +713,8 @@ bool Emulator::conditionValid(const std::string& condition)
     return withMachine([&](Cpc& cpc) {
         tuxape::ConditionContext context;
         context.symbol = [this](const std::string& name) -> std::optional<int32_t> {
-            const auto found = symbols_.find(name);
-            return found == symbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
+            const auto found = conditionSymbols_.find(name);
+            return found == conditionSymbols_.end() ? std::nullopt : std::optional<int32_t>(found->second);
         };
         context.function = [this](const std::string& name, const std::vector<int32_t>& args) {
             return conditionFunction(name, args, false);
@@ -731,9 +732,63 @@ bool Emulator::conditionValid(const std::string& condition)
     });
 }
 
-void Emulator::setSymbols(std::map<std::string, int32_t> symbols)
+void Emulator::setAssembledSymbols(std::vector<tuxape::AsmSymbol> symbols)
 {
-    withMachine([&](Cpc&) { symbols_ = std::move(symbols); });
+    assembledSymbols_ = std::move(symbols);
+    mergeSymbols();
+}
+
+void Emulator::addLoadedSymbols(const std::vector<tuxape::AsmSymbol>& symbols)
+{
+    for (const tuxape::AsmSymbol& symbol : symbols)
+        loadedSymbols_[QString::fromLatin1(symbol.name.c_str()).toUpper().toStdString()] = symbol;
+    mergeSymbols();
+}
+
+bool Emulator::loadSymbolFile(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    const auto symbols = tuxape::readSymbolFile(file.readAll().toStdString(), path.toStdString());
+    if (!symbols)
+        return false;
+    addLoadedSymbols(*symbols);
+    return true;
+}
+
+void Emulator::clearLoadedSymbols()
+{
+    loadedSymbols_.clear();
+    mergeSymbols();
+}
+
+bool Emulator::symbolLoaded(const std::string& name) const
+{
+    return fromFiles_.count(QString::fromLatin1(name.c_str()).toUpper().toStdString()) > 0;
+}
+
+void Emulator::mergeSymbols()
+{
+    std::map<std::string, int32_t> byName;
+    std::map<std::string, tuxape::AsmSymbol> all;
+    fromFiles_.clear();
+    for (const auto& [name, symbol] : loadedSymbols_) {
+        all[name] = symbol;
+        fromFiles_.insert(name);
+    }
+    for (const tuxape::AsmSymbol& symbol : assembledSymbols_) {
+        const std::string name = QString::fromLatin1(symbol.name.c_str()).toUpper().toStdString();
+        all[name] = symbol;
+        fromFiles_.erase(name);
+    }
+    symbols_.clear();
+    for (const auto& [name, symbol] : all) {
+        byName[name] = symbol.value;
+        symbols_.push_back(symbol);
+    }
+    withMachine([&](Cpc&) { conditionSymbols_ = std::move(byName); });
+    emit symbolsChanged();
 }
 
 void Emulator::setBreakpointsEnabled(bool enabled)

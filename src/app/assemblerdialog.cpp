@@ -47,6 +47,7 @@
 #include "core/disc.h"
 #include "core/discfiles.h"
 #include "core/files.h"
+#include "core/symbols.h"
 
 namespace {
 
@@ -286,8 +287,9 @@ int CodeEditor::column() const
 
 // ---- The symbols --------------------------------------------------------------
 
-SymbolsDialog::SymbolsDialog(QWidget* parent)
+SymbolsDialog::SymbolsDialog(Emulator* emulator, QWidget* parent)
     : QDialog(parent)
+    , emulator_(emulator)
 {
     setWindowTitle(tr("Assembler Symbols"));
     auto* layout = new QVBoxLayout(this);
@@ -337,22 +339,38 @@ SymbolsDialog::SymbolsDialog(QWidget* parent)
         QMenu menu(this);
         menu.addAction(tr("Goto &Source"), this, gotoSource)->setEnabled(selected() != nullptr);
         menu.addSeparator();
+        menu.addAction(tr("&Load Symbols..."), this, [this] {
+            const QString path = QFileDialog::getOpenFileName(this, tr("Load Symbols"), QString(),
+                                                              tr("Symbol Files (*.sym *.noi);;All Files (*)"));
+            if (!path.isEmpty())
+                loadSymbols(path);
+        });
         menu.addAction(tr("Sa&ve Symbols..."), this, [this] {
             const QString path = QFileDialog::getSaveFileName(this, tr("Save Symbols"), QString(),
                                                               tr("Symbol Files (*.sym);;All Files (*)"));
             if (!path.isEmpty() && !saveSymbols(path))
                 QMessageBox::warning(this, windowTitle(), tr("Cannot write %1.").arg(QDir::toNativeSeparators(path)));
         });
+        menu.addAction(tr("&Clear Loaded Symbols"), this, [this] { emulator_->clearLoadedSymbols(); })
+            ->setEnabled(emulator_->hasLoadedSymbols());
         menu.exec(list_->viewport()->mapToGlobal(at));
     });
     connect(close, &QPushButton::clicked, this, &QDialog::close);
-    showSelected();
+    // The program's symbols, as they change: assembled, loaded, cleared.
+    connect(emulator_, &Emulator::symbolsChanged, this, [this] {
+        symbols_ = emulator_->symbols();
+        fill();
+    });
+    symbols_ = emulator_->symbols();
+    fill();
 }
 
-void SymbolsDialog::setSymbols(const std::vector<tuxape::AsmSymbol>& symbols)
+bool SymbolsDialog::loadSymbols(const QString& path)
 {
-    symbols_ = symbols;
-    fill();
+    if (emulator_->loadSymbolFile(path))
+        return true;
+    QMessageBox::warning(this, windowTitle(), tr("Invalid Symbol File: %1").arg(QDir::toNativeSeparators(path)));
+    return false;
 }
 
 void SymbolsDialog::setFilter(const QString& filter)
@@ -376,11 +394,16 @@ void SymbolsDialog::fill()
         if (!pattern.match(name).hasMatch())
             continue;
         const QString value = QString("%1").arg(symbol.value & 0xFFFF, 4, 16, QLatin1Char('0')).toUpper();
-        auto* item = new QTreeWidgetItem(list_, {name, value, symbol.used ? QString(QChar(0x2714)) : QString(QChar(0x2718))});
+        // One loaded from a file says nothing of what uses it.
+        const bool loaded = emulator_->symbolLoaded(symbol.name);
+        const QString mark = loaded ? QString() : symbol.used ? QString(QChar(0x2714)) : QString(QChar(0x2718));
+        auto* item = new QTreeWidgetItem(list_, {name, value, mark});
         item->setData(0, Qt::UserRole, static_cast<int>(i));
         item->setForeground(1, valueColour);
         item->setForeground(2, markColour);
-        item->setToolTip(2, symbol.used ? tr("Used by the program") : tr("Not used by the program"));
+        const QString file = QDir::toNativeSeparators(QString::fromStdString(symbol.file));
+        item->setToolTip(0, loaded ? tr("Loaded from %1").arg(file) : QString());
+        item->setToolTip(2, loaded ? QString() : symbol.used ? tr("Used by the program") : tr("Not used by the program"));
     }
     if (list_->topLevelItemCount())
         list_->setCurrentItem(list_->topLevelItem(0));
@@ -416,9 +439,7 @@ void SymbolsDialog::select(int row)
 bool SymbolsDialog::saveSymbols(const QString& path) const
 {
     // As a source the assembler can read back.
-    QByteArray text;
-    for (const tuxape::AsmSymbol& symbol : symbols_)
-        text += QString("%1 equ #%2\n").arg(QString::fromLatin1(symbol.name.c_str())).arg(symbol.value & 0xFFFF, 4, 16, QLatin1Char('0')).toLatin1();
+    const QByteArray text = QByteArray::fromStdString(tuxape::symbolFileText(symbols_));
     QFile file(path);
     return file.open(QIODevice::WriteOnly) && file.write(text) == text.size();
 }
@@ -881,15 +902,11 @@ bool AssemblerDialog::assemble()
         errors_->setCurrentRow(0);
     const bool ok = listed_.empty();
     if (ok) {
-        // Breakpoint conditions may name the program's symbols.
-        std::map<std::string, int32_t> symbols;
-        for (const tuxape::AsmSymbol& symbol : result_.symbols)
-            symbols[QString::fromLatin1(symbol.name.c_str()).toUpper().toStdString()] = symbol.value;
-        emulator_->setSymbols(std::move(symbols));
+        // The program's symbols, for the breakpoints' conditions, the
+        // debugger and the symbols' window.
+        emulator_->setAssembledSymbols(result_.symbols);
         applyBreakpoints();
     }
-    if (symbols_)
-        symbols_->setSymbols(result_.symbols);
     if (!ok || !hideOutput_)
         showOutput(name);
     return ok;
@@ -1206,10 +1223,9 @@ void AssemblerDialog::appendPrinterOutput(const QString& text)
 SymbolsDialog* AssemblerDialog::showSymbols()
 {
     if (!symbols_) {
-        symbols_ = new SymbolsDialog(this);
+        symbols_ = new SymbolsDialog(emulator_, this);
         connect(symbols_, &SymbolsDialog::sourceRequested, this, &AssemblerDialog::gotoSource);
     }
-    symbols_->setSymbols(result_.symbols);
     symbols_->show();
     symbols_->raise();
     return symbols_;

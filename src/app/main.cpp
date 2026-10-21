@@ -44,7 +44,10 @@ int main(int argc, char* argv[])
     QCommandLineOption tapeOption("tape", QObject::tr("A tape to put in the deck."), "file");
     for (QCommandLineOption* option : {&resumeOption, &insertOption, &tapeOption})
         option->setFlags(QCommandLineOption::HiddenFromHelp);
-    parser.addOptions({grabOption, grabDelayOption, resumeOption, insertOption, tapeOption});
+    // WinAPE's /SYM: the symbols of a program, for the debugger and the
+    // breakpoints' conditions.
+    const QCommandLineOption symbolsOption("sym", QObject::tr("Load a file of assembler symbols, for the debugger."), "file");
+    parser.addOptions({grabOption, grabDelayOption, symbolsOption, resumeOption, insertOption, tapeOption});
     parser.addPositionalArgument("disc", QObject::tr("Disc image to put in drive A:."), "[disc]");
     parser.process(app);
 
@@ -117,6 +120,10 @@ int main(int argc, char* argv[])
             }
             if (parser.isSet(tapeOption))
                 window.insertTapeFile(parser.value(tapeOption));
+            for (const QString& path : parser.values(symbolsOption))
+                if (!emulator.loadSymbolFile(path))
+                    QMessageBox::warning(&window, window.windowTitle(),
+                                         QObject::tr("Invalid Symbol File: %1").arg(QDir::toNativeSeparators(path)));
             if (parser.isSet(resumeOption))
                 window.resumeFrom(parser.value(resumeOption));
             emulator.start();
