@@ -23,7 +23,8 @@
 # language PluginHost::language() says. TRANSLATE_TARGETS are the targets,
 # besides the module, whose sources hold texts to translate (the windows);
 # `cmake --build build --target <id>_update_translations` brings the .ts
-# files up to date with them (lupdate).
+# files up to date with them (lupdate). The module's TUXAPE_QM_FILES
+# property lists the .qm files built, for tests that load a translation.
 
 include_guard(GLOBAL)
 
@@ -105,6 +106,7 @@ function(tuxape_add_plugin_translations target id translations translate_targets
         PREFIX "/i18n/${id}"
         BASE "${CMAKE_CURRENT_BINARY_DIR}"
         FILES ${qm_files})
+    set_property(TARGET ${target} PROPERTY TUXAPE_QM_FILES ${qm_files})
 endfunction()
 
 function(tuxape_add_plugin target)

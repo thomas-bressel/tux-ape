@@ -71,7 +71,7 @@ Dans les exemples, l'identifiant est `monplugin` et le nom « Mon Plugin ».
 | Nom affiché (`name`) | « Nom – ce qu'il fait », avec un tiret demi-cadratin | `Mon Plugin – Sprite Editor` |
 | Entrée du menu Plugins | le nom affiché, suivi de `...` s'il ouvre une fenêtre | `Mon Plugin – Sprite Editor...` |
 | Titre des fenêtres | commence par le nom du plugin, boîtes de message et de question comprises | `Mon Plugin – Export` |
-| Noms d'objets Qt | uniques dans leur fenêtre, préfixés par leur genre (`b` bouton, `l` étiquette, `ed` champ, `te` texte, `ck` case, `rb` bouton radio, `cb` liste déroulante, `sb` nombre, `lv` liste) | `bExport`, `lStatus` |
+| Noms d'objets Qt | uniques dans leur fenêtre, préfixés par leur genre (`b` bouton, `l` étiquette, `ed` champ, `te` texte, `ck` case, `rb` bouton radio, `cb` liste déroulante, `sb` nombre, `lv` liste) ; un widget du plugin prend deux lettres de son genre (`pv` aperçu, `sw` écran...) | `bExport`, `lStatus` |
 | Plateforme | `<système>-<processeur>`, comme TuxAPE la nomme | `linux-x86_64`, `linux-arm64`, `windows-x86_64`, `macos-arm64` |
 
 Identifiants déjà pris : `tuxasc`, `tuxdsk`, `tuxscr`, `tuxwav`, `tuxcmp`. Ne
@@ -88,6 +88,8 @@ MonPlugin/
 ├── src/
 │   ├── engine/           ce que fait le plugin, en C++ sans Qt ni TuxAPE : testable seul ;
 │   │                     en plusieurs parties s'il le faut, une par dossier (engine/<partie>/)
+│   ├── io/               facultatif : ce qui demande Qt sans être une fenêtre (lire une image,
+│   │                     le réseau), partagé par les fenêtres et le programme (bibliothèque <id>_io)
 │   ├── plugin/           les fenêtres (bibliothèque <id>_ui) et la classe chargée (module <id>)
 │   └── cli/              facultatif : un programme en ligne de commande, qui va dans bin/
 ├── translations/         <id>_<langue>.ts : les traductions (Qt Linguist), une par langue
@@ -106,7 +108,8 @@ Trois règles d'architecture :
 - **Le moteur ne connaît ni Qt ni TuxAPE.** Il se teste seul, et sert aussi au
   programme en ligne de commande, qui n'utilise rien des fenêtres. Il n'a pas
   de texte pour l'utilisateur : il rend des données, ou des codes d'erreur,
-  que les fenêtres disent avec `tr()` (voir « Les langues »).
+  que les fenêtres disent avec `tr()` (voir « Les langues »). Ce qui demande
+  Qt sans être une fenêtre, et sert aussi au programme, va dans `src/io/`.
 - **Les fenêtres sont une bibliothèque statique** (`<id>_ui`), que les tests
   pilotent sans TuxAPE.
 - **Le module chargé ne contient que la classe du plugin.** Elle ajoute les
@@ -259,7 +262,10 @@ seulement sa langue.
 - **Les traductions** sont des fichiers `translations/<id>_<langue>.ts`, un par
   langue, nommés à `tuxape_add_plugin(... TRANSLATIONS translations/<id>_fr.ts
   TRANSLATE_TARGETS <id>_ui)`. Ils sont compilés dans la bibliothèque, sous
-  `:/i18n/<id>/<id>_<langue>.qm`.
+  `:/i18n/<id>/<id>_<langue>.qm` ; la propriété `TUXAPE_QM_FILES` du module
+  donne les fichiers `.qm` compilés, pour un test qui charge une traduction.
+- **lupdate ne lit que les `.cpp` et les `.h`** des cibles nommées : un
+  tableau de textes généré (`.inc`...) est à écrire dans un `.h`.
 - **Dans `start()`, avant le premier `tr()`**, le plugin installe sa traduction
   pour la langue de TuxAPE (`language()`, depuis l'API 4) ; dans `stop()`, il
   la retire :
