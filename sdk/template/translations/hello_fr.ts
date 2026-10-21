@@ -27,7 +27,7 @@
         <translation>Gardé dans : %1</translation>
     </message>
     <message numerus="yes">
-        <source>Mode %1 (%n colours), from &amp;%2</source>
+        <source>Mode %1 (%n colour(s)), from &amp;%2</source>
         <translation>
             <numerusform>Mode %1 (%n couleur), à partir de &amp;%2</numerusform>
             <numerusform>Mode %1 (%n couleurs), à partir de &amp;%2</numerusform>

@@ -42,7 +42,7 @@ void HelloWindow::refresh()
     const tuxape::PluginScreen screen = host_->screen();
     const ScreenInfo info = screenInfo(screen.mode, screen.address);
     const QString address = QString("%1").arg(info.address, 4, 16, QLatin1Char('0')).toUpper();
-    screen_->setText(info.colours ? tr("Mode %1 (%n colours), from &%2", nullptr, info.colours).arg(info.mode).arg(address)
+    screen_->setText(info.colours ? tr("Mode %1 (%n colour(s)), from &%2", nullptr, info.colours).arg(info.mode).arg(address)
                                   : tr("Mode %1, which the CPC has not, from &%2").arg(info.mode).arg(address));
 }
 

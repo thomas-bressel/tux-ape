@@ -254,24 +254,30 @@ seulement sa langue.
 - **Les sources sont en anglais**, comme celles de TuxAPE. Tout texte que
   l'utilisateur voit passe par `tr()`, avec `&` pour la lettre de navigation.
 - **Des phrases entières** : `tr("%1 is not on the disc").arg(name)`, jamais
-  une phrase faite de morceaux. Ce qui se compte prend `%n` : `tr("Delete %n
-  file(s)?", nullptr, n)`. Un texte gardé dans une variable est marqué
-  `QT_TR_NOOP()`, puis passé à `tr()`.
+  une phrase faite de morceaux. Ce qui se compte prend `%n`, et la source dit
+  le pluriel avec « (s) » : `tr("Delete %n file(s)?", nullptr, n)` (`%Ln` pour
+  un nombre écrit à la façon de la langue, 16 384). L'anglais aussi a ses
+  formes, « 1 file », « 3 files », dans `<id>_en.ts` (voir plus bas) ; jamais
+  de `n == 1 ? ... : ...` dans le code. Un texte gardé dans une variable est
+  marqué `QT_TR_NOOP()`, puis passé à `tr()`.
 - **Le moteur n'a pas de texte** : il rend des données ou des codes, que la
   fenêtre dit avec `tr()`.
 - **Les traductions** sont des fichiers `translations/<id>_<langue>.ts`, un par
-  langue, nommés à `tuxape_add_plugin(... TRANSLATIONS translations/<id>_fr.ts
-  TRANSLATE_TARGETS <id>_ui)`. Ils sont compilés dans la bibliothèque, sous
+  langue, nommés à `tuxape_add_plugin(... TRANSLATIONS translations/<id>_en.ts
+  translations/<id>_fr.ts TRANSLATE_TARGETS <id>_ui)`. Celui de l'anglais,
+  la langue des sources, ne contient que les pluriels (lupdate
+  `-pluralonly`) : le singulier et le pluriel de chaque « (s) ». Ils sont compilés dans la bibliothèque, sous
   `:/i18n/<id>/<id>_<langue>.qm` ; la propriété `TUXAPE_QM_FILES` du module
   donne les fichiers `.qm` compilés, pour un test qui charge une traduction.
 - **lupdate ne lit que les `.cpp` et les `.h`** des cibles nommées : un
   tableau de textes généré (`.inc`...) est à écrire dans un `.h`.
 - **Dans `start()`, avant le premier `tr()`**, le plugin installe sa traduction
-  pour la langue de TuxAPE (`language()`, depuis l'API 4) ; dans `stop()`, il
-  la retire :
+  pour la langue de TuxAPE (`language()`, depuis l'API 4), ou l'anglais (ses
+  pluriels) s'il n'a pas cette langue ; dans `stop()`, il la retire :
 
 ```cpp
-if (translator_.load(QStringLiteral(":/i18n/monplugin/monplugin_%1.qm").arg(host->language())))
+const QString translations = QStringLiteral(":/i18n/monplugin/monplugin_%1.qm");
+if (translator_.load(translations.arg(host->language())) || translator_.load(translations.arg("en")))
     QCoreApplication::installTranslator(&translator_);
 ...
 QCoreApplication::removeTranslator(&translator_);   // dans stop()
@@ -281,8 +287,9 @@ QCoreApplication::removeTranslator(&translator_);   // dans stop()
   pour en changer. Le plugin n'a donc pas à retraduire ses fenêtres.
 - Pas de choix de langue propre au plugin : il suit celle de TuxAPE.
 - Pour mettre les traductions à jour après un changement des sources :
-  `cmake --build build --target <id>_update_translations` (lupdate), puis
-  `linguist translations/<id>_fr.ts` pour traduire ce qui est nouveau.
+  `cmake --build build --target <id>_update_translations` (lupdate, l'anglais
+  compris), puis `linguist translations/<id>_fr.ts` et
+  `linguist translations/<id>_en.ts` pour traduire ce qui est nouveau.
 
 ## Les données du plugin
 
@@ -367,7 +374,7 @@ tuxape-plugin-sign check dist/monplugin-1.2.0-linux-x86_64.zip
 - [ ] Compilé en Release, avec le Qt de TuxAPE ou un plus ancien.
 - [ ] Rien d'autre de TuxAPE que `sdk/plugin.h` n'est inclus, ni dans le plugin, ni dans ses tests et outils.
 - [ ] Toutes les classes sont dans l'espace de noms du plugin.
-- [ ] Les textes visibles passent par `tr()` ; le moteur n'en a pas ; les traductions sont à jour (`<id>_update_translations`) et complètes.
+- [ ] Les textes visibles passent par `tr()` ; le moteur n'en a pas ; les traductions sont à jour (`<id>_update_translations`) et complètes, les pluriels anglais compris.
 - [ ] `stop()` laisse tout propre : fenêtres, minuteries, fils d'exécution, filtres, traducteur.
 - [ ] Pas de raccourci, ou seulement Ctrl+Maj+F4 à F8 ou F10 à F12.
 - [ ] Le bouton suit le thème clair et sombre ; les contrastes sont AAA.

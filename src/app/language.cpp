@@ -88,9 +88,16 @@ bool useLanguage(const QString& code)
         translator->reset();
     }
     current = kSourceLanguage;
-    if (code == kSourceLanguage)
-        return true;
     const QString file = translationFile(code);
+    // The language of the sources: its plurals alone, if it has them.
+    if (code == kSourceLanguage) {
+        auto plurals = std::make_unique<QTranslator>();
+        if (!file.isEmpty() && plurals->load(file)) {
+            QCoreApplication::installTranslator(plurals.get());
+            appTranslator = std::move(plurals);
+        }
+        return true;
+    }
     auto app = std::make_unique<QTranslator>();
     if (file.isEmpty() || !app->load(file))
         return false;

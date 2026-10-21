@@ -36,8 +36,10 @@ bool HelloPlugin::start(tuxape::PluginHost* host, QString*)
     host_ = host;
     // The plugin's texts in TuxAPE's language, before its first tr(): the
     // translations tuxape_add_plugin(TRANSLATIONS ...) built into the
-    // library. None for English, the language of the sources.
-    if (translator_.load(QStringLiteral(":/i18n/hello/hello_%1.qm").arg(host->language())))
+    // library. For English, the language of the sources, its plurals
+    // alone; English too for a language the plugin has no translation for.
+    const QString translations = QStringLiteral(":/i18n/hello/hello_%1.qm");
+    if (translator_.load(translations.arg(host->language())) || translator_.load(translations.arg("en")))
         QCoreApplication::installTranslator(&translator_);
     // No key of its own: every key that is not a function key is the
     // CPC's (see PLUGINS.md).

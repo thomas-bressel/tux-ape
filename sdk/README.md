@@ -95,8 +95,10 @@ public:
     bool start(tuxape::PluginHost* host, QString* error) override
     {
         host_ = host;
-        // Ses textes dans la langue de TuxAPE, avant le premier tr().
-        if (translator_.load(QStringLiteral(":/i18n/monplugin/monplugin_%1.qm").arg(host->language())))
+        // Ses textes dans la langue de TuxAPE, avant le premier tr() ;
+        // l'anglais (ses pluriels) pour une langue qu'il n'a pas.
+        const QString translations = QStringLiteral(":/i18n/monplugin/monplugin_%1.qm");
+        if (translator_.load(translations.arg(host->language())) || translator_.load(translations.arg("en")))
             QCoreApplication::installTranslator(&translator_);
         QAction* entry = host->addAction(tr("Mon Plugin – &Sprite Editor..."));
         connect(entry, &QAction::triggered, this, [this] { /* ... */ });

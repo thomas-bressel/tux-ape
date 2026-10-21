@@ -63,6 +63,16 @@ int main(int argc, char* argv[])
     CHECK(Settings().language == "en");
     CHECK(currentLanguage() == "en");
     CHECK(QCoreApplication::translate("MainWindow", "&File") == "&File");
+    // English once only, though it has a file of its own: its plurals,
+    // "1 file", "3 files", where the sources say "file(s)".
+    int englishes = 0;
+    for (const Language& language : languages)
+        englishes += language.code == "en";
+    CHECK_EQ(englishes, 1);
+    CHECK(useLanguage("en"));
+    CHECK(QCoreApplication::translate("DiscEditorDialog", "Delete %n file(s)?", nullptr, 1) == "Delete 1 file?");
+    CHECK(QCoreApplication::translate("DiscEditorDialog", "Delete %n file(s)?", nullptr, 3) == "Delete 3 files?");
+    CHECK(QCoreApplication::translate("MainWindow", "&File") == "&File");
 
     // In French: TuxAPE's texts, and Qt's own as the system has them.
     CHECK(useLanguage("fr"));

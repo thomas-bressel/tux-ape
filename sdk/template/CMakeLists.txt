@@ -54,7 +54,7 @@ tuxape_add_plugin(hello
     DESCRIPTION "Says what the CPC's screen is, and types HELLO on its keyboard: the model of a TuxAPE plugin."
     API 4
     FILES LICENSE
-    TRANSLATIONS translations/hello_fr.ts
+    TRANSLATIONS translations/hello_en.ts translations/hello_fr.ts
     TRANSLATE_TARGETS hello_ui)
 
 if(HELLO_BUILD_TESTS)

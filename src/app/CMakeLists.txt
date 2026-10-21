@@ -85,19 +85,33 @@ target_link_libraries(tuxape_app PRIVATE SDL2::SDL2)
 # The languages of the interface: English, the language of the sources, and
 # one translations/tuxape_<language>.ts for each other. A file dropped there
 # is a language more, at the next configure; the Language menu finds it.
+# English has a file too, tuxape_en.ts, of its plurals alone: the sources
+# say "%n file(s)", and English "1 file", "3 files".
 # `cmake --build build --target update_translations` brings the files up
 # to date with the sources (lupdate).
 # (qt_add_translations() does the same in one call, but breaks on a source
 # folder whose path has a space in it.)
 find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
 file(GLOB TUXAPE_TS_FILES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/translations/tuxape_*.ts)
+set(TUXAPE_PLURALS_TS ${TUXAPE_TS_FILES})
+list(FILTER TUXAPE_PLURALS_TS INCLUDE REGEX "/tuxape_en\\.ts$")
+set(TUXAPE_LANGUAGES_TS ${TUXAPE_TS_FILES})
+list(FILTER TUXAPE_LANGUAGES_TS EXCLUDE REGEX "/tuxape_en\\.ts$")
 get_target_property(TUXAPE_APP_SOURCES tuxape_app SOURCES)
 list(FILTER TUXAPE_APP_SOURCES INCLUDE REGEX "\\.(cpp|h)$")
 qt_add_lupdate(
-    TS_FILES ${TUXAPE_TS_FILES}
+    TS_FILES ${TUXAPE_LANGUAGES_TS}
     SOURCES ${TUXAPE_APP_SOURCES} main.cpp
     LUPDATE_TARGET update_translations
     OPTIONS -no-obsolete -locations none)
+if(TUXAPE_PLURALS_TS)
+    qt_add_lupdate(
+        TS_FILES ${TUXAPE_PLURALS_TS}
+        SOURCES ${TUXAPE_APP_SOURCES} main.cpp
+        LUPDATE_TARGET update_plurals
+        OPTIONS -no-obsolete -locations none -pluralonly)
+    add_dependencies(update_translations update_plurals)
+endif()
 qt_add_lrelease(
     TS_FILES ${TUXAPE_TS_FILES}
     QM_FILES_OUTPUT_VARIABLE TUXAPE_QM_FILES)

@@ -6,7 +6,8 @@ Un plugin minimal mais complet, à copier pour en commencer un :
   données ;
 - sa fenêtre et sa classe que TuxAPE charge (`src/plugin/`), toutes dans
   `namespace hello` ;
-- sa traduction française (`translations/hello_fr.ts`), chargée dans la langue
+- sa traduction française (`translations/hello_fr.ts`) et les pluriels
+  anglais (`translations/hello_en.ts`), chargés dans la langue
   de TuxAPE ;
 - le test qui le charge comme TuxAPE, en anglais puis en français ;
 - son archive, signée quand la clé de l'auteur est nommée.
@@ -30,5 +31,6 @@ Après un changement des textes :
 ```sh
 cmake --build build --target hello_update_translations   # lupdate
 linguist translations/hello_fr.ts                         # traduire ce qui est nouveau
+linguist translations/hello_en.ts                         # et les pluriels anglais
 cmake --build build
 ```

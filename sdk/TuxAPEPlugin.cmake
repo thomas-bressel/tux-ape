@@ -25,6 +25,9 @@
 # `cmake --build build --target <id>_update_translations` brings the .ts
 # files up to date with them (lupdate). The module's TUXAPE_QM_FILES
 # property lists the .qm files built, for tests that load a translation.
+# <id>_en.ts, English, the language of the sources, holds their plurals
+# alone (lupdate -pluralonly): the sources say "%n file(s)", English
+# "1 file", "3 files".
 
 include_guard(GLOBAL)
 
@@ -94,11 +97,28 @@ function(tuxape_add_plugin_translations target id translations translate_targets
         list(APPEND ts_files "${file}")
     endforeach()
     tuxape_target_sources(sources ${target} ${translate_targets})
-    qt_add_lupdate(
-        TS_FILES ${ts_files}
-        SOURCES ${sources}
-        LUPDATE_TARGET ${id}_update_translations
-        OPTIONS -no-obsolete -locations none)
+    # English's plurals, and the other languages whole.
+    set(plurals ${ts_files})
+    list(FILTER plurals INCLUDE REGEX "/${id}_en\\.ts$")
+    set(languages ${ts_files})
+    list(FILTER languages EXCLUDE REGEX "/${id}_en\\.ts$")
+    if(languages)
+        qt_add_lupdate(
+            TS_FILES ${languages}
+            SOURCES ${sources}
+            LUPDATE_TARGET ${id}_update_translations
+            OPTIONS -no-obsolete -locations none)
+    else()
+        add_custom_target(${id}_update_translations)
+    endif()
+    if(plurals)
+        qt_add_lupdate(
+            TS_FILES ${plurals}
+            SOURCES ${sources}
+            LUPDATE_TARGET ${id}_update_plurals
+            OPTIONS -no-obsolete -locations none -pluralonly)
+        add_dependencies(${id}_update_translations ${id}_update_plurals)
+    endif()
     qt_add_lrelease(
         TS_FILES ${ts_files}
         QM_FILES_OUTPUT_VARIABLE qm_files)
