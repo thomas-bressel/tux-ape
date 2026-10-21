@@ -31,7 +31,8 @@ namespace tuxape {
 //       tiles selected there
 //   3   the discs in the drives: their files, and files put on them; the
 //       other plugins loaded, for what they offer one another
-constexpr int kPluginApi = 3;
+//   4   the language of TuxAPE's windows, for a plugin to speak it too
+constexpr int kPluginApi = 4;
 constexpr int kOldestPluginApi = 1;
 
 // The structures that follow go between TuxAPE and a plugin as they are,
@@ -169,6 +170,16 @@ public:
         Q_UNUSED(id);
         return nullptr;
     }
+
+    // ---- Since version 4 ----
+
+    // The language of TuxAPE's windows: "en", "fr"... English is the
+    // language of the sources, TuxAPE's as a plugin's. A plugin translates
+    // its own texts: in start(), before its first tr(), it installs a
+    // QTranslator with its translation for this language, if it has one,
+    // and takes it away in stop(). The language does not change while a
+    // plugin is loaded: TuxAPE starts again to change it.
+    virtual QString language() { return QStringLiteral("en"); }
 
 protected:
     ~PluginHost() = default;

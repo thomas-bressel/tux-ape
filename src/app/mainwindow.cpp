@@ -303,6 +303,8 @@ public:
 
     QObject* plugin(const QString& id) override { return window_->plugins_->instance(id); }
 
+    QString language() override { return currentLanguage(); }
+
 private:
     MainWindow* window_;
     QString id_;

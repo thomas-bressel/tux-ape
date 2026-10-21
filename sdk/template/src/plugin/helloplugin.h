@@ -2,13 +2,16 @@
 
 #include <QObject>
 #include <QPointer>
+#include <QTranslator>
 
 #include "plugin.h"
+
+namespace hello {
 
 class HelloWindow;
 
 // What TuxAPE loads: an entry in the Plugins menu and a button on the
-// control panel, which show the plugin's window.
+// control panel, which show the plugin's window; in TuxAPE's language.
 class HelloPlugin : public QObject, public tuxape::Plugin {
     Q_OBJECT
     // The interface TuxAPE knows a plugin by: exactly this one.
@@ -28,6 +31,9 @@ private:
     tuxape::PluginHost* host_ = nullptr;
     QAction* action_ = nullptr;  // TuxAPE's: it takes it back at stop()
     QPointer<HelloWindow> window_;
+    QTranslator translator_;     // the plugin's texts in TuxAPE's language
 
     void showWindow();
 };
+
+}  // namespace hello

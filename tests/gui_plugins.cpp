@@ -415,6 +415,7 @@ int main(int argc, char* argv[])
         const PluginInfo* bad = window.plugins()->plugin("broken");
         CHECK(bad && !bad->loaded && bad->problem.contains("missing"));
         CHECK(window.property("sampleStarted").toBool());
+        CHECK(window.property("sampleLanguage").toString() == "en");
         // Its entry is in the menu, above the line, with its key; the menu shows.
         CHECK(menu && menu->menuAction()->isVisible());
         QAction* chosen = entry(menu, "&Sample Plugin...");

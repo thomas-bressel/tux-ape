@@ -12,13 +12,19 @@ les autres sont signalées comme telles.
 ## Démarrer : copier le modèle
 
 `sdk/template/` est un plugin complet et testé, nommé « hello » : un moteur
-sans Qt et son test, une fenêtre, la classe que TuxAPE charge, un test qui le
-charge comme TuxAPE, son archive signée. Pour commencer un plugin :
+sans Qt et son test, une fenêtre, la classe que TuxAPE charge, sa traduction
+française, un test qui le charge comme TuxAPE, en anglais puis en français, et
+son archive, signée quand la clé de l'auteur est nommée. TuxAPE le compile et
+le teste avec ses propres tests : il suit toujours ces règles. Pour commencer
+un plugin :
 
 1. copier `sdk/template/` à côté du dossier de TuxAPE, sous le nom du projet
    (`MonPlugin/`) ;
-2. remplacer partout `hello` par l'identifiant du plugin, `Hello` par son nom,
-   y compris dans les noms de fichiers (`helloplugin.cpp` → `monpluginplugin.cpp`) ;
+2. remplacer partout `hello` par l'identifiant du plugin, `Hello` par son nom
+   et `HELLO` par l'identifiant en majuscules, y compris dans les noms de
+   fichiers (`helloplugin.cpp` → `monpluginplugin.cpp`,
+   `translations/hello_fr.ts` → `translations/monplugin_fr.ts`) ; dire ce qu'il
+   fait là où le modèle dit « Example Plugin » ;
 3. remplir l'appel `tuxape_add_plugin(...)` du `CMakeLists.txt` (auteur,
    licence, description, version d'API) et le fichier `LICENSE` ;
 4. compiler et lancer les tests :
@@ -37,7 +43,7 @@ L'archive à distribuer est alors dans `dist/`.
 |---|---|---|
 | Identifiant | `^[a-z0-9][a-z0-9_-]{0,31}$` : minuscules, chiffres, `-`, `_`, 32 au plus | à la compilation et au chargement |
 | Dossier | porte exactement l'identifiant | au chargement |
-| `api` du `plugin.json` | entre `kOldestPluginApi` et `kPluginApi` de `sdk/plugin.h` (aujourd'hui 1 à 3) | à la compilation et au chargement |
+| `api` du `plugin.json` | entre `kOldestPluginApi` et `kPluginApi` de `sdk/plugin.h` (aujourd'hui 1 à 4) | à la compilation et au chargement |
 | Bibliothèque | une pour l'ordinateur de l'utilisateur, dans le dossier du plugin | au chargement |
 | Interface | la bibliothèque déclare `org.tuxape.Plugin/1` | au chargement |
 | Qt | celui de TuxAPE (6.10) ou un Qt 6 plus ancien, jamais plus récent | à la compilation (Qt refuse sinon) |
@@ -61,7 +67,7 @@ Dans les exemples, l'identifiant est `monplugin` et le nom « Mon Plugin ».
 | Cibles CMake | `<id>` le module, `<id>_ui` les fenêtres, `<id>_engine` (ou `<id>_<partie>`) le reste, `<id>_cli` un programme | `monplugin`, `monplugin_ui` |
 | Variables et options CMake | préfixe `<ID>_` en majuscules | `MONPLUGIN_BUILD_TESTS` |
 | Classe chargée | `<Nom>Plugin` | `MonPluginPlugin` |
-| Espace de noms C++ | l'identifiant, ou un nom à soi : jamais `tuxape` | `namespace monplugin` |
+| Espace de noms C++ | l'identifiant, pour **toutes** les classes du plugin, fenêtres et classe chargée comprises : jamais `tuxape`, jamais l'espace global, où deux plugins se gêneraient et où leurs textes se confondraient pour la traduction | `namespace monplugin` |
 | Nom affiché (`name`) | « Nom – ce qu'il fait », avec un tiret demi-cadratin | `Mon Plugin – Sprite Editor` |
 | Entrée du menu Plugins | le nom affiché, suivi de `...` s'il ouvre une fenêtre | `Mon Plugin – Sprite Editor...` |
 | Titre des fenêtres | commence par le nom du plugin | `Mon Plugin – Export` |
@@ -80,12 +86,14 @@ MonPlugin/
 ├── LICENSE               la licence, qui va dans l'archive
 ├── README.md             ce que fait le plugin, comment le compiler
 ├── src/
-│   ├── engine/           ce que fait le plugin, en C++ sans Qt ni TuxAPE : testable seul
+│   ├── engine/           ce que fait le plugin, en C++ sans Qt ni TuxAPE : testable seul ;
+│   │                     en plusieurs parties s'il le faut, une par dossier (engine/<partie>/)
 │   ├── plugin/           les fenêtres (bibliothèque <id>_ui) et la classe chargée (module <id>)
 │   └── cli/              facultatif : un programme en ligne de commande, qui va dans bin/
+├── translations/         <id>_<langue>.ts : les traductions (Qt Linguist), une par langue
 ├── tests/
 │   ├── check.h           les vérifications des tests
-│   ├── host.h            un TuxAPE de test : toutes les fonctions de PluginHost
+│   ├── host.h            un TuxAPE de test : toutes les fonctions de PluginHost, de toutes les versions
 │   ├── engine_*.cpp      les tests du moteur
 │   └── plugin_window.cpp le plugin chargé comme TuxAPE le charge
 ├── tools/                facultatif : les outils du développement
@@ -96,7 +104,9 @@ MonPlugin/
 Trois règles d'architecture :
 
 - **Le moteur ne connaît ni Qt ni TuxAPE.** Il se teste seul, et sert aussi au
-  programme en ligne de commande.
+  programme en ligne de commande, qui n'utilise rien des fenêtres. Il n'a pas
+  de texte pour l'utilisateur : il rend des données, ou des codes d'erreur,
+  que les fenêtres disent avec `tr()` (voir « Les langues »).
 - **Les fenêtres sont une bibliothèque statique** (`<id>_ui`), que les tests
   pilotent sans TuxAPE.
 - **Le module chargé ne contient que la classe du plugin.** Elle ajoute les
@@ -152,6 +162,7 @@ faits pour une plus récente.
 | 1 | le menu Plugins, les boutons, les disquettes et les instantanés, le clavier, la mémoire et l'écran du CPC, l'assembleur, un dossier de données |
 | 2 | une entrée dans le menu des tuiles de Find Graphics, et les tuiles choisies |
 | 3 | les fichiers des disquettes des lecteurs, et ceux qu'on y pose ; les autres plugins chargés |
+| 4 | la langue des fenêtres de TuxAPE (`language()`), pour que le plugin parle la même |
 
 Les règles :
 
@@ -175,9 +186,9 @@ Les règles :
 
 ### Ce que le plugin doit respecter
 
-- **N'incluez de TuxAPE que `sdk/plugin.h`.** Le reste de TuxAPE peut changer
-  à tout moment. Ne donnez pas à vos propres fichiers le nom d'un fichier de
-  TuxAPE.
+- **N'incluez de TuxAPE que `sdk/plugin.h`**, dans le plugin comme dans ses
+  tests et ses outils : le reste de TuxAPE peut changer à tout moment, et un
+  plugin est un projet à lui. N'appelez aucun de vos fichiers `plugin.h`.
 - **Qt :** le Qt 6 de TuxAPE (aujourd'hui 6.10) ou un plus ancien, jamais un
   plus récent, que Qt refuserait de charger. `TuxAPEPlugin.cmake` l'interdit
   à la compilation.
@@ -195,8 +206,10 @@ Les règles :
 - `stop()` est appelé avant le déchargement, à la fermeture de TuxAPE, quand
   l'utilisateur décoche le plugin ou en installe une nouvelle version. Le
   plugin y ferme et supprime ses fenêtres, arrête ses minuteries et ses fils
-  d'exécution, et retire ses filtres d'événements. **Rien ne doit lui survivre** :
-  la bibliothèque est déchargée juste après.
+  d'exécution, retire ses filtres d'événements et son traducteur. **Rien ne doit
+  lui survivre** : la bibliothèque est déchargée juste après. Une boîte de
+  dialogue ouverte par `exec()` est fermée avant que sa fenêtre ne soit
+  supprimée.
 - Les entrées et les boutons appartiennent à TuxAPE, qui les retire. Ne les
   supprimez pas, et ne gardez pas de pointeur vers eux après `stop()`.
 - N'utilisez pas de variables globales ou statiques qui gardent un état d'un
@@ -226,8 +239,43 @@ le clavier, et priverait un jeu de cette touche quand il ne l'a pas.
   (`QEvent::ApplicationPaletteChange`), comme le fait le modèle.
 - **Contraste :** TuxAPE vise le niveau AAA des WCAG, 7:1 pour le texte et
   3:1 pour le reste. Un état ne se montre jamais par la seule couleur.
-- **Textes de l'interface en anglais**, comme ceux de TuxAPE, avec `&` pour la
-  lettre de navigation. Utilisez `tr()`.
+- **Textes de l'interface** : voir « Les langues ».
+
+## Les langues
+
+TuxAPE parle anglais ou français, selon **Settings ▸ Language**, et un plugin
+parle comme lui. Chaque plugin traduit lui-même ses textes : TuxAPE lui dit
+seulement sa langue.
+
+- **Les sources sont en anglais**, comme celles de TuxAPE. Tout texte que
+  l'utilisateur voit passe par `tr()`, avec `&` pour la lettre de navigation.
+- **Des phrases entières** : `tr("%1 is not on the disc").arg(name)`, jamais
+  une phrase faite de morceaux. Ce qui se compte prend `%n` : `tr("Delete %n
+  file(s)?", nullptr, n)`. Un texte gardé dans une variable est marqué
+  `QT_TR_NOOP()`, puis passé à `tr()`.
+- **Le moteur n'a pas de texte** : il rend des données ou des codes, que la
+  fenêtre dit avec `tr()`.
+- **Les traductions** sont des fichiers `translations/<id>_<langue>.ts`, un par
+  langue, nommés à `tuxape_add_plugin(... TRANSLATIONS translations/<id>_fr.ts
+  TRANSLATE_TARGETS <id>_ui)`. Ils sont compilés dans la bibliothèque, sous
+  `:/i18n/<id>/<id>_<langue>.qm`.
+- **Dans `start()`, avant le premier `tr()`**, le plugin installe sa traduction
+  pour la langue de TuxAPE (`language()`, depuis l'API 4) ; dans `stop()`, il
+  la retire :
+
+```cpp
+if (translator_.load(QStringLiteral(":/i18n/monplugin/monplugin_%1.qm").arg(host->language())))
+    QCoreApplication::installTranslator(&translator_);
+...
+QCoreApplication::removeTranslator(&translator_);   // dans stop()
+```
+
+- La langue ne change pas pendant qu'un plugin est chargé : TuxAPE redémarre
+  pour en changer. Le plugin n'a donc pas à retraduire ses fenêtres.
+- Pas de choix de langue propre au plugin : il suit celle de TuxAPE.
+- Pour mettre les traductions à jour après un changement des sources :
+  `cmake --build build --target <id>_update_translations` (lupdate), puis
+  `linguist translations/<id>_fr.ts` pour traduire ce qui est nouveau.
 
 ## Les données du plugin
 
@@ -298,7 +346,7 @@ tuxape-plugin-sign check dist/monplugin-1.2.0-linux-x86_64.zip
 - **Le plugin chargé comme TuxAPE le charge** (`tests/plugin_window.cpp`) :
   `QPluginLoader`, l'interface `org.tuxape.Plugin/1`, `start()` avec l'hôte de
   test (`tests/host.h`), les entrées, la fenêtre, `stop()`, puis le
-  déchargement.
+  déchargement ; et de nouveau avec un hôte qui parle français.
 - **Dans un vrai TuxAPE**, sans toucher à vos plugins installés : décompressez
   l'archive dans un dossier vide et lancez TuxAPE avec
   `TUXAPE_PLUGIN_DIR=/ce/dossier` ; ou installez-la par **Settings ▸ Plugins
@@ -310,8 +358,10 @@ tuxape-plugin-sign check dist/monplugin-1.2.0-linux-x86_64.zip
 - [ ] L'identifiant est unique, en minuscules, et n'est pas `hello`.
 - [ ] `api` est la plus petite version dont le plugin utilise une fonction.
 - [ ] Compilé en Release, avec le Qt de TuxAPE ou un plus ancien.
-- [ ] Rien d'autre de TuxAPE que `sdk/plugin.h` n'est inclus.
-- [ ] `stop()` laisse tout propre : fenêtres, minuteries, fils d'exécution, filtres.
+- [ ] Rien d'autre de TuxAPE que `sdk/plugin.h` n'est inclus, ni dans le plugin, ni dans ses tests et outils.
+- [ ] Toutes les classes sont dans l'espace de noms du plugin.
+- [ ] Les textes visibles passent par `tr()` ; le moteur n'en a pas ; les traductions sont à jour (`<id>_update_translations`) et complètes.
+- [ ] `stop()` laisse tout propre : fenêtres, minuteries, fils d'exécution, filtres, traducteur.
 - [ ] Pas de raccourci, ou seulement Ctrl+Maj+F4 à F8 ou F10 à F12.
 - [ ] Le bouton suit le thème clair et sombre ; les contrastes sont AAA.
 - [ ] Les données vont dans `dataFolder()`, jamais dans le dossier du plugin.

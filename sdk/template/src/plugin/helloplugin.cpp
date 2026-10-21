@@ -8,6 +8,8 @@
 
 #include "hellowindow.h"
 
+namespace hello {
+
 namespace {
 
 // The button's picture, in the colours of the look in use.
@@ -32,20 +34,29 @@ QIcon helloIcon()
 bool HelloPlugin::start(tuxape::PluginHost* host, QString*)
 {
     host_ = host;
+    // The plugin's texts in TuxAPE's language, before its first tr(): the
+    // translations tuxape_add_plugin(TRANSLATIONS ...) built into the
+    // library. None for English, the language of the sources.
+    if (translator_.load(QStringLiteral(":/i18n/hello/hello_%1.qm").arg(host->language())))
+        QCoreApplication::installTranslator(&translator_);
     // No key of its own: every key that is not a function key is the
     // CPC's (see PLUGINS.md).
-    action_ = host->addAction(tr("Hello – Example Plugin..."));
+    action_ = host->addAction(tr("Hello – &Example Plugin..."));
     host->addButton(action_, helloIcon());
     connect(action_, &QAction::triggered, this, &HelloPlugin::showWindow);
+    // Qt tells the application when the look changes: its events are
+    // watched for that one, which costs a comparison an event.
     qApp->installEventFilter(this);
     return true;
 }
 
 void HelloPlugin::stop()
 {
-    // TuxAPE unloads the library next: nothing of it may be left running.
+    // TuxAPE unloads the library next: nothing of it may be left running,
+    // nor its translator installed.
     qApp->removeEventFilter(this);
     delete window_;
+    QCoreApplication::removeTranslator(&translator_);
     action_ = nullptr;
     host_ = nullptr;
 }
@@ -66,3 +77,5 @@ void HelloPlugin::showWindow()
     window_->raise();
     window_->activateWindow();
 }
+
+}  // namespace hello

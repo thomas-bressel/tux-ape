@@ -1,5 +1,3 @@
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
-
 # The engine alone.
 add_executable(engine_greeting engine_greeting.cpp)
 target_link_libraries(engine_greeting PRIVATE hello_engine)

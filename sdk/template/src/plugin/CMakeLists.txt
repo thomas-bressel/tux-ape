@@ -1,5 +1,3 @@
-find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
-
 set(CMAKE_AUTOMOC ON)
 
 # The windows are a library, so that tests can drive them without TuxAPE.

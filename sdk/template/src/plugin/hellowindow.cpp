@@ -8,6 +8,8 @@
 
 #include "greeting.h"
 
+namespace hello {
+
 HelloWindow::HelloWindow(tuxape::PluginHost* host, QWidget* parent)
     : QDialog(parent)
     , host_(host)
@@ -23,24 +25,39 @@ HelloWindow::HelloWindow(tuxape::PluginHost* host, QWidget* parent)
     type->setObjectName("bType");
     connect(type, &QPushButton::clicked, this, [this] { host_->autoType(QStringLiteral("PRINT \"HELLO\"\n")); });
     layout->addWidget(type);
-    // What the plugin keeps goes into the folder TuxAPE gives it, never into
-    // its own folder (part of its signature) nor anywhere else.
+    auto* note = new QPushButton(tr("&Keep a Note"));
+    note->setObjectName("bNote");
+    connect(note, &QPushButton::clicked, this, &HelloWindow::keepNote);
+    layout->addWidget(note);
     auto* where = new QLabel(tr("Kept in: %1").arg(QDir::toNativeSeparators(host_->dataFolder())));
     where->setObjectName("lFolder");
     where->setWordWrap(true);
     layout->addWidget(where);
-    QFile seen(host_->dataFolder() + "/seen.txt");
-    if (seen.open(QIODevice::WriteOnly))
-        seen.write("The window was opened.\n");
 }
 
 void HelloWindow::refresh()
 {
+    // The engine gives the data; the window words it, so that it can be
+    // translated: whole sentences, %n for what is counted.
     const tuxape::PluginScreen screen = host_->screen();
-    screen_->setText(QString::fromStdString(hello::describeScreen(screen.mode, screen.address)));
+    const ScreenInfo info = screenInfo(screen.mode, screen.address);
+    const QString address = QString("%1").arg(info.address, 4, 16, QLatin1Char('0')).toUpper();
+    screen_->setText(info.colours ? tr("Mode %1 (%n colours), from &%2", nullptr, info.colours).arg(info.mode).arg(address)
+                                  : tr("Mode %1, which the CPC has not, from &%2").arg(info.mode).arg(address));
 }
 
 QString HelloWindow::screenText() const
 {
     return screen_->text();
 }
+
+// What the plugin keeps goes into the folder TuxAPE gives it, never into its
+// own folder (part of its signature) nor anywhere else.
+void HelloWindow::keepNote()
+{
+    QFile note(QDir(host_->dataFolder()).filePath("note.txt"));
+    if (note.open(QIODevice::WriteOnly))
+        note.write(screenText().toUtf8() + '\n');
+}
+
+}  // namespace hello

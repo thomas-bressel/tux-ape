@@ -200,6 +200,17 @@ if(TUXAPE_BUILD_APP)
     endforeach()
     target_compile_definitions(gui_setup PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")
 
+    # The model plugin of sdk/template, built and tested as an author builds
+    # it, against this sdk/: the example given to others stays a right one.
+    add_test(NAME sdk_template
+        COMMAND ${CMAKE_CTEST_COMMAND}
+            --build-and-test "${PROJECT_SOURCE_DIR}/sdk/template" "${CMAKE_BINARY_DIR}/sdk-template"
+            --build-generator "${CMAKE_GENERATOR}"
+            --build-options "-DTUXAPE_SDK=${PROJECT_SOURCE_DIR}/sdk" "-DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}"
+                "-DCMAKE_BUILD_TYPE=Release" "-DTUXAPE_DIST_DIR=${CMAKE_BINARY_DIR}/sdk-template/dist"
+            --test-command ${CMAKE_CTEST_COMMAND} --output-on-failure)
+    set_tests_properties(sdk_template PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen LABELS slow TIMEOUT 600)
+
     # A plugin for gui_plugins to pack into an archive and install. It is
     # built as a plugin is: against the SDK's plugin.h and Qt, nothing else.
     add_library(plugin_sample MODULE plugin_sample.cpp)

@@ -4,17 +4,26 @@
 #   include(/path/to/TuxAPE/sdk/TuxAPEPlugin.cmake)
 #   add_library(monplugin MODULE ...)
 #   tuxape_add_plugin(monplugin
-#       ID monplugin  NAME "Mon Plugin"  VERSION ${PROJECT_VERSION}
-#       AUTHOR "Prénom Nom"  LICENCE "MIT"  API 3
+#       ID monplugin  NAME "Mon Plugin – Sprite Editor"  VERSION ${PROJECT_VERSION}
+#       AUTHOR "Prénom Nom"  LICENCE "MIT"  API 4
 #       DESCRIPTION "Ce qu'il fait."
-#       FILES LICENSE  PROGRAMS monplugin_cli)
+#       FILES LICENSE  PROGRAMS monplugin_cli
+#       TRANSLATIONS translations/monplugin_fr.ts  TRANSLATE_TARGETS monplugin_ui)
 #
 # It checks what TuxAPE would otherwise refuse when it loads the plugin:
 # the id, the version of the plugin interface, the Qt the plugin is built
-# with. It names the library after the id, writes plugin.json, puts the
-# plugin's folder together, signs it when the author's secret key is there
-# (TUXAPE_SIGN_KEY, TUXAPE_SIGN_TOOL), and packs it into
-# dist/<id>-<version>-<platform>.zip.
+# with. It names the library after the id, builds the plugin's translations
+# into it, writes plugin.json, puts the plugin's folder together, signs it
+# when the author's secret key is named (TUXAPE_SIGN_KEY, TUXAPE_SIGN_TOOL),
+# and packs it into dist/<id>-<version>-<platform>.zip.
+#
+# TRANSLATIONS names the plugin's .ts files (Qt Linguist), one a language:
+# <id>_<language>.ts. Each is built into the library as
+# :/i18n/<id>/<id>_<language>.qm, for the plugin to load in start(), in the
+# language PluginHost::language() says. TRANSLATE_TARGETS are the targets,
+# besides the module, whose sources hold texts to translate (the windows);
+# `cmake --build build --target <id>_update_translations` brings the .ts
+# files up to date with them (lupdate).
 
 include_guard(GLOBAL)
 
@@ -53,8 +62,53 @@ function(tuxape_platform out)
     set(${out} "${system}-${processor}" PARENT_SCOPE)
 endfunction()
 
+# The sources of targets, as full paths: what lupdate reads.
+function(tuxape_target_sources out)
+    set(files "")
+    foreach(target ${ARGN})
+        get_target_property(sources ${target} SOURCES)
+        get_target_property(folder ${target} SOURCE_DIR)
+        foreach(source ${sources})
+            if(source MATCHES "\\.(cpp|h)$")
+                cmake_path(ABSOLUTE_PATH source BASE_DIRECTORY "${folder}" OUTPUT_VARIABLE source)
+                list(APPEND files "${source}")
+            endif()
+        endforeach()
+    endforeach()
+    set(${out} ${files} PARENT_SCOPE)
+endfunction()
+
+# The plugin's .ts files, compiled and built into the library under
+# :/i18n/<id>/, and the <id>_update_translations target that brings them up
+# to date. (qt_add_translations() does both, but breaks on a source folder
+# whose path has a space in it.)
+function(tuxape_add_plugin_translations target id translations translate_targets)
+    find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
+    set(ts_files "")
+    foreach(file ${translations})
+        cmake_path(ABSOLUTE_PATH file BASE_DIRECTORY "${CMAKE_SOURCE_DIR}" OUTPUT_VARIABLE file)
+        if(NOT file MATCHES "/${id}_[a-zA-Z_]+\\.ts$")
+            message(FATAL_ERROR "A translation of ${id} is named ${id}_<language>.ts: ${file} is not.")
+        endif()
+        list(APPEND ts_files "${file}")
+    endforeach()
+    tuxape_target_sources(sources ${target} ${translate_targets})
+    qt_add_lupdate(
+        TS_FILES ${ts_files}
+        SOURCES ${sources}
+        LUPDATE_TARGET ${id}_update_translations
+        OPTIONS -no-obsolete -locations none)
+    qt_add_lrelease(
+        TS_FILES ${ts_files}
+        QM_FILES_OUTPUT_VARIABLE qm_files)
+    qt_add_resources(${target} ${id}_translations
+        PREFIX "/i18n/${id}"
+        BASE "${CMAKE_CURRENT_BINARY_DIR}"
+        FILES ${qm_files})
+endfunction()
+
 function(tuxape_add_plugin target)
-    cmake_parse_arguments(P "" "ID;NAME;VERSION;AUTHOR;LICENCE;DESCRIPTION;API" "FILES;PROGRAMS" ${ARGN})
+    cmake_parse_arguments(P "" "ID;NAME;VERSION;AUTHOR;LICENCE;DESCRIPTION;API" "FILES;PROGRAMS;TRANSLATIONS;TRANSLATE_TARGETS" ${ARGN})
 
     # ---- What TuxAPE would refuse ----
     if(NOT P_ID MATCHES "^[a-z0-9][a-z0-9_-]*$" OR P_ID MATCHES "^.................................")
@@ -74,7 +128,13 @@ function(tuxape_add_plugin target)
     if(NOT type STREQUAL "MODULE_LIBRARY")
         message(FATAL_ERROR "${target} is to be made with add_library(${target} MODULE ...): TuxAPE loads it.")
     endif()
-    if(DEFINED Qt6Core_VERSION AND Qt6Core_VERSION VERSION_GREATER_EQUAL "${TUXAPE_QT_VERSION}.9999")
+    # Asked here, whatever folder the plugin found Qt from: the version is
+    # then known in this function.
+    find_package(Qt6 REQUIRED COMPONENTS Core)
+    if(NOT Qt6Core_VERSION)
+        message(FATAL_ERROR "The version of Qt the plugin is built with cannot be told.")
+    endif()
+    if(Qt6Core_VERSION VERSION_GREATER_EQUAL "${TUXAPE_QT_VERSION}.9999")
         message(FATAL_ERROR "The plugin is built with Qt ${Qt6Core_VERSION}, later than TuxAPE's Qt ${TUXAPE_QT_VERSION}: "
                             "TuxAPE would not load it. Build it with Qt ${TUXAPE_QT_VERSION} or an earlier Qt 6.")
     endif()
@@ -86,10 +146,16 @@ function(tuxape_add_plugin target)
     set_target_properties(${target} PROPERTIES OUTPUT_NAME "${P_ID}" AUTOMOC ON)
     target_include_directories(${target} PRIVATE "${TUXAPE_SDK_DIR}")
 
+    # ---- Its translations, built into it ----
+    if(P_TRANSLATIONS)
+        tuxape_add_plugin_translations(${target} ${P_ID} "${P_TRANSLATIONS}" "${P_TRANSLATE_TARGETS}")
+    endif()
+
     # ---- Its folder: plugin.json, the library, the programs, the files ----
     tuxape_platform(platform)
     set(stage "${CMAKE_BINARY_DIR}/stage/${P_ID}")
-    set(archive "${CMAKE_SOURCE_DIR}/dist/${P_ID}-${P_VERSION}-${platform}.zip")
+    set(TUXAPE_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Where the plugin's archive is made")
+    set(archive "${TUXAPE_DIST_DIR}/${P_ID}-${P_VERSION}-${platform}.zip")
     # The texts as JSON has them: their backslashes and quotes escaped.
     foreach(field NAME VERSION AUTHOR LICENCE DESCRIPTION)
         string(REPLACE "\\" "\\\\" text "${P_${field}}")
@@ -136,7 +202,7 @@ function(tuxape_add_plugin target)
     # into the archive.
     add_custom_target(${P_ID}_zip ALL
         COMMAND "${CMAKE_COMMAND}" -E rm -rf "${stage}"
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${stage}/${platform}" "${CMAKE_SOURCE_DIR}/dist"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${stage}/${platform}" "${TUXAPE_DIST_DIR}"
         COMMAND "${CMAKE_COMMAND}" -E copy "${manifest}" "${stage}/plugin.json"
         COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:${target}>" "${stage}/${platform}/"
         ${copy_programs}

@@ -74,6 +74,8 @@ public:
                                                            .arg(selected.mode));
             });
         }
+        // The language TuxAPE speaks, for the plugin to speak it too.
+        host->window()->setProperty("sampleLanguage", host->language());
         host->window()->setProperty("sampleStarted", true);
         return true;
     }

@@ -6,10 +6,12 @@ trouve dans son dossier `plugins`, vérifie qui l'a signé, le charge, et ne lui
 montre de lui-même qu'une seule chose : l'interface décrite dans
 [`plugin.h`](plugin.h).
 
-Les conventions de nommage, de dossiers et de compatibilité sont dans
-[`PLUGINS.md`](../PLUGINS.md), à la racine de TuxAPE ; `template/` est un plugin
-modèle, complet et testé, à copier pour en commencer un, et `TuxAPEPlugin.cmake`
-le module CMake qui fait respecter ces conventions à la compilation.
+Les conventions de nommage, de dossiers, de langues et de compatibilité sont
+dans [`PLUGINS.md`](../PLUGINS.md), à la racine de TuxAPE ; `template/` est un
+plugin modèle, complet, traduit et testé, à copier pour en commencer un ; et
+`TuxAPEPlugin.cmake` est le module CMake qui fait respecter ces conventions à
+la compilation. Un plugin est un projet à lui, dans son propre dépôt : il ne
+prend de TuxAPE que ce dossier.
 
 Ce dossier `sdk/` est tout ce dont un plugin a besoin de TuxAPE pour être
 compilé. Il ne faut rien inclure d'autre de TuxAPE : le reste peut changer
@@ -24,8 +26,8 @@ d'une version à l'autre, `plugin.h` non.
 - `tuxape::PluginHost`, que TuxAPE lui donne : le menu **Plugins** et des
   boutons dans le panneau du bas, les disquettes et les instantanés, le clavier
   du CPC, sa mémoire et son écran, l'assembleur, les tuiles choisies dans
-  **Find Graphics**, les fichiers des disquettes des lecteurs, et les autres
-  plugins chargés.
+  **Find Graphics**, les fichiers des disquettes des lecteurs, les autres
+  plugins chargés, et la langue des fenêtres de TuxAPE.
 
 Ce que TuxAPE a ajouté pour un plugin (entrées de menu, boutons) disparaît
 quand il est arrêté.
@@ -49,22 +51,23 @@ structure. Le test `plugin_abi` de TuxAPE veille à cette règle.
 ```
 monplugin/plugin.json
 monplugin/linux-x86_64/libmonplugin.so
-monplugin/signature.json          (sa signature, voir plus bas)
-monplugin/...                     ce qu'il emporte d'autre ; bin/ pour des programmes
+monplugin/bin/...                 ses programmes, s'il en a
+monplugin/LICENSE
+monplugin/signature.json          sa signature, voir plus bas
 ```
 
 Le dossier porte l'identifiant du plugin : minuscules, chiffres, `-` et `_`.
-Son `plugin.json` :
+`tuxape_add_plugin()` écrit le `plugin.json` :
 
 ```json
 {
     "id": "monplugin",
-    "name": "Mon Plugin",
-    "version": "1.0",
+    "name": "Mon Plugin – Sprite Editor",
+    "version": "1.0.0",
+    "api": 4,
     "author": "Prénom Nom",
     "licence": "MIT",
     "description": "Ce qu'il fait, en une ou deux phrases.",
-    "api": 3,
     "libraries": {
         "linux-x86_64": "linux-x86_64/libmonplugin.so"
     }
@@ -78,9 +81,12 @@ Une bibliothèque par type d'ordinateur, dans le dossier du plugin :
 
 ```cpp
 #include <QObject>
+#include <QTranslator>
 #include "plugin.h"
 
-class MonPlugin : public QObject, public tuxape::Plugin {
+namespace monplugin {
+
+class MonPluginPlugin : public QObject, public tuxape::Plugin {
     Q_OBJECT
     Q_PLUGIN_METADATA(IID "org.tuxape.Plugin/1")
     Q_INTERFACES(tuxape::Plugin)
@@ -89,15 +95,25 @@ public:
     bool start(tuxape::PluginHost* host, QString* error) override
     {
         host_ = host;
-        QAction* entry = host->addAction(tr("&Mon Plugin..."));
+        // Ses textes dans la langue de TuxAPE, avant le premier tr().
+        if (translator_.load(QStringLiteral(":/i18n/monplugin/monplugin_%1.qm").arg(host->language())))
+            QCoreApplication::installTranslator(&translator_);
+        QAction* entry = host->addAction(tr("Mon Plugin – &Sprite Editor..."));
         connect(entry, &QAction::triggered, this, [this] { /* ... */ });
         return true;
     }
-    void stop() override { host_ = nullptr; }
+    void stop() override
+    {
+        QCoreApplication::removeTranslator(&translator_);
+        host_ = nullptr;
+    }
 
 private:
     tuxape::PluginHost* host_ = nullptr;
+    QTranslator translator_;
 };
+
+}  // namespace monplugin
 ```
 
 TuxAPE n'accepte une bibliothèque que si elle déclare l'interface
@@ -111,15 +127,27 @@ fonction.
 
 ## La compilation
 
-Avec CMake, contre le Qt 6 de la version de TuxAPE visée :
+Avec CMake, contre le Qt 6 de la version de TuxAPE visée, et le module du SDK
+qui fait tout le reste :
 
 ```cmake
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
-add_library(monplugin MODULE monplugin.cpp)
-set_target_properties(monplugin PROPERTIES AUTOMOC ON)
-target_include_directories(monplugin PRIVATE /chemin/vers/TuxAPE/sdk)
-target_link_libraries(monplugin PRIVATE Qt6::Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets)
+include(${TUXAPE_SDK}/TuxAPEPlugin.cmake)
+
+add_library(monplugin MODULE monpluginplugin.cpp monpluginplugin.h)
+target_link_libraries(monplugin PRIVATE monplugin_ui)
+
+tuxape_add_plugin(monplugin
+    ID monplugin  NAME "Mon Plugin – Sprite Editor"  VERSION ${PROJECT_VERSION}
+    AUTHOR "Prénom Nom"  LICENCE "MIT"  API 4
+    DESCRIPTION "Ce qu'il fait."
+    FILES LICENSE
+    TRANSLATIONS translations/monplugin_fr.ts  TRANSLATE_TARGETS monplugin_ui)
 ```
+
+`tuxape_add_plugin()` vérifie l'identifiant, la version de l'interface et
+celle de Qt, nomme la bibliothèque, y met les traductions, écrit le
+`plugin.json`, signe et fait l'archive `dist/monplugin-1.0.0-linux-x86_64.zip`.
 
 Un plugin tourne **dans** TuxAPE : s'il plante, TuxAPE plante avec lui.
 
@@ -152,16 +180,22 @@ produit (`build/src/sign/tuxape-plugin-sign`) :
 # Une fois : la paire de clés de l'auteur.
 tuxape-plugin-sign key ~/.config/tuxape-signing/moi.key "Prénom Nom"
 
-# À chaque version, en dernier, juste avant de mettre le dossier dans le .zip :
-tuxape-plugin-sign sign build/stage/monplugin ~/.config/tuxape-signing/moi.key
+# À chaque version : tuxape_add_plugin() signe l'archive, si la clé est nommée.
+cmake -S . -B build -DTUXAPE_SIGN_KEY=$HOME/.config/tuxape-signing/moi.key
+cmake --build build
 
 # Pour vérifier un dossier ou une archive :
-tuxape-plugin-sign check dist/monplugin-1.0-linux-x86_64.zip
+tuxape-plugin-sign check dist/monplugin-1.0.0-linux-x86_64.zip
 ```
+
+La clé ne sert que si elle est nommée (`TUXAPE_SIGN_KEY`, en option CMake ou en
+variable d'environnement) : compiler le plugin de quelqu'un d'autre ne le signe
+jamais à votre nom par mégarde.
 
 La signature (`signature.json`) porte sur tous les autres fichiers du dossier :
 l'ajout, le retrait ou la modification d'un seul octet la rend fausse. C'est une
-signature Ed25519 ; les détails sont dans `src/sign/pluginsignature.h`.
+signature Ed25519 ; les détails sont dans `src/sign/pluginsignature.h`, dans
+les sources de TuxAPE.
 
 Le fichier de clé secrète ne doit jamais être publié ni perdu : copié, il
 permet à n'importe qui de signer au nom de l'auteur ; perdu, l'auteur doit
