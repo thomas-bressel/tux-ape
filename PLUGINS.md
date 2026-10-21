@@ -74,8 +74,8 @@ Dans les exemples, l'identifiant est `monplugin` et le nom « Mon Plugin ».
 | Noms d'objets Qt | uniques dans leur fenêtre, préfixés par leur genre (`b` bouton, `l` étiquette, `ed` champ, `te` texte, `ck` case, `rb` bouton radio, `cb` liste déroulante, `sb` nombre, `lv` liste) ; un widget du plugin prend deux lettres de son genre (`pv` aperçu, `sw` écran...) | `bExport`, `lStatus` |
 | Plateforme | `<système>-<processeur>`, comme TuxAPE la nomme | `linux-x86_64`, `linux-arm64`, `windows-x86_64`, `macos-arm64` |
 
-Identifiants déjà pris : `tuxasc`, `tuxdsk`, `tuxscr`, `tuxwav`, `tuxcmp`. Ne
-publiez pas un plugin sous l'identifiant du modèle, `hello`.
+Identifiants déjà pris : `tuxasc`, `tuxdsk`, `tuxscr`, `tuxwav`, `tuxcmp`,
+`tuxdma`. Ne publiez pas un plugin sous l'identifiant du modèle, `hello`.
 
 ## Le dossier des sources
 
