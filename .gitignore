@@ -24,8 +24,17 @@
 *.CDT
 *.cpr
 *.CPR
+*.hfe
+*.HFE
 
 CMakeUserPresets.json
+
+# The editor's settings, each person's own.
+/.vscode/
+
+# Screenshots taken at the top of the tree, for the site or to show a
+# problem.
+/*.png
 
 # The user's own programs for the Library window.
 /library/
@@ -38,5 +47,7 @@ CMakeUserPresets.json
 /plugins/*
 !/plugins/README.md
 
-# What tools/make-dist.sh makes: TuxAPE ready to run, with its folders.
+# What tools/make-dist.sh makes: TuxAPE ready to run, with its folders,
+# and that folder zipped.
 /dist/
+/dist.zip
