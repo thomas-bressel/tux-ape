@@ -70,8 +70,8 @@ Dans les exemples, l'identifiant est `monplugin` et le nom « Mon Plugin ».
 | Espace de noms C++ | l'identifiant, pour **toutes** les classes du plugin, fenêtres et classe chargée comprises : jamais `tuxape`, jamais l'espace global, où deux plugins se gêneraient et où leurs textes se confondraient pour la traduction | `namespace monplugin` |
 | Nom affiché (`name`) | « Nom – ce qu'il fait », avec un tiret demi-cadratin | `Mon Plugin – Sprite Editor` |
 | Entrée du menu Plugins | le nom affiché, suivi de `...` s'il ouvre une fenêtre | `Mon Plugin – Sprite Editor...` |
-| Titre des fenêtres | commence par le nom du plugin | `Mon Plugin – Export` |
-| Noms d'objets Qt | uniques dans le plugin, préfixés par leur genre (`b` bouton, `l` étiquette, `ed` champ, `ck` case, `lv` liste) | `bExport`, `lStatus` |
+| Titre des fenêtres | commence par le nom du plugin, boîtes de message et de question comprises | `Mon Plugin – Export` |
+| Noms d'objets Qt | uniques dans leur fenêtre, préfixés par leur genre (`b` bouton, `l` étiquette, `ed` champ, `te` texte, `ck` case, `rb` bouton radio, `cb` liste déroulante, `sb` nombre, `lv` liste) | `bExport`, `lStatus` |
 | Plateforme | `<système>-<processeur>`, comme TuxAPE la nomme | `linux-x86_64`, `linux-arm64`, `windows-x86_64`, `macos-arm64` |
 
 Identifiants déjà pris : `tuxasc`, `tuxdsk`, `tuxscr`, `tuxwav`, `tuxcmp`. Ne
@@ -207,9 +207,10 @@ Les règles :
   l'utilisateur décoche le plugin ou en installe une nouvelle version. Le
   plugin y ferme et supprime ses fenêtres, arrête ses minuteries et ses fils
   d'exécution, retire ses filtres d'événements et son traducteur. **Rien ne doit
-  lui survivre** : la bibliothèque est déchargée juste après. Une boîte de
-  dialogue ouverte par `exec()` est fermée avant que sa fenêtre ne soit
-  supprimée.
+  lui survivre** : la bibliothèque est déchargée juste après. TuxAPE ne
+  l'appelle jamais pendant qu'une boîte ouverte par `exec()` attend : elle
+  bloque TuxAPE tant qu'elle est ouverte, et TuxAPE ne se ferme qu'une fois
+  elle refermée.
 - Les entrées et les boutons appartiennent à TuxAPE, qui les retire. Ne les
   supprimez pas, et ne gardez pas de pointeur vers eux après `stop()`.
 - N'utilisez pas de variables globales ou statiques qui gardent un état d'un
