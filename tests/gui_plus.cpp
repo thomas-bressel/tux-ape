@@ -213,6 +213,8 @@ int main(int argc, char* argv[])
         if (!(pause && run))
             return checkSummary("gui_plus");
         pause->trigger();
+        if (QAction* show = actionNamed(window, "Show Debugger"))
+            show->trigger();
         DebuggerDialog* debugger = window.debugger();
         CHECK(debugger != nullptr);
         if (!debugger)

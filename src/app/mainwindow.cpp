@@ -769,15 +769,36 @@ void MainWindow::createMenus()
     // ---- Debug ----
     QMenu* debug = menuBar()->addMenu(tr("&Debug"));
     runAction_ = addItem(debug, tr("&Run"), Qt::Key_F9, [this] { setPaused(false); });
-    pauseAction_ = addItem(debug, tr("&Pause"), Qt::Key_F7, [this] { setPaused(true); });
-    // F8 pauses too; paused, the two keys step.
-    pauseAction_->setShortcuts({QKeySequence(Qt::Key_F7), QKeySequence(Qt::Key_F8)});
+    // The Pause key pauses the machine and runs it again, from every window
+    // of TuxAPE: a player pauses a game without the debugger coming up.
+    // The key goes by what the machine is doing when it is pressed.
+    const auto pauseKey = [this] { setPaused(!emulator_->isPaused()); };
+    pauseAction_ = addItem(debug, tr("&Pause"), Qt::Key_Pause, pauseKey);
+    pauseAction_->setShortcutContext(Qt::ApplicationShortcut);
+    resumeAction_ = new QAction(tr("Resume"), this);
+    resumeAction_->setShortcut(Qt::Key_Pause);
+    resumeAction_->setShortcutContext(Qt::ApplicationShortcut);
+    resumeAction_->setEnabled(false);
+    connect(resumeAction_, &QAction::triggered, this, pauseKey);
+    addAction(resumeAction_);
+    // F7 brings the debugger up and leaves the machine as it is. Paused,
+    // F7 and F8 step, once the debugger is there to show it.
+    debuggerAction_ = addItem(debug, tr("Show &Debugger"), Qt::Key_F7, [this] { showDebugger(); });
     stepAction_ = new QAction(tr("Single Step"), this);
     stepAction_->setShortcut(Qt::Key_F7);
-    connect(stepAction_, &QAction::triggered, this, [this] { emulator_->stepInto(); });
+    connect(stepAction_, &QAction::triggered, this, [this] {
+        if (debugger_ && debugger_->isVisible())
+            emulator_->stepInto();
+        else
+            showDebugger();
+    });
     stepOverAction_ = new QAction(tr("Step Over"), this);
     stepOverAction_->setShortcut(Qt::Key_F8);
     connect(stepOverAction_, &QAction::triggered, this, [this] {
+        if (!debugger_ || !debugger_->isVisible()) {
+            showDebugger();
+            return;
+        }
         // It may set the machine running, up to the instruction after a
         // call.
         emulator_->stepOver();
@@ -840,8 +861,8 @@ void MainWindow::createControlPanel()
     row->setContentsMargins(3, 2, 6, 2);
     row->setSpacing(0);
 
-    addButton(IconId::Run, tr("Run (F9)"), runAction_);
-    addButton(IconId::Pause, tr("Pause (F7/F8)"), pauseAction_);
+    addButton(IconId::Run, tr("Run (F9, Pause)"), runAction_);
+    addButton(IconId::Pause, tr("Pause (Pause)"), pauseAction_);
     addButton(IconId::SingleStep, tr("Single Step (F7)"), stepAction_);
     addButton(IconId::StepOver, tr("Step Over (F8)"), stepOverAction_);
     row->addWidget(separator(controlPanel_));
@@ -916,15 +937,14 @@ void MainWindow::showContextMenu(const QPoint& pos)
     menu.exec(screen_->mapToGlobal(pos));
 }
 
-// Paused, the machine is the debugger's: its window comes up, as WinAPE's
-// does, and goes when the machine runs again if it is set to.
+// Paused by the Pause key, the machine only waits: the debugger's window
+// comes up with F7, or at a breakpoint. Running again, the window goes if
+// it is set to.
 void MainWindow::setPaused(bool paused)
 {
     emulator_->setPaused(paused);
     updateDebugActions();
-    if (paused) {
-        showDebugger();
-    } else if (debugger_ && debugger_->isVisible()) {
+    if (!paused && debugger_ && debugger_->isVisible()) {
         if (debugger_->hideOnRun())
             debugger_->hide();
         // The keyboard is the CPC's again, the debugger's window up or not.
@@ -938,6 +958,9 @@ void MainWindow::updateDebugActions()
     const bool paused = emulator_->isPaused();
     runAction_->setEnabled(paused);
     pauseAction_->setEnabled(!paused);
+    resumeAction_->setEnabled(paused);
+    // Paused, F7 is Single Step's.
+    debuggerAction_->setShortcut(paused ? QKeySequence() : QKeySequence(Qt::Key_F7));
     stepAction_->setEnabled(paused);
     stepOverAction_->setEnabled(paused);
     if (paused)

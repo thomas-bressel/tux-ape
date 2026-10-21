@@ -77,9 +77,14 @@ int main(int argc, char* argv[])
     CHECK(!stepButton->isEnabled() && !overButton->isEnabled());
     CHECK(window.debugger() == nullptr);
 
-    // Paused, the machine is the debugger's.
+    // Paused, the machine waits; the debugger comes up with its own entry.
     pause->trigger();
     CHECK(emulator.isPaused());
+    CHECK(window.debugger() == nullptr);
+    QAction* show = actionNamed(window, "Show Debugger");
+    CHECK(show != nullptr);
+    if (show)
+        show->trigger();
     DebuggerDialog* debugger = window.debugger();
     CHECK(debugger && debugger->isVisible());
     // It stays up while the machine runs, at first, and follows it only if
@@ -408,13 +413,16 @@ int main(int argc, char* argv[])
     CHECK(code->lines(1).front().instruction == "INC A");
 
     // Run from the debugger's own key hides it, if it is set to; pausing
-    // brings it back.
+    // leaves it hidden, and F7's entry brings it back.
     QTest::keyClick(debugger, Qt::Key_F9);
     CHECK(!emulator.isPaused());
     CHECK(!debugger->isVisible());
     CHECK(pause->isEnabled() && !stepButton->isEnabled());
     pause->trigger();
-    CHECK(emulator.isPaused() && debugger->isVisible());
+    CHECK(emulator.isPaused() && !debugger->isVisible());
+    if (show)
+        show->trigger();
+    CHECK(debugger->isVisible());
     debugger->findChild<QCheckBox*>("ckHideOnRun")->setChecked(false);
     run->trigger();
     CHECK(debugger->isVisible());

@@ -165,9 +165,9 @@ private:
 
 // WinAPE's debugger: the program being run as instructions, the Z80's
 // registers (which can be changed), the stack, and memory. It is shown
-// when the machine is paused; F7 steps one instruction, F8 steps over
-// calls, F4 runs to the line chosen, F5 sets or clears a breakpoint there
-// and F9 sets the machine running again.
+// with F7, or when a breakpoint stops the machine; paused, F7 steps one
+// instruction, F8 steps over calls, F4 runs to the line chosen, F5 sets or
+// clears a breakpoint there and F9 sets the machine running again.
 class DebuggerDialog : public QDialog {
     Q_OBJECT
 

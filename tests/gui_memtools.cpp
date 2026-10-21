@@ -112,6 +112,9 @@ int main(int argc, char* argv[])
     CHECK(debuggerAction != nullptr);
     if (debuggerAction)
         debuggerAction->trigger();
+    for (QAction* action : window.findChildren<QAction*>())
+        if (action->text() == "Show &Debugger")
+            action->trigger();
     DebuggerDialog* debugger = window.debugger();
     CHECK(debugger != nullptr);
     if (!debugger)

@@ -168,6 +168,8 @@ private:
 
     QAction* runAction_ = nullptr;
     QAction* pauseAction_ = nullptr;
+    QAction* resumeAction_ = nullptr;  // the Pause key, paused
+    QAction* debuggerAction_ = nullptr;
     QAction* stepAction_ = nullptr;
     QAction* stepOverAction_ = nullptr;
     DebuggerDialog* debugger_ = nullptr;

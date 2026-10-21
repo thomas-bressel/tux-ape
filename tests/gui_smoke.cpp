@@ -16,6 +16,7 @@
 
 #include "check.h"
 #include "core/screen_text.h"
+#include "debuggerdialog.h"
 #include "emulator.h"
 #include "mainwindow.h"
 #include "screenwidget.h"
@@ -144,7 +145,8 @@ int main(int argc, char* argv[])
                 entries += entries[i]->menu()->actions();
             for (const QKeySequence& keys : entries[i]->shortcuts()) {
                 const Qt::Key key = keys[0].key();
-                const bool interfaceKey = (key >= Qt::Key_F1 && key <= Qt::Key_F35) || key == Qt::Key_Print;
+                const bool interfaceKey = (key >= Qt::Key_F1 && key <= Qt::Key_F35) || key == Qt::Key_Print
+                                          || key == Qt::Key_Pause;
                 if (!interfaceKey)
                     std::printf("%s: %s\n", qPrintable(entries[i]->text()), qPrintable(keys.toString()));
                 CHECK(interfaceKey);
@@ -155,15 +157,38 @@ int main(int argc, char* argv[])
     }
 
     // Pausing stops the machine; the same picture stays up.
-    QTest::keyClick(&window, Qt::Key_F7);
+    // The Pause key pauses, and nothing comes up over the game.
+    QTest::keyClick(&window, Qt::Key_Pause);
     CHECK(emulator.isPaused());
+    CHECK(!window.debugger() || !window.debugger()->isVisible());
     const uint64_t before = emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.clock(); });
     QTest::qWait(100);
     CHECK_EQ(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.clock(); }), before);
+    // Paused, F7 shows the debugger before it steps.
+    QTest::keyClick(&window, Qt::Key_F7);
+    CHECK(window.debugger() && window.debugger()->isVisible());
+    CHECK_EQ(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.clock(); }), before);
+    // The Pause key runs the machine again, from the debugger's window too.
+    if (window.debugger()) {
+        window.debugger()->setHideOnRun(true);
+        window.debugger()->activateWindow();
+        (void)QTest::qWaitFor([&] { return window.debugger()->isActiveWindow(); }, 2000);
+        QTest::keyClick(window.debugger(), Qt::Key_Pause);
+    }
+    CHECK(!emulator.isPaused());
+    // Running hid the debugger, and the keyboard is back with the main
+    // window.
+    CHECK(QTest::qWaitFor([&] { return window.isActiveWindow(); }, 2000));
+    // F7 brings the debugger up and the machine goes on.
+    QTest::keyClick(&window, Qt::Key_F7);
+    CHECK(window.debugger() && window.debugger()->isVisible());
+    CHECK(!emulator.isPaused());
+    if (window.debugger())
+        window.debugger()->hide();
+    QTest::keyClick(&window, Qt::Key_Pause);
+    CHECK(emulator.isPaused());
     QTest::keyClick(&window, Qt::Key_F9);
     CHECK(!emulator.isPaused());
-    // Pausing brought the debugger's window up; running hid it again, and
-    // the keyboard is back with the main window.
     CHECK(QTest::qWaitFor([&] { return window.isActiveWindow(); }, 2000));
 
     // Reset brings the banner back, and stops Auto Type: what it had still
