@@ -94,14 +94,16 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             options+=(-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0)
           fi
-          cmake -S . -B build -G Ninja "${options[@]}"
+          cmake -S . -B build -G Ninja "${options[@]}" 2>&1 | tee configure.log; exit ${PIPESTATUS[0]}
 
       - name: Build
-        run: cmake --build build --parallel
+        shell: bash
+        run: cmake --build build --parallel 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
 
       - name: Test
+        shell: bash
         working-directory: build
-        run: ctest --output-on-failure --timeout 600 --parallel 4
+        run: ctest --output-on-failure --timeout 600 --parallel 4 2>&1 | tee ../test.log; exit ${PIPESTATUS[0]}
 
       - name: Pack
         shell: bash
@@ -113,6 +115,18 @@ jobs:
           esac
           cmake -DPROGRAM="$program" -DQT="$QT_ROOT_DIR" -DROOT="$GITHUB_WORKSPACE" \
                 -DOUT="$GITHUB_WORKSPACE/TuxAPE" -DSTRIP=strip -P tools/package.cmake
+
+      # What went wrong, as annotations: they can be read from outside the
+      # web page, the logs cannot without an account.
+      - name: Report
+        if: failure()
+        shell: bash
+        run: |
+          for log in configure.log build.log test.log; do
+            [ -f "$log" ] || continue
+            grep -E -i "error|failed|fatal|\*\*\*|not found|undefined" "$log" | grep -v -i "warning" | head -40 | \
+              while IFS= read -r line; do echo "::error title=$log::${line:0:900}"; done
+          done
 
       - uses: actions/upload-artifact@v4
         with:
