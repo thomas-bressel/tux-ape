@@ -1,9 +1,7 @@
-# TuxAPE built, tested and packed for each system it is given for:
-# Windows 10/11 (x64, ARM64), macOS (one application for Apple's and
-# Intel's processors), Linux (x64, ARM64; built on Ubuntu 24.04, which runs
-# on 24.04 and later). Each build leaves its folder as an artifact, made by
-# tools/package.cmake: the program, Qt, and the folders beside it, without
-# ROMs.
+# TuxAPE built, tested and packed for Linux: x64 and ARM64 (Raspberry Pi 4
+# and 5), built on Ubuntu 24.04, which runs on 24.04 and later. Each build
+# leaves its folder as an artifact, made by tools/package.cmake: the
+# program, Qt, and the folders beside it, without ROMs.
 name: Build
 
 on:
@@ -27,26 +25,9 @@ jobs:
             runner: ubuntu-24.04-arm
             qt-host: linux_arm64
             qt-arch: linux_gcc_arm64
-          - name: windows-x86_64
-            runner: windows-2025
-            qt-host: windows
-            qt-arch: win64_msvc2022_64
-            msvc-arch: amd64
-            triplet: x64-windows-static-md
-          - name: windows-arm64
-            runner: windows-11-arm
-            qt-host: windows_arm64
-            qt-arch: win64_msvc2022_arm64
-            msvc-arch: arm64
-            triplet: arm64-windows-static-md
-          - name: macos-universal
-            runner: macos-15
-            qt-host: mac
-            qt-arch: clang_64
-            triplet: universal-osx
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Qt
         uses: jurplel/install-qt-action@v4
@@ -57,74 +38,34 @@ jobs:
           arch: ${{ matrix.qt-arch }}
           cache: true
 
-      - name: Libraries (Linux)
-        if: runner.os == 'Linux'
+      - name: Libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev zlib1g-dev libgl-dev libegl-dev libxkbcommon-dev libxcb-cursor0 ninja-build
 
-      - name: Compiler (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: ${{ matrix.msvc-arch }}
-
-      - name: Libraries (Windows, Mac)
-        if: runner.os != 'Linux'
-        shell: bash
-        run: |
-          if [ -z "$VCPKG_INSTALLATION_ROOT" ] || [ ! -d "$VCPKG_INSTALLATION_ROOT" ]; then
-            git clone --depth 1 https://github.com/microsoft/vcpkg "$RUNNER_TEMP/vcpkg"
-            "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics || "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.bat" -disableMetrics
-            VCPKG_INSTALLATION_ROOT="$RUNNER_TEMP/vcpkg"
-          fi
-          echo "VCPKG=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
-          "$VCPKG_INSTALLATION_ROOT/vcpkg" install sdl2 zlib --triplet ${{ matrix.triplet }} \
-            --overlay-triplets="$GITHUB_WORKSPACE/tools/vcpkg-triplets"
-
       - name: Configure
-        shell: bash
-        run: |
-          options=(-DCMAKE_BUILD_TYPE=Release -DTUXAPE_UPDATE_DIST=OFF)
-          if [ "$RUNNER_OS" != "Linux" ]; then
-            options+=(-DCMAKE_TOOLCHAIN_FILE="$VCPKG/scripts/buildsystems/vcpkg.cmake"
-                      -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }}
-                      -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/tools/vcpkg-triplets")
-          fi
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            options+=(-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0)
-          fi
-          cmake -S . -B build -G Ninja "${options[@]}" 2>&1 | tee configure.log; exit ${PIPESTATUS[0]}
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTUXAPE_UPDATE_DIST=OFF 2>&1 | tee configure.log; exit ${PIPESTATUS[0]}
 
       - name: Build
-        shell: bash
         run: cmake --build build --parallel 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
 
       - name: Test
-        shell: bash
         working-directory: build
         run: ctest --output-on-failure --timeout 600 --parallel 4 2>&1 | tee ../test.log; exit ${PIPESTATUS[0]}
 
       - name: Pack
-        shell: bash
         run: |
-          case "$RUNNER_OS" in
-            Windows) program=build/src/app/tuxape.exe ;;
-            macOS)   program=build/src/app/tuxape.app ;;
-            *)       program=build/src/app/tuxape ;;
-          esac
-          cmake -DPROGRAM="$program" -DQT="$QT_ROOT_DIR" -DROOT="$GITHUB_WORKSPACE" \
+          cmake -DPROGRAM=build/src/app/tuxape -DQT="$QT_ROOT_DIR" -DROOT="$GITHUB_WORKSPACE" \
                 -DOUT="$GITHUB_WORKSPACE/TuxAPE" -DSTRIP=strip -P tools/package.cmake
 
       # What went wrong, as annotations: they can be read from outside the
       # web page, the logs cannot without an account.
       - name: Report
         if: failure()
-        shell: bash
         run: |
           for log in configure.log build.log test.log; do
             [ -f "$log" ] || continue
-            grep -E -i "error|failed|fatal|\*\*\*|not found|undefined" "$log" | grep -v -i "warning" | head -40 | \
+            { grep -E -i "error|failed|fatal|\*\*\*|not found|undefined" "$log" || true; } | { grep -v -i "warning" || true; } | head -40 | \
               while IFS= read -r line; do echo "::error title=$log::${line:0:900}"; done
           done
 

@@ -868,7 +868,10 @@ int main(int argc, char* argv[])
         emulator.stopPlayback();
         window.discs()->remove(0);
         play("1943", &said);
-        CHECK(emulator.playingSession() && said.isEmpty());
+        // A session starts the machine it was made on: without ROM images (a
+        // build machine has none) it cannot.
+        const bool roms = !tuxape::findRom("OS6128", tuxape::defaultRomDir()).empty();
+        CHECK(!roms || (emulator.playingSession() && said.isEmpty()));
         CHECK_EQ(emulator.playbackPosition().second, 255u);
         CHECK(window.discs()->info(0).present && window.discs()->info(0).path.endsWith("/Games/Gryzor.dsk"));
         emulator.stopPlayback();

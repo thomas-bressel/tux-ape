@@ -218,6 +218,9 @@ void testMachineInSettingsFile(const QString& path)
 
 void testMemoryPage(const QString& picture)
 {
+    // Without ROM images (a build machine has none), what needs them is
+    // left out.
+    const bool haveRoms = !tuxape::findRom("AMSDOS", tuxape::defaultRomDir()).empty();
     using tuxape::RamExpansion;
 
     Settings settings;
@@ -286,19 +289,19 @@ void testMemoryPage(const QString& picture)
         CHECK(combo->itemText(combo->count() - 1) == "Select File...");
         CHECK_EQ(combo->currentIndex(), 0);
         const int amsdos = combo->findText("AMSDOS");
-        CHECK(amsdos > 0);
-        CHECK(combo->findText("PARADOS_1-2+") > 0);
+        CHECK(!haveRoms || amsdos > 0);
+        CHECK(!haveRoms || combo->findText("PARADOS_1-2+") > 0);
         CHECK(combo->findText("CPC_PLUS") < 0);
         combo->setCurrentIndex(amsdos);
         emit combo->activated(amsdos);
-        CHECK(dialog.rom(3) == "AMSDOS");
+        CHECK(!haveRoms || dialog.rom(3) == "AMSDOS");
     }
 
     // An image of the ROM folder goes by its bare name; any other file by
     // its path.
     const QString romDir = QString::fromStdString(tuxape::defaultRomDir().string());
     dialog.setRom(9, romDir + "/dos/PARADOS.ROM");
-    CHECK(dialog.rom(9) == "PARADOS");
+    CHECK(!haveRoms || dialog.rom(9) == "PARADOS");
     dialog.setRom(10, "/elsewhere/Maxam.rom");
     CHECK(dialog.rom(10) == "/elsewhere/Maxam.rom");
     dialog.setRom(8, QString());
@@ -312,9 +315,9 @@ void testMemoryPage(const QString& picture)
     CHECK(machine.siliconDisc);
     CHECK(machine.lowerRom == "OS464");
     CHECK(machine.upperRoms[0] == "BASIC1-0");
-    CHECK(machine.upperRoms[2] == "AMSDOS");
+    CHECK(!haveRoms || machine.upperRoms[2] == "AMSDOS");
     CHECK(machine.upperRoms[7].empty());
-    CHECK(machine.upperRoms[8] == "PARADOS");
+    CHECK(!haveRoms || machine.upperRoms[8] == "PARADOS");
     CHECK(machine.upperRoms[9] == "/elsewhere/Maxam.rom");
     CHECK(machine.upperRoms[20] == "PARADOS");
     CHECK(!machine.rom32);
@@ -400,7 +403,8 @@ void testProfiles(const QString& folder, const QString& picture)
     CHECK(shown.machine.ram == tuxape::RamExpansion::Internal);
     CHECK(shown.machine.lowerRom == "OS6128");
     CHECK(shown.machine.upperRoms[7] == "PARADOS_1-2");
-    CHECK(!tuxape::findRom(shown.machine.upperRoms[7], tuxape::defaultRomDir()).empty());
+    CHECK(tuxape::findRom("AMSDOS", tuxape::defaultRomDir()).empty()
+          || !tuxape::findRom(shown.machine.upperRoms[7], tuxape::defaultRomDir()).empty());
     // The pages follow.
     auto* total = dialog.findChild<QLabel*>("lTotalRAM");
     CHECK(total && total->text() == "128K");
