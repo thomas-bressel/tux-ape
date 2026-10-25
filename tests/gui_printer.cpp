@@ -7,13 +7,17 @@
 // (roms/printer/), else it is skipped.
 //
 //   gui_printer [prefix]   also saves a picture of the window, a page of
-//                          the printer's typefaces on it, as <prefix>printer.png
+//                          the printer's typefaces on it, as <prefix>printer.png,
+//                          the page as <prefix>printer_page.png, and its top
+//                          at 600 dots to the inch as <prefix>printer_600.png
 
 #include <cstdio>
 #include <string>
 
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QLabel>
+#include <QPainter>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -117,6 +121,33 @@ int main(int argc, char* argv[])
         CHECK(qAlpha(window.view()->picture().pixel(at)) > 128);
     }
 
+    // ---- The needles' marks: the same each time, lighter struck softer ----
+    {
+        const Dmp2000::Strike column{0, 0, 0.1, 0.1, 0x1FF};
+        QImage once(80, 80, QImage::Format_ARGB32_Premultiplied), again(80, 80, QImage::Format_ARGB32_Premultiplied),
+            softer(80, 80, QImage::Format_ARGB32_Premultiplied);
+        for (QImage* picture : {&once, &again, &softer})
+            picture->fill(Qt::transparent);
+        SheetView::paint(once, 200, column, 1.0);
+        SheetView::paint(again, 200, column, 1.0);
+        SheetView::paint(softer, 200, column, 0.0);
+        CHECK(once == again);
+        const auto ink = [](const QImage& picture) {
+            long sum = 0;
+            for (int y = 0; y < picture.height(); ++y)
+                for (int x = 0; x < picture.width(); ++x)
+                    sum += qAlpha(picture.pixel(x, y));
+            return sum;
+        };
+        CHECK(ink(softer) > 0 && ink(softer) < ink(once) * 3 / 4);
+        // Struck right to left, the dots land further left.
+        Dmp2000::Strike back = column;
+        back.backward = true;
+        again.fill(Qt::transparent);
+        SheetView::paint(again, 200, back, 1.0);
+        CHECK(again != once);
+    }
+
     // ---- A page of what it prints, for whoever looks ----
     if (argc > 1) {
         Dmp2000 printer(*font);
@@ -143,6 +174,30 @@ int main(int argc, char* argv[])
         QApplication::processEvents();
         window.grab().save(QString::fromLocal8Bit(argv[1]) + "printer.png");
         window.view()->picture().copy(0, 0, window.view()->picture().width(), 1100).save(QString::fromLocal8Bit(argv[1]) + "printer_page.png");
+        // Its top at 600 dots to the inch, for the needles' marks.
+        QImage fine(3 * 600, static_cast<int>(1.6 * 600), QImage::Format_ARGB32_Premultiplied);
+        fine.fill(QColor(0xFB, 0xFA, 0xF4));
+        QImage ink(fine.size(), QImage::Format_ARGB32_Premultiplied);
+        ink.fill(Qt::transparent);
+        for (const Dmp2000::Strike& s : window.sheets()[0].strikes)
+            if (s.x < 3.6)
+                SheetView::paint(ink, 600, Dmp2000::Strike{s.microsecond, s.sheet, s.x - 0.55, s.y - 0.25, s.pins, s.backward, s.ink, s.slip}, 1.0);
+        QPainter(&fine).drawImage(0, 0, ink);
+        fine.save(QString::fromLocal8Bit(argv[1]) + "printer_600.png");
+        // How long a full page takes to draw again, when a sheet is shown.
+        Dmp2000 full(*font);
+        std::string lines;
+        for (int i = 0; i < 60; ++i)
+            lines += std::string(80, static_cast<char>('A' + i % 26)) + "\r\n";
+        send(full, lines, 0);
+        PrintedSheet whole;
+        for (const Event& e : full.takeEvents())
+            if (e.kind == Event::Kind::Strike && e.sheet == 0)
+                whole.strikes.push_back(e.strike);
+        QElapsedTimer clock;
+        clock.start();
+        window.view()->showSheet(whole);
+        std::printf("a full page drawn in %lld ms\n", static_cast<long long>(clock.elapsed()));
     }
 
     // ---- On the emulator's printer: lamps and buttons ----

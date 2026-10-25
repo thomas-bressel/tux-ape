@@ -39,6 +39,14 @@ public:
     void showSheet(const PrintedSheet& sheet);
     // A column of needles struck on the sheet shown.
     void strike(const tuxape::Dmp2000::Strike& strike);
+    // How hard the needles strike, 0 to 1: the paper thickness lever,
+    // 1 set right for the paper. For the next strikes, and the sheets
+    // shown again.
+    void setImpression(double impression);
+    // A column of needles struck on a picture of `dotsPerInch` (ink on
+    // transparent, premultiplied ARGB): the dots as the paper takes them,
+    // the same on the screen and in the PDF.
+    static void paint(QImage& picture, double dotsPerInch, const tuxape::Dmp2000::Strike& strike, double impression);
     // Where the head is, in inches on the sheet; hidden if `shown` is false.
     void setHead(double x, double y, bool shown);
     // Where the print line is, in the widget, for the window to scroll to.
@@ -55,10 +63,11 @@ private:
     QImage picture_;  // the dots, grey on white, kDotsPerInch to the inch
     double headX_ = 0.0, headY_ = 0.0;
     bool headShown_ = false;
+    double impression_ = 1.0;
 
     void blankPicture();
-    void dot(double x, double y);
     double scale() const;  // widget pixels to the picture's
+    QRectF headRect() const;
 };
 
 // The DMP2000's window: the sheet under its head, filling as the

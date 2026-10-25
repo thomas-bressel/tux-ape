@@ -21,8 +21,25 @@ using tuxape::Dmp2000;
 namespace {
 
 constexpr double kNeedle = 1.0 / 72.0;
-// A needle's dot: 0.3 mm across, a little less than a needle's step.
-constexpr double kDotRadius = 0.0062;
+// A needle's dot: a needle is 0.3 mm across, its dot through the ribbon a
+// little more, nearly a needle's step: a column of them all but joins up.
+constexpr double kDotRadius = 0.0068;
+// A little longer the way the head goes, for it moves while the needle
+// is on the paper.
+constexpr double kDotLength = 1.08;
+// The nine needles, top to bottom: how hard each strikes (the lowest, at
+// the end of the longest wire, least), and how far off its place it is,
+// in inches, its wire a little bent.
+constexpr float kForce[9] = {0.94f, 1.0f, 0.97f, 1.0f, 1.02f, 0.98f, 1.0f, 0.95f, 0.86f};
+constexpr double kOffX[9] = {0.0, 0.0004, 0.0, -0.0003, 0.0, 0.0, 0.0005, 0.0, -0.0004};
+constexpr double kOffY[9] = {0.0, 0.0, 0.0003, 0.0, 0.0, -0.0004, 0.0, 0.0, 0.0003};
+// Dots struck right to left land this much further left than those
+// struck left to right: the needle's flight, set right for one way only.
+constexpr double kBackward = 0.0025;
+// The ink of one dot at full strength, and the ribbon's weave in it: a
+// thread every 1/400 inch.
+constexpr double kInkAlpha = 0.86;
+constexpr double kWeave = 400.0;
 // The tractors' strips of fan fold paper, and their holes.
 constexpr double kStrip = 0.5;
 constexpr double kHolePitch = 0.5;
@@ -34,6 +51,20 @@ constexpr uint64_t kQuiet = 2000000;
 // window, the same whatever the theme.
 const QColor kPaper(0xFB, 0xFA, 0xF4);
 const QColor kInk(0x24, 0x22, 0x2A);
+
+uint64_t mix(uint64_t z)
+{
+    z += 0x9E3779B97F4A7C15ull;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    return z ^ (z >> 31);
+}
+
+// 0 to 1, from a hash.
+double unit(uint64_t h)
+{
+    return static_cast<double>(h >> 11) / 9007199254740992.0;
+}
 
 double between(const Dmp2000::Motion& m, uint64_t now)
 {
@@ -80,42 +111,102 @@ void SheetView::showSheet(const PrintedSheet& sheet)
     update();
 }
 
-void SheetView::dot(double x, double y)
+void SheetView::setImpression(double impression)
 {
-    QPainter painter(&picture_);
-    painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(Qt::NoPen);
-    QColor ink = kInk;
-    ink.setAlphaF(0.82);
-    painter.setBrush(ink);
-    const double r = kDotRadius * kDotsPerInch;
-    painter.drawEllipse(QPointF(x * kDotsPerInch, y * kDotsPerInch), r, r);
+    impression_ = std::clamp(impression, 0.0, 1.0);
+}
+
+void SheetView::paint(QImage& picture, double dotsPerInch, const Dmp2000::Strike& strike, double impression)
+{
+    // Struck harder (the lever nearer the platen), a dot is larger and
+    // darker.
+    const double radius = kDotRadius * (0.88 + 0.12 * impression) * dotsPerInch;
+    const double strength = kInkAlpha * strike.ink * (0.62 + 0.38 * impression);
+    // The dot's edge, soft over two thousandths of an inch, or over a pixel
+    // when the picture is coarser.
+    const double edge = std::max(0.0018 * dotsPerInch, 0.75);
+    const int r = kInk.red(), g = kInk.green(), b = kInk.blue();
+    const int w = picture.width(), h = picture.height();
+    for (int pin = 0; pin < 9; ++pin) {
+        if (!(strike.pins & (0x100 >> pin)))
+            continue;
+        const double x = (strike.x + kOffX[pin] - (strike.backward ? kBackward : 0.0)) * dotsPerInch;
+        const double y = (strike.y + strike.slip + pin * kNeedle + kOffY[pin]) * dotsPerInch;
+        // Not quite round, and not twice the same: its outline in three
+        // waves, from where and when it was struck.
+        const uint64_t seed = mix(mix(static_cast<uint64_t>(std::llround(strike.x * 14400.0))) ^
+                                  static_cast<uint64_t>(std::llround(strike.y * 14400.0)) * 131u ^ strike.microsecond * 9u ^ pin);
+        double wave[3][3];  // amount, cosine and sine of its turn
+        for (int k = 0; k < 3; ++k) {
+            const double turn = 2.0 * M_PI * unit(mix(seed + k * 2 + 1));
+            wave[k][0] = (0.07 - 0.02 * k) * (0.5 + unit(mix(seed + k * 2 + 2)));
+            wave[k][1] = std::cos(turn);
+            wave[k][2] = std::sin(turn);
+        }
+        const float force = kForce[pin];
+        const double reach = radius * 1.3 + edge;
+        const int x0 = std::max(0, static_cast<int>(std::floor(x - reach))), x1 = std::min(w - 1, static_cast<int>(std::ceil(x + reach)));
+        const int y0 = std::max(0, static_cast<int>(std::floor(y - reach))), y1 = std::min(h - 1, static_cast<int>(std::ceil(y + reach)));
+        for (int py = y0; py <= y1; ++py) {
+            auto* line = reinterpret_cast<QRgb*>(picture.scanLine(py));
+            for (int px = x0; px <= x1; ++px) {
+                const double dx = (px + 0.5 - x) / kDotLength, dy = py + 0.5 - y;
+                const double d = std::hypot(dx, dy);
+                // The outline at this angle: cos and sin of n times it.
+                const double c1 = d > 0 ? dx / d : 1.0, s1 = d > 0 ? dy / d : 0.0;
+                const double c2 = c1 * c1 - s1 * s1, s2 = 2 * c1 * s1;
+                const double c3 = c2 * c1 - s2 * s1, s3 = s2 * c1 + c2 * s1;
+                const double outline = radius * (1.0 + wave[0][0] * (c1 * wave[0][1] + s1 * wave[0][2]) +
+                                                 wave[1][0] * (c2 * wave[1][1] + s2 * wave[1][2]) +
+                                                 wave[2][0] * (c3 * wave[2][1] + s3 * wave[2][2]));
+                const double cover = std::clamp((outline - d) / edge + 0.5, 0.0, 1.0);
+                if (cover <= 0.0)
+                    continue;
+                // Denser where the needle's middle pressed; the weave's
+                // threads, where they are on the paper.
+                const double middle = 0.88 + 0.12 * std::max(0.0, 1.0 - (d * d) / (radius * radius));
+                const uint64_t thread = mix(static_cast<uint64_t>((px + 0.5) / dotsPerInch * kWeave) * 0x10001u +
+                                            static_cast<uint64_t>((py + 0.5) / dotsPerInch * kWeave));
+                const double weave = 0.76 + 0.24 * unit(thread);
+                const double ink = std::min(1.0, cover * strength * force * middle * weave);
+                // On what is there already: a dot on a dot is darker.
+                QRgb& pixel = line[px];
+                const int a = qAlpha(pixel);
+                const int now = a + static_cast<int>(std::lround((255 - a) * ink));
+                pixel = qRgba(r * now / 255, g * now / 255, b * now / 255, now);
+            }
+        }
+    }
 }
 
 void SheetView::strike(const Dmp2000::Strike& strike)
 {
-    QRectF touched;
-    for (int pin = 0; pin < 9; ++pin) {
-        if (!(strike.pins & (0x100 >> pin)))
-            continue;
-        const double y = strike.y + pin * kNeedle;
-        dot(strike.x, y);
-        touched |= QRectF(strike.x - 0.02, y - 0.02, 0.04, 0.04);
-    }
-    if (!touched.isEmpty()) {
-        const double s = scale() * kDotsPerInch;
-        update(QRectF(touched.x() * s, touched.y() * s, touched.width() * s, touched.height() * s).toAlignedRect().adjusted(-2, -2, 2, 2));
-    }
+    paint(picture_, kDotsPerInch, strike, impression_);
+    const double s = scale() * kDotsPerInch;
+    const QRectF touched(strike.x - 0.02, strike.y - 0.02, 0.04, 9 * kNeedle + 0.04);
+    update(QRectF(touched.x() * s, touched.y() * s, touched.width() * s, touched.height() * s).toAlignedRect().adjusted(-2, -2, 2, 2));
 }
 
 void SheetView::setHead(double x, double y, bool shown)
 {
     if (shown == headShown_ && std::fabs(x - headX_) < 1e-4 && std::fabs(y - headY_) < 1e-4)
         return;
+    // Only where it was and where it is drawn again.
+    if (headShown_)
+        update(headRect().toAlignedRect().adjusted(-2, -2, 2, 2));
     headX_ = x;
     headY_ = y;
     headShown_ = shown;
-    update();
+    if (headShown_)
+        update(headRect().toAlignedRect().adjusted(-2, -2, 2, 2));
+}
+
+QRectF SheetView::headRect() const
+{
+    // The head: its nine needles' height, a little wider than a
+    // character, over the line it prints.
+    const double inch = scale() * kDotsPerInch;
+    return {(headX_ - 0.06) * inch, (headY_ - 0.03) * inch, 0.12 * inch, (9 * kNeedle + 0.06) * inch};
 }
 
 double SheetView::scale() const
@@ -145,7 +236,7 @@ void SheetView::resizeEvent(QResizeEvent* event)
 void SheetView::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
     const double inch = scale() * kDotsPerInch;
     painter.fillRect(rect(), kPaper);
     if (paper_.fanFold) {
@@ -165,14 +256,11 @@ void SheetView::paintEvent(QPaintEvent*)
     }
     painter.drawImage(rect(), picture_);
     if (headShown_) {
-        // The head: its nine needles' height, a little wider than a
-        // character, over the line it prints.
-        const QRectF head((headX_ - 0.06) * inch, (headY_ - 0.03) * inch, 0.12 * inch, (9 * kNeedle + 0.06) * inch);
         QColor body(0x4A, 0x4D, 0x55);
         body.setAlphaF(0.55);
         painter.setPen(Qt::NoPen);
         painter.setBrush(body);
-        painter.drawRoundedRect(head, 2, 2);
+        painter.drawRoundedRect(headRect(), 2, 2);
     }
 }
 

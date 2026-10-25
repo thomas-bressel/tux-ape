@@ -152,6 +152,22 @@ void testLine(const Dmp2000Font& font)
     const auto back = only(events, Event::Kind::Strike);
     CHECK(!back.empty() && back.front().strike.x > back.back().strike.x);
     CHECK(near(back.front().strike.y, 1.0 / 3.0 + 1.0 / 6.0));
+    // What the mechanism adds: those struck right to left say so (their
+    // dots land a little off); the ribbon's ink, a little uneven; the
+    // paper's error, the same for one line, another for the next, within
+    // a thousandth and a half of an inch.
+    CHECK(!strikes.empty() && !strikes.front().strike.backward && !back.empty() && back.front().strike.backward);
+    bool inked = true, oneSlip = true;
+    float least = 2.0f, most = 0.0f;
+    for (const auto* seen : {&strikes, &back})
+        for (const Event& e : *seen) {
+            inked = inked && e.strike.ink > 0.85f && e.strike.ink < 1.15f;
+            least = std::min(least, e.strike.ink);
+            most = std::max(most, e.strike.ink);
+            oneSlip = oneSlip && e.strike.slip == seen->front().strike.slip && std::fabs(e.strike.slip) <= 0.0015f;
+        }
+    CHECK(inked && most > least && oneSlip);
+    CHECK(!strikes.empty() && !back.empty() && strikes.front().strike.slip != back.front().strike.slip);
 
     // A full line of pica: 80 characters in 8 inches, 80 / 105 of a second.
     t = send(printer, std::string(80, 'H') + "\r\n", printer.idleFrom());

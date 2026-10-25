@@ -22,10 +22,36 @@ constexpr double kNeedle = 1.0 / 72.0;       // between two needles
 constexpr double kHalfNeedle = 1.0 / 144.0;  // NLQ's second pass
 constexpr double kDoubleStrike = 1.0 / 216.0;
 constexpr int kLowestGlyph = 32;             // the ASCII ones come after the 32 international ones
+// The ribbon, a loop of inked cloth that the carriage's moves draw past the
+// needles: a third of their way, and three yards round, inked a little
+// unevenly along it. The paper's moves: each within a thousandth and a half
+// of an inch of where it should end (a stepper's teeth, the platen's grip).
+constexpr double kRibbonDrive = 1.0 / 3.0;
+constexpr double kRibbonLoop = 108.0;
+constexpr double kPaperError = 0.0015;
 
 uint64_t us(double seconds)
 {
     return static_cast<uint64_t>(std::llround(seconds * 1e6));
+}
+
+// The ink the ribbon gives where it is: some ten per cent either way of
+// the mean, in waves of a few inches to a yard, the same each time round.
+float ribbonInk(double at)
+{
+    constexpr double kTurn = 2.0 * 3.14159265358979323846 / kRibbonLoop;
+    const double p = std::fmod(at, kRibbonLoop) * kTurn;
+    return static_cast<float>(1.0 + 0.05 * std::sin(3.0 * p) + 0.035 * std::sin(11.0 * p + 1.3) + 0.02 * std::sin(38.0 * p + 2.1));
+}
+
+// The error of the paper's nth move, -1 to 1: the same for the same move.
+float paperError(uint32_t move)
+{
+    uint64_t z = move + 0x9E3779B97F4A7C15ull;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+    z ^= z >> 31;
+    return static_cast<float>(static_cast<double>(z >> 11) / 4503599627370496.0 - 1.0);
 }
 
 // The international characters, by country: which glyph (0-31) takes the
@@ -608,6 +634,7 @@ void Dmp2000::homeHead(uint64_t microsecond)
     const uint64_t t = later(microsecond);
     const uint64_t end = t + us(headX_ / kReturnSpeed);
     record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, headX_ + leftEdge(), leftEdge(), false}});
+    ribbon_ += headX_ * kRibbonDrive;
     headX_ = 0.0;
     busyUntil_ = end;
 }
@@ -653,6 +680,7 @@ void Dmp2000::printLine(uint64_t microsecond)
         if (std::fabs(headX_ - from) > 1e-6) {
             const uint64_t end = t + us(std::fabs(headX_ - from) / kReturnSpeed);
             record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, headX_ + leftEdge(), from + leftEdge(), false}});
+            ribbon_ += std::fabs(headX_ - from) * kRibbonDrive;
             t = end;
         }
         const uint64_t end = t + us(std::fabs(to - from) / speed);
@@ -662,7 +690,8 @@ void Dmp2000::printLine(uint64_t microsecond)
                 continue;
             const double x = origin + c.x;
             const uint64_t at = t + us(std::fabs(x - from) / speed);
-            record({Event::Kind::Strike, at, sheet_, {at, sheet_, x + leftEdge(), paperY_ + c.dy, c.pins}});
+            const float ink = ribbonInk(ribbon_ + std::fabs(x - from) * kRibbonDrive);
+            record({Event::Kind::Strike, at, sheet_, {at, sheet_, x + leftEdge(), paperY_ + c.dy, c.pins, !forward, ink, slip_}});
         }
         if (pass == 0)
             for (Printed p : lineText_) {
@@ -673,6 +702,7 @@ void Dmp2000::printLine(uint64_t microsecond)
                 p.sheet = sheet_;
                 record({Event::Kind::Printed, p.microsecond, sheet_, {}, p});
             }
+        ribbon_ += std::fabs(to - from) * kRibbonDrive;
         headX_ = to;
         t = end;
     }
@@ -706,6 +736,7 @@ void Dmp2000::feed(double inches, uint64_t microsecond)
     const uint64_t end = t + us(std::fabs(inches) / kPaperSpeed);
     record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Paper, t, end, paperY_, y, false}});
     busyUntil_ = end;
+    slip_ = static_cast<float>(kPaperError) * paperError(++paperMoves_);
     sinceTopOfForm_ += inches;
     const double page = pageLines_ ? pageLines_ * lineSpacing() : pageLength_;
     while (sinceTopOfForm_ >= page - 1e-9)
@@ -788,6 +819,7 @@ void Dmp2000::loadPaper(uint64_t microsecond)
     const uint64_t end = t + us(top / kLoadSpeed);
     record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Paper, t, end, 0.0, top, false}});
     startSheet(t);
+    slip_ = static_cast<float>(kPaperError) * paperError(++paperMoves_);
     paperY_ = top;
     sinceTopOfForm_ = 0.0;
     busyUntil_ = end;

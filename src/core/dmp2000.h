@@ -105,6 +105,13 @@ public:
         int sheet;
         double x, y;
         uint16_t pins;
+        // What the mechanism adds to it: the head going right to left (its
+        // dots land a little off those struck the other way), the ink of
+        // the ribbon where it is under the head, and how far the paper's
+        // last move missed its mark (inches, down). See printerwindow.cpp.
+        bool backward = false;
+        float ink = 1.0f;
+        float slip = 0.0f;
     };
     // A character printed, for a text that goes with the picture.
     struct Printed {
@@ -241,6 +248,12 @@ private:
     std::array<std::vector<int>, 8> verticalTabs_{};
     int verticalChannel_ = 0;
     std::array<int, 4> graphicsDensity_{0, 1, 2, 3};  // what K, L, Y, Z print
+
+    // The ribbon: how far its loop has gone by the head, in inches; and
+    // the paper's moves, for the error of each.
+    double ribbon_ = 0.0;
+    uint32_t paperMoves_ = 0;
+    float slip_ = 0.0f;
 
     // The line being made.
     std::vector<Column> line_;
