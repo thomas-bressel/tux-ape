@@ -12,6 +12,7 @@
 #include "filedialogs.h"
 #include "language.h"
 #include "mainwindow.h"
+#include "programfolder.h"
 #include "theme.h"
 #include "welcome.h"
 
@@ -59,7 +60,7 @@ int main(int argc, char* argv[])
     // say otherwise. Its roms/ holds every ROM, the machines' own in
     // roms/system/, and its profile/ the profiles. A folder made before,
     // with WinAPE's ROM/ and Profile/, is read as it is.
-    const QDir beside(QCoreApplication::applicationDirPath());
+    const QDir beside(programFolder());
     for (const auto& [variable, folders] : {std::pair{"TUXAPE_ROM_DIR", QStringList{"ROM", "roms"}},
                                             std::pair{"TUXAPE_USER_ROM_DIR", QStringList{"roms"}},
                                             std::pair{"TUXAPE_PROFILE_DIR", QStringList{"profile", "Profile"}}})

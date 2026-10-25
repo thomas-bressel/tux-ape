@@ -16,6 +16,7 @@
 #include "core/files.h"
 #include "core/zip.h"
 #include "pluginsignature.h"
+#include "programfolder.h"
 
 namespace {
 
@@ -93,7 +94,7 @@ QString PluginManager::folder()
         const QString named = qEnvironmentVariable("TUXAPE_PLUGIN_DIR");
         return named.isEmpty() ? QString() : QDir::cleanPath(named);
     }
-    const QString beside = QCoreApplication::applicationDirPath() + "/plugins";
+    const QString beside = programFolder() + "/plugins";
     for (const QString& folder : {beside, QStringLiteral(TUXAPE_DEV_PLUGIN_DIR)})
         if (QDir(folder).exists())
             return QDir::cleanPath(folder);

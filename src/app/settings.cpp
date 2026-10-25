@@ -11,6 +11,7 @@
 #include "core/files.h"
 #include "core/inifile.h"
 #include "core/keymap.h"
+#include "programfolder.h"
 
 namespace {
 
@@ -423,7 +424,7 @@ QString Settings::profileFolder()
 // there; else the folder of the settings file.
 static QString besideOrSettings(const QString& folder, const QString& name)
 {
-    const QDir beside(QCoreApplication::applicationDirPath());
+    const QDir beside(programFolder());
     if (beside.exists(folder))
         return beside.filePath(folder) + "/" + name;
     return QFileInfo(Settings::file()).absolutePath() + "/" + name;
@@ -448,7 +449,7 @@ bool Settings::windowsThroughX11Possible()
 
 QString Settings::userProfileFolder()
 {
-    const QDir beside(QCoreApplication::applicationDirPath());
+    const QDir beside(programFolder());
     for (const char* folder : {"profile", "Profile"})
         if (beside.exists(folder))
             return beside.filePath(folder);
@@ -483,7 +484,7 @@ QString Settings::xmemFlashFile()
 QString Settings::saveStatesFolder()
 {
     // A folder made by tools/make-dist.sh has its ROMs beside the program.
-    const QDir beside(QCoreApplication::applicationDirPath());
+    const QDir beside(programFolder());
     if (beside.exists("savestates") || beside.exists("ROM") || beside.exists("roms"))
         return beside.filePath("savestates");
     return QFileInfo(file()).absolutePath() + "/savestates";

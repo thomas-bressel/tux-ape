@@ -70,6 +70,20 @@ void testRomNames(const std::filesystem::path& romDir)
     CHECK(findRom("cpc_plus.cpr", romDir) == system / "CPC_PLUS.CPR");
 }
 
+// A variable of the environment set, or taken away if `value` is empty,
+// as each system does it.
+void setVariable(const char* name, const std::string& value)
+{
+#ifdef _WIN32
+    _putenv_s(name, value.c_str());
+#else
+    if (value.empty())
+        unsetenv(name);
+    else
+        setenv(name, value.c_str(), 1);
+#endif
+}
+
 // One roms/ for every ROM, as dist/ has it: the machines' own in system/,
 // the others in folders of their kind, names in upper case with "_" between
 // their parts. Profiles that ask for WinAPE's names find them.
@@ -84,7 +98,7 @@ void testOneRomFolder()
         CHECK(writeFile(roms / file, image));
     }
     const std::string kept = std::getenv("TUXAPE_USER_ROM_DIR") ? std::getenv("TUXAPE_USER_ROM_DIR") : "";
-    setenv("TUXAPE_USER_ROM_DIR", roms.c_str(), 1);
+    setVariable("TUXAPE_USER_ROM_DIR", roms.string());
 
     CHECK(findRom("OS6128", roms) == roms / "system/OS6128.ROM");
     CHECK(findRom("basic1-1", roms) == roms / "system/BASIC1-1.ROM");
@@ -99,10 +113,7 @@ void testOneRomFolder()
     const std::vector<std::string> names = romNames(roms);
     CHECK(names.size() == 4 && std::find(names.begin(), names.end(), "PARADOS_1-2+") != names.end());
 
-    if (kept.empty())
-        unsetenv("TUXAPE_USER_ROM_DIR");
-    else
-        setenv("TUXAPE_USER_ROM_DIR", kept.c_str(), 1);
+    setVariable("TUXAPE_USER_ROM_DIR", kept);
     std::filesystem::remove_all(roms);
 }
 
