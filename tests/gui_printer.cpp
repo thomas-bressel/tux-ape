@@ -9,7 +9,10 @@
 //   gui_printer [prefix]   also saves a picture of the window, a page of
 //                          the printer's typefaces on it, as <prefix>printer.png,
 //                          the page as <prefix>printer_page.png, and its top
-//                          at 600 dots to the inch as <prefix>printer_600.png
+//                          at 600 dots to the inch as <prefix>printer_600.png;
+//                          a 6128 printing from BASIC, its window as
+//                          <prefix>printer_listing.png and its PDF as
+//                          <prefix>printer_listing.pdf
 
 #include <cstdio>
 #include <string>
@@ -21,10 +24,12 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QTest>
 #include <QTemporaryDir>
 #include <QToolButton>
 
 #include "check.h"
+#include "core/screen_text.h"
 #include "emulator.h"
 #include "printersound.h"
 #include "printerwindow.h"
@@ -316,6 +321,44 @@ int main(int argc, char* argv[])
         // Another printer mode: no DMP2000.
         CHECK(emulator.setPrinter(Settings::PrinterDisabled, QString()));
         CHECK(!emulator.hasDmp2000());
+    }
+
+    // ---- A 6128 printing from BASIC, for whoever looks: its window as
+    // the firmware leaves it ----
+    if (argc > 1) {
+        Emulator emulator;
+        if (emulator.setupMachine(tuxape::CpcModel::Cpc6128).isEmpty() && emulator.setPrinter(Settings::PrinterHost, QString())) {
+            PrinterWindow window(&emulator);
+            window.resize(780, 640);
+            window.show();
+            emulator.setSpeedPercent(1000);
+            emulator.start();
+            const auto screen = [&] { return emulator.withMachine([](tuxape::Cpc& cpc) { return tuxape::readScreenText(cpc); }); };
+            const auto ready = [&] { return QTest::qWaitFor([&] { return screen().find("Ready") != std::string::npos; }, 20000); };
+            CHECK(ready());
+            QTest::qWait(300);
+            emulator.autoType(QStringLiteral(
+                "10 PRINT #8,CHR$(27);\"E\";\"TuxAPE + Amstrad DMP2000\";CHR$(27);\"F\"\n"
+                "20 PRINT #8,CHR$(14);\"Double width\"\n"
+                "30 PRINT #8,CHR$(27);\"x\";CHR$(1);\"Near Letter Quality\";CHR$(27);\"x\";CHR$(0)\n"
+                "40 FOR i=1 TO 6:PRINT #8,\"Line\";i;\" \";STRING$(i*5,\"*\"):NEXT\n"
+                "50 PRINT #8\n"
+                "CLS:RUN\n"));
+            QTest::qWait(500);
+            CHECK(ready());
+            emulator.autoType(QStringLiteral("CLS:LIST #8\n"));
+            // Listed, the listing printed, and the window come to its last line.
+            const auto letters = [&] { return window.sheets().empty() ? size_t{0} : window.sheets().back().text.size(); };
+            CHECK(QTest::qWaitFor([&] { return letters() > 400; }, 30000));
+            QTest::qWait(1500);
+            const bool printed = !window.sheets().empty() && window.sheets().back().text.size() > 400;
+            CHECK(printed);
+            window.view()->setHead(0, 0, false);
+            QApplication::processEvents();
+            window.grab().save(QString::fromLocal8Bit(argv[1]) + "printer_listing.png");
+            CHECK(window.writePdf(QString::fromLocal8Bit(argv[1]) + "printer_listing.pdf"));
+            emulator.stop();
+        }
     }
     return checkSummary("gui_printer");
 }
