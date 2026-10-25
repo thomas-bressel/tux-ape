@@ -2783,10 +2783,10 @@ Enregistrer les modifications dans %2 ?</translation>
     <message>
         <source>%1
 
-Set the TUXAPE_ROM_DIR environment variable to the folder holding WinAPE&apos;s ROM images.</source>
+Put the ROM images in the roms folder beside TuxAPE, the machines&apos; own in roms/system, or set the TUXAPE_ROM_DIR environment variable to the folder holding them.</source>
         <translation>%1
 
-Donnez à la variable d&apos;environnement TUXAPE_ROM_DIR le dossier qui contient les images de ROM de WinAPE.</translation>
+Mettez les images de ROM dans le dossier roms à côté de TuxAPE, celles des machines dans roms/system, ou donnez à la variable d&apos;environnement TUXAPE_ROM_DIR le dossier qui les contient.</translation>
     </message>
     <message>
         <source>%1
@@ -3586,12 +3586,16 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>(réglages actuels)</translation>
     </message>
     <message>
-        <source>Profiles (*.wpf);;All files (*)</source>
-        <translation>Profils (*.wpf);;Tous les fichiers (*)</translation>
+        <source>Profiles (*.tpf *.wpf);;All files (*)</source>
+        <translation>Profils (*.tpf *.wpf);;Tous les fichiers (*)</translation>
     </message>
     <message>
         <source>Save Profile</source>
         <translation>Enregistrer le profil</translation>
+    </message>
+    <message>
+        <source>TuxAPE profiles (*.tpf);;All files (*)</source>
+        <translation>Profils de TuxAPE (*.tpf);;Tous les fichiers (*)</translation>
     </message>
     <message>
         <source>Expansion Port (MotherX4: four cards)</source>

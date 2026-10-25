@@ -287,7 +287,7 @@ void testMemoryPage(const QString& picture)
         CHECK_EQ(combo->currentIndex(), 0);
         const int amsdos = combo->findText("AMSDOS");
         CHECK(amsdos > 0);
-        CHECK(combo->findText("ParaDOS 1-2+") > 0);
+        CHECK(combo->findText("PARADOS_1-2+") > 0);
         CHECK(combo->findText("CPC_PLUS") < 0);
         combo->setCurrentIndex(amsdos);
         emit combo->activated(amsdos);
@@ -297,7 +297,7 @@ void testMemoryPage(const QString& picture)
     // An image of the ROM folder goes by its bare name; any other file by
     // its path.
     const QString romDir = QString::fromStdString(tuxape::defaultRomDir().string());
-    dialog.setRom(9, romDir + "/PARADOS.ROM");
+    dialog.setRom(9, romDir + "/dos/PARADOS.ROM");
     CHECK(dialog.rom(9) == "PARADOS");
     dialog.setRom(10, "/elsewhere/Maxam.rom");
     CHECK(dialog.rom(10) == "/elsewhere/Maxam.rom");
@@ -339,15 +339,17 @@ void testMemoryPage(const QString& picture)
     }
 }
 
-// Profiles: WinAPE's own, read as they stand, and ones saved from here.
+// Profiles: TuxAPE's own (.tpf), WinAPE's read as they stand (.wpf), and
+// ones saved from here.
 void testProfiles(const QString& folder, const QString& picture)
 {
     using tuxape::CpcModel;
-    const QString profiles = QStringLiteral(TUXAPE_WINAPE_DIR "/Profile");
+    const QString profiles = QStringLiteral(TUXAPE_PROFILES_DIR);
     CHECK(Settings::profileFolder() == profiles);
-    CHECK(Settings::profileUsable(profiles + "/CPC6128.wpf"));
-    CHECK(Settings::profileUsable(profiles + "/6128 Plus.wpf"));
-    CHECK(!Settings::profileUsable(profiles + "/no such profile.wpf"));
+    CHECK(Settings::profileUsable(profiles + "/CPC6128.tpf"));
+    CHECK(Settings::profileUsable(profiles + "/6128 Plus.tpf"));
+    CHECK(!Settings::profileUsable(profiles + "/no such profile.tpf"));
+    CHECK(Settings::profileUsable(QStringLiteral(TUXAPE_WINAPE_DIR "/Profile/CPC6128.wpf")));
 
     Settings settings;
     settings.crtcType = 2;
@@ -362,7 +364,7 @@ void testProfiles(const QString& folder, const QString& picture)
     if (!combo)
         return;
 
-    // The list: the current settings, WinAPE's eight profiles in
+    // The list: the current settings, TuxAPE's eight profiles in
     // alphabetical order, a file to choose.
     CHECK_EQ(combo->count(), 10);
     CHECK(combo->itemText(0) == "(Current Settings)");
@@ -397,15 +399,15 @@ void testProfiles(const QString& folder, const QString& picture)
     shown = dialog.settings();
     CHECK(shown.machine.ram == tuxape::RamExpansion::Internal);
     CHECK(shown.machine.lowerRom == "OS6128");
-    CHECK(shown.machine.upperRoms[7] == "ParaDOS 1-2");
+    CHECK(shown.machine.upperRoms[7] == "PARADOS_1-2");
     CHECK(!tuxape::findRom(shown.machine.upperRoms[7], tuxape::defaultRomDir()).empty());
     // The pages follow.
     auto* total = dialog.findChild<QLabel*>("lTotalRAM");
     CHECK(total && total->text() == "128K");
-    CHECK(dialog.rom(8) == "ParaDOS 1-2");
+    CHECK(dialog.rom(8) == "PARADOS_1-2");
 
     // A file that is not there changes nothing.
-    CHECK(!dialog.loadProfile(folder + "/missing.wpf"));
+    CHECK(!dialog.loadProfile(folder + "/missing.tpf"));
     CHECK(dialog.settings() == shown);
 
     // Which settings a profile is to hold: the machine, unless told
@@ -441,7 +443,7 @@ void testProfiles(const QString& folder, const QString& picture)
     }
 
     // A profile saved with only the machine in it...
-    const QString path = folder + "/My machine.wpf";
+    const QString path = folder + "/My machine.tpf";
     dialog.setRom(5, "PARADOS");
     CHECK(dialog.saveProfile(path, Settings::RamPart | Settings::RomsPart));
     tuxape::IniFile ini;
@@ -466,7 +468,7 @@ void testProfiles(const QString& folder, const QString& picture)
     // with the others.
     CHECK(Settings::userProfileFolder() == QFileInfo(Settings::file()).absolutePath() + "/Profile");
     CHECK(QDir().mkpath(Settings::userProfileFolder()));
-    CHECK(dialog.saveProfile(Settings::userProfileFolder() + "/Big machine.wpf", Settings::AllParts));
+    CHECK(dialog.saveProfile(Settings::userProfileFolder() + "/Big machine.tpf", Settings::AllParts));
     {
         SetupDialog later((Settings()));
         auto* list = later.findChild<QComboBox*>("cbProfile");
@@ -479,7 +481,7 @@ void testProfiles(const QString& folder, const QString& picture)
             CHECK(later.settings() == dialog.settings());
         }
     }
-    QFile::remove(Settings::userProfileFolder() + "/Big machine.wpf");
+    QFile::remove(Settings::userProfileFolder() + "/Big machine.tpf");
 }
 
 // The Display page: the monitor, the vertical hold, the brightness, and what
@@ -864,18 +866,18 @@ void testExpansionsPage(const QString& folder, const QString& picture)
     CHECK(Settings::xmemFlashFile() == folder + "/sub/xmem.flash");
     // In a folder made by tools/make-dist.sh, what the cards keep goes
     // into "img" beside the program, and the user's profiles into its
-    // "Profile", with WinAPE's.
+    // "profile", with TuxAPE's.
     {
         const QDir beside(QCoreApplication::applicationDirPath());
-        const bool hadImg = beside.exists("img"), hadProfile = beside.exists("Profile");
-        CHECK(beside.mkpath("img") && beside.mkpath("Profile"));
+        const bool hadImg = beside.exists("img"), hadProfile = beside.exists("profile");
+        CHECK(beside.mkpath("img") && beside.mkpath("profile"));
         CHECK(Settings::xmemFlashFile() == beside.filePath("img/xmem.flash"));
         CHECK(Settings::xmassDiscFile() == beside.filePath("img/xmass.img"));
-        CHECK(Settings::userProfileFolder() == beside.filePath("Profile"));
+        CHECK(Settings::userProfileFolder() == beside.filePath("profile"));
         if (!hadImg)
             beside.rmdir("img");
         if (!hadProfile)
-            beside.rmdir("Profile");
+            beside.rmdir("profile");
         CHECK(Settings::xmemFlashFile() == folder + "/sub/xmem.flash");
     }
     CHECK(file->text() == QDir::toNativeSeparators(dialog.xmemFlash()));
@@ -1158,7 +1160,7 @@ void testCardProfiles(const QString& folder)
 
     // A machine's profile (the CRTC, the RAM, the ROMs: what is ticked to
     // begin with) holds the cards, their settings and their files.
-    const QString machineProfile = folder + "/with cards.wpf";
+    const QString machineProfile = folder + "/with cards.tpf";
     CHECK(fitted.saveProfile(machineProfile, ProfilePartsDialog().parts()));
     QFile file(machineProfile);
     CHECK(file.open(QIODevice::ReadOnly));
@@ -1174,7 +1176,7 @@ void testCardProfiles(const QString& folder)
 
     // One that holds other settings only says nothing of them: no word of
     // the cards in the file, and the cards are left as they are.
-    const QString speedProfile = folder + "/speed only.wpf";
+    const QString speedProfile = folder + "/speed only.tpf";
     CHECK(fitted.saveProfile(speedProfile, Settings::SpeedPart | Settings::SoundPart));
     QFile other(speedProfile);
     CHECK(other.open(QIODevice::ReadOnly));
@@ -1187,7 +1189,7 @@ void testCardProfiles(const QString& folder)
     // One of WinAPE's own names the ROMs and knows of no card: the machine
     // it describes has none. What the cards were set to is not forgotten.
     Settings stock = fitted;
-    CHECK(stock.loadProfile(Settings::profileFolder() + "/CPC6128.wpf"));
+    CHECK(stock.loadProfile(Settings::profileFolder() + "/CPC6128.tpf"));
     CHECK(!stock.machine.hasCard(Card::Xmem) && !stock.machine.hasCard(Card::Xmass));
     CHECK(stock.machine.upperRoms[5].empty() && stock.machine.upperRoms[7] == "AMSDOS");
     CHECK(stock.machine.xmem == fitted.machine.xmem && stock.machine.xmemFlash == fitted.machine.xmemFlash);
@@ -1203,13 +1205,13 @@ void testCardProfiles(const QString& folder)
     auto* xmemBox = dialog.findChild<QGroupBox*>("gbXMEM");
     CHECK(xmemBox && xmemBox->isEnabled());
     dialog.setCard(1, Card::Xmem);  // moved to the second place
-    const QString saved = folder + "/from the window.wpf";
+    const QString saved = folder + "/from the window.tpf";
     CHECK(dialog.saveProfile(saved, ProfilePartsDialog().parts()));
     Settings back;
     CHECK(back.loadProfile(saved));
     CHECK(back.machine.cards == (std::array<Card, 4>{Card::Xmass, Card::Xmem, Card::None, Card::None}));
     CHECK(back.machine.xmem == fitted.machine.xmem);
-    CHECK(dialog.loadProfile(Settings::profileFolder() + "/CPC6128.wpf"));
+    CHECK(dialog.loadProfile(Settings::profileFolder() + "/CPC6128.tpf"));
     CHECK(dialog.card(0) == Card::None && dialog.card(1) == Card::None && xmemBox && !xmemBox->isEnabled());
 
     // The window that asks what a profile is to hold says the cards are

@@ -55,14 +55,17 @@ int main(int argc, char* argv[])
     parser.process(app);
 
     // A folder made by tools/make-dist.sh has the ROMs and the profiles
-    // beside the program, as WinAPE's has: they are taken from there, unless
-    // the variables say otherwise.
+    // beside the program: they are taken from there, unless the variables
+    // say otherwise. Its roms/ holds every ROM, the machines' own in
+    // roms/system/, and its profile/ the profiles. A folder made before,
+    // with WinAPE's ROM/ and Profile/, is read as it is.
     const QDir beside(QCoreApplication::applicationDirPath());
-    for (const auto& [variable, folder] : {std::pair{"TUXAPE_ROM_DIR", "ROM"},
-                                           std::pair{"TUXAPE_USER_ROM_DIR", "roms"},
-                                           std::pair{"TUXAPE_PROFILE_DIR", "Profile"}})
-        if (qEnvironmentVariableIsEmpty(variable) && beside.exists(folder))
-            qputenv(variable, QFile::encodeName(beside.filePath(folder)));
+    for (const auto& [variable, folders] : {std::pair{"TUXAPE_ROM_DIR", QStringList{"ROM", "roms"}},
+                                            std::pair{"TUXAPE_USER_ROM_DIR", QStringList{"roms"}},
+                                            std::pair{"TUXAPE_PROFILE_DIR", QStringList{"profile", "Profile"}}})
+        for (const QString& folder : folders)
+            if (qEnvironmentVariableIsEmpty(variable) && beside.exists(folder))
+                qputenv(variable, QFile::encodeName(beside.filePath(folder)));
 
     // Filled when TuxAPE is to start again, once everything below is
     // closed and written.
@@ -84,8 +87,9 @@ int main(int argc, char* argv[])
             const QString message = error.left(1).toUpper() + error.mid(1) + ".";
             if (settings.machine == tuxape::stockMachine(tuxape::CpcModel::Cpc6128)) {
                 QMessageBox::critical(nullptr, QApplication::applicationName(),
-                                      QObject::tr("%1\n\nSet the TUXAPE_ROM_DIR environment variable to the folder "
-                                                  "holding WinAPE's ROM images.")
+                                      QObject::tr("%1\n\nPut the ROM images in the roms folder beside TuxAPE, the "
+                                                  "machines' own in roms/system, or set the TUXAPE_ROM_DIR "
+                                                  "environment variable to the folder holding them.")
                                           .arg(message));
                 return 1;
             }

@@ -10,8 +10,9 @@
 #
 #   dist/tuxape        the program, finding its libraries in lib/ beside it
 #   dist/lib/          the Qt libraries of .deps/; the system's stay there
-#   dist/ROM/          WinAPE's ROM images, and dist/Profile/ its profiles
-#   dist/roms/         ROM images of the user's own
+#   dist/roms/         every ROM image, the project's roms/: the machines'
+#                      own in system/, the others in folders of their kind
+#   dist/profile/      TuxAPE's profiles (.tpf), the project's profile/
 #   dist/plugins/      no plugin, the folder and what it says of them
 #   dist/library/      the Library window's folders, without their programs
 #   dist/assembly/     assembler sources
@@ -35,7 +36,7 @@ endif()
 # The discs of the project's root that dist/dsk/ starts with.
 set(kDiscs iMPsuite_230807.hfe orgams230517.hfe xmass_xmem-install.hfe)
 
-foreach(folder lib ROM Profile roms plugins library assembly dsk img savestates)
+foreach(folder lib roms profile plugins library assembly dsk img savestates)
     file(MAKE_DIRECTORY "${DIST}/${folder}")
 endforeach()
 
@@ -97,9 +98,8 @@ function(add_missing from to)
     endforeach()
 endfunction()
 
-add_missing("${ROOT}/WinAPE20B2/ROM" "${DIST}/ROM")
-add_missing("${ROOT}/WinAPE20B2/Profile" "${DIST}/Profile")
 add_missing("${ROOT}/roms" "${DIST}/roms")
+add_missing("${ROOT}/profile" "${DIST}/profile")
 if(EXISTS "${ROOT}/plugins/README.md" AND NOT EXISTS "${DIST}/plugins/README.md")
     file(COPY_FILE "${ROOT}/plugins/README.md" "${DIST}/plugins/README.md")
 endif()

@@ -41,7 +41,10 @@ target_link_libraries(tuxape_core PRIVATE ZLIB::ZLIB)
 target_include_directories(tuxape_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_definitions(tuxape_core PRIVATE
     TUXAPE_VERSION="${PROJECT_VERSION}"
-    # Where the ROM images are looked for when TUXAPE_ROM_DIR is not set.
-    TUXAPE_DEV_ROM_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2/ROM"
+    # Where the ROM images and the profiles are looked for when the
+    # variables do not say: the project's roms/ (the user's, the machines'
+    # own in roms/system/) and profile/, TuxAPE's own.
+    TUXAPE_DEV_ROM_DIR="${PROJECT_SOURCE_DIR}/roms"
     TUXAPE_DEV_USER_ROM_DIR="${PROJECT_SOURCE_DIR}/roms"
+    TUXAPE_DEV_PROFILE_DIR="${PROJECT_SOURCE_DIR}/profile"
 )

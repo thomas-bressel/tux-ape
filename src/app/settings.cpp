@@ -449,8 +449,9 @@ bool Settings::windowsThroughX11Possible()
 QString Settings::userProfileFolder()
 {
     const QDir beside(QCoreApplication::applicationDirPath());
-    if (beside.exists("Profile"))
-        return beside.filePath("Profile");
+    for (const char* folder : {"profile", "Profile"})
+        if (beside.exists(folder))
+            return beside.filePath(folder);
     return QFileInfo(file()).absolutePath() + "/Profile";
 }
 
@@ -483,7 +484,7 @@ QString Settings::saveStatesFolder()
 {
     // A folder made by tools/make-dist.sh has its ROMs beside the program.
     const QDir beside(QCoreApplication::applicationDirPath());
-    if (beside.exists("savestates") || beside.exists("ROM"))
+    if (beside.exists("savestates") || beside.exists("ROM") || beside.exists("roms"))
         return beside.filePath("savestates");
     return QFileInfo(file()).absolutePath() + "/savestates";
 }

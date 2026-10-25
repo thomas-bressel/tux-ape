@@ -168,9 +168,9 @@ struct Settings {
     void read(const tuxape::IniFile& ini);
     void write(tuxape::IniFile& ini, unsigned parts = AllParts) const;
 
-    // Profiles: WinAPE's .wpf files, each a part of the settings. Loading
-    // one changes the settings it holds. Those that ask for a Plus machine
-    // or a cartridge cannot be used yet.
+    // Profiles: TuxAPE's .tpf files, and WinAPE's .wpf, of the same form:
+    // each a part of the settings. Loading one changes the settings it
+    // holds.
     bool loadProfile(const QString& path);
     bool saveProfile(const QString& path, unsigned parts) const;
     static bool profileUsable(const QString& path);
