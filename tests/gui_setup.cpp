@@ -9,6 +9,8 @@
 
 #include <array>
 
+#include <cstdio>
+
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
@@ -51,6 +53,14 @@
 #include "setupdialog.h"
 
 namespace {
+
+// WinAPE's own files (its profiles, WinAPE.ini, its keyboard layout), which
+// TuxAPE reads as they stand: on this machine only, a build machine has
+// none.
+bool haveWinApe()
+{
+    return QFileInfo::exists(QStringLiteral(TUXAPE_WINAPE_DIR "/WinAPE.ini"));
+}
 
 QAction* actionNamed(MainWindow& window, const char* text)
 {
@@ -191,18 +201,20 @@ void testMachineInSettingsFile(const QString& path)
     CHECK(ini.get("ROMS", "Upper(7)").empty());  // the 464 has no disc ROM
 
     // One of WinAPE's profiles, as it stands: what it leaves out is empty.
-    QFile::remove(path);
-    CHECK(QFile::copy(QStringLiteral(TUXAPE_WINAPE_DIR "/Profile/CPC464 with ParaDOS.wpf"), path));
-    again = settings;
-    again.load();
-    CHECK(again.machine.ram == RamExpansion::None);
-    CHECK(!again.machine.siliconDisc);
-    CHECK(again.machine.lowerRom == "OS464");
-    CHECK(again.machine.upperRoms[0] == "BASIC1-0");
-    CHECK(again.machine.upperRoms[6].empty());
-    CHECK(again.machine.upperRoms[7] == "ParaDOS 1-2");
-    CHECK(!again.machine.rom32);
-    CHECK(!again.machine.onlyLower0And7);
+    if (haveWinApe()) {
+        QFile::remove(path);
+        CHECK(QFile::copy(QStringLiteral(TUXAPE_WINAPE_DIR "/Profile/CPC464 with ParaDOS.wpf"), path));
+        again = settings;
+        again.load();
+        CHECK(again.machine.ram == RamExpansion::None);
+        CHECK(!again.machine.siliconDisc);
+        CHECK(again.machine.lowerRom == "OS464");
+        CHECK(again.machine.upperRoms[0] == "BASIC1-0");
+        CHECK(again.machine.upperRoms[6].empty());
+        CHECK(again.machine.upperRoms[7] == "ParaDOS 1-2");
+        CHECK(!again.machine.rom32);
+        CHECK(!again.machine.onlyLower0And7);
+    }
 
     // A file that says nothing of the ROMs leaves the CPC6128's.
     ini = tuxape::IniFile();
@@ -352,7 +364,7 @@ void testProfiles(const QString& folder, const QString& picture)
     CHECK(Settings::profileUsable(profiles + "/CPC6128.tpf"));
     CHECK(Settings::profileUsable(profiles + "/6128 Plus.tpf"));
     CHECK(!Settings::profileUsable(profiles + "/no such profile.tpf"));
-    CHECK(Settings::profileUsable(QStringLiteral(TUXAPE_WINAPE_DIR "/Profile/CPC6128.wpf")));
+    CHECK(!haveWinApe() || Settings::profileUsable(QStringLiteral(TUXAPE_WINAPE_DIR "/Profile/CPC6128.wpf")));
 
     Settings settings;
     settings.crtcType = 2;
@@ -696,13 +708,15 @@ void testSoundPage(const QString& picture)
     again.load();
     CHECK(again == changed);
     // WinAPE.ini as it comes: the sound card, 8 bits, stereo, full volume.
-    QFile::remove(Settings::file());
-    CHECK(QFile::copy(QStringLiteral(TUXAPE_WINAPE_DIR "/WinAPE.ini"), Settings::file()));
-    again.load();
-    CHECK(again.soundOn && !again.sound16Bit && again.soundStereo);
-    CHECK_EQ(again.soundVolume, 15);
-    CHECK_EQ(again.soundBufferSync, 0);
-    QFile::remove(Settings::file());
+    if (haveWinApe()) {
+        QFile::remove(Settings::file());
+        CHECK(QFile::copy(QStringLiteral(TUXAPE_WINAPE_DIR "/WinAPE.ini"), Settings::file()));
+        again.load();
+        CHECK(again.soundOn && !again.sound16Bit && again.soundStereo);
+        CHECK_EQ(again.soundVolume, 15);
+        CHECK_EQ(again.soundBufferSync, 0);
+        QFile::remove(Settings::file());
+    }
 
     // The drives can be heard too.
     for (const char* name : {"ckDiscSound"}) {
@@ -1340,12 +1354,14 @@ void testInputPage(const QString& folder, const QString& picture)
     const QString path = folder + "/mine.kbd";
     CHECK(dialog.saveKeyboard(path));
     CHECK(dialog.settings().keyboardFile == path);
-    CHECK(dialog.loadKeyboard(QStringLiteral(TUXAPE_WINAPE_DIR "/default.kbd")));
-    KeyMap winape = standard;
-    for (const bool numLock : {false, true})
-        winape.setPcKey(numLock, CpcKey::Copy, 0, tuxape::PcLeftAlt);
-    CHECK(dialog.keyMap() == winape);
-    CHECK(off[2]->currentText() == "Num 9");  // the lists follow
+    if (haveWinApe()) {
+        CHECK(dialog.loadKeyboard(QStringLiteral(TUXAPE_WINAPE_DIR "/default.kbd")));
+        KeyMap winape = standard;
+        for (const bool numLock : {false, true})
+            winape.setPcKey(numLock, CpcKey::Copy, 0, tuxape::PcLeftAlt);
+        CHECK(dialog.keyMap() == winape);
+        CHECK(off[2]->currentText() == "Num 9");  // the lists follow
+    }
     CHECK(dialog.loadKeyboard(path));
     CHECK(dialog.keyMap() == changed);
     CHECK(!dialog.loadKeyboard(folder + "/missing.kbd"));
@@ -1552,6 +1568,8 @@ void testDialog(const QString& picture)
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    if (!haveWinApe())
+        std::printf("WinAPE's files not found in %s: what reads them is left out\n", TUXAPE_WINAPE_DIR);
 
     // Never the user's own settings.
     QTemporaryDir folder;
