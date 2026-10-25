@@ -143,8 +143,10 @@ public:
     static std::optional<tuxape::Dmp2000Font> dmp2000Fonts();
     bool hasDmp2000();
     // What it has done since it was last asked, with the machine's time
-    // now: a window shows each event as the time reaches it.
-    std::vector<tuxape::Dmp2000::Event> takeDmp2000Events(uint64_t* now);
+    // now: a window shows each event as the time reaches it. `printer`
+    // says which printer did it: another number, another printer (its
+    // switches or its paper changed), its sheets counted from 0 again.
+    std::vector<tuxape::Dmp2000::Event> takeDmp2000Events(uint64_t* now, int* printer = nullptr);
     // Its buttons and lamps.
     void setDmp2000Online(bool online);
     void dmp2000LineFeed();
@@ -427,6 +429,7 @@ private:
     tuxape::Dmp2000::Switches dmp2000Switches_;
     tuxape::Dmp2000::Paper dmp2000Paper_;
     std::vector<tuxape::Dmp2000::Event> dmp2000Events_;  // for the window, not yet taken
+    int dmp2000Number_ = 0;  // counts the printers made
     std::atomic<bool> printerSounds_{true};
     PrinterSound printerSound_;
     void drainDmp2000();  // its events to the window's list, and heard; the lock held

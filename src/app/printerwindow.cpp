@@ -401,10 +401,38 @@ void PrinterWindow::setPaper(const Dmp2000::Paper& paper)
         view_->showSheet(sheets_[static_cast<size_t>(shown_)]);
 }
 
+void PrinterWindow::setImpression(double impression)
+{
+    if (std::fabs(impression - view_->impression()) < 1e-9)
+        return;
+    view_->setImpression(impression);
+    if (shown_ >= 0)
+        view_->showSheet(sheets_[static_cast<size_t>(shown_)]);
+}
+
+void PrinterWindow::newPrinter()
+{
+    for (PrintedSheet& s : sheets_)
+        s.done = true;
+    int next = 0;
+    for (const PrintedSheet& s : sheets_)
+        next = std::max(next, s.number + 1);
+    sheetBase_ = next;
+    waiting_.clear();
+    carriageKnown_ = paperKnown_ = false;
+    striking_ = false;
+}
+
 void PrinterWindow::poll()
 {
     uint64_t now = 0;
-    std::vector<Dmp2000::Event> events = emulator_->takeDmp2000Events(&now);
+    int printer = 0;
+    std::vector<Dmp2000::Event> events = emulator_->takeDmp2000Events(&now, &printer);
+    if (printer != printer_) {
+        if (printer_ >= 0)
+            newPrinter();
+        printer_ = printer;
+    }
     feed(std::move(events), now);
     updateLamps();
 }
@@ -448,17 +476,21 @@ void PrinterWindow::apply(const Dmp2000::Event& event)
     using Kind = Dmp2000::Event::Kind;
     switch (event.kind) {
     case Kind::Strike: {
-        PrintedSheet& s = sheet(event.strike.sheet);
+        PrintedSheet& s = sheet(sheetBase_ + event.strike.sheet);
         s.strikes.push_back(event.strike);
-        if (shown_ >= 0 && sheets_[static_cast<size_t>(shown_)].number == event.strike.sheet)
+        s.strikes.back().sheet = s.number;
+        if (shown_ >= 0 && sheets_[static_cast<size_t>(shown_)].number == s.number)
             view_->strike(event.strike);
         striking_ = true;
         lastStrike_ = event.microsecond;
         break;
     }
-    case Kind::Printed:
-        sheet(event.printed.sheet).text.push_back(event.printed);
+    case Kind::Printed: {
+        PrintedSheet& s = sheet(sheetBase_ + event.printed.sheet);
+        s.text.push_back(event.printed);
+        s.text.back().sheet = s.number;
         break;
+    }
     case Kind::Motion:
         if (event.motion.kind == Dmp2000::Motion::Kind::Carriage) {
             carriage_ = event.motion;
@@ -469,7 +501,7 @@ void PrinterWindow::apply(const Dmp2000::Event& event)
         }
         break;
     case Kind::SheetStarted: {
-        sheet(event.sheet);
+        sheet(sheetBase_ + event.sheet);
         if (following_ || shown_ < 0) {
             showSheet(static_cast<int>(sheets_.size()) - 1);
             following_ = true;
@@ -479,7 +511,7 @@ void PrinterWindow::apply(const Dmp2000::Event& event)
         break;
     }
     case Kind::SheetDone:
-        sheet(event.sheet).done = true;
+        sheet(sheetBase_ + event.sheet).done = true;
         break;
     case Kind::PaperOut:
     case Kind::Beep:

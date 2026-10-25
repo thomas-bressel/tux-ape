@@ -89,6 +89,11 @@ public:
     // the emulator's; a test gives its own.
     void feed(std::vector<tuxape::Dmp2000::Event> events, uint64_t now);
     void setPaper(const tuxape::Dmp2000::Paper& paper);
+    // How hard the needles strike (see SheetView::setImpression).
+    void setImpression(double impression);
+    // Another printer: the sheets printed are kept, its own come after
+    // them.
+    void newPrinter();
 
     const std::vector<PrintedSheet>& sheets() const { return sheets_; }
     int shownSheet() const { return shown_; }
@@ -114,6 +119,8 @@ private:
     std::vector<PrintedSheet> sheets_;
     std::deque<tuxape::Dmp2000::Event> waiting_;  // their time not yet come
     int shown_ = -1;
+    int printer_ = -1;     // which printer of the emulator's
+    int sheetBase_ = 0;    // its sheets' numbers here, from its 0
     bool following_ = true;  // showing the sheet being printed
     bool striking_ = false;
     uint64_t lastStrike_ = 0;

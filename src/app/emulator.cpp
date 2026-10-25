@@ -165,6 +165,7 @@ bool Emulator::setPrinter(int mode, const QString& file)
             if (!dmp2000_ || dmp2000_->switches() != dmp2000Switches_ || dmp2000_->paper() != dmp2000Paper_) {
                 dropDmp2000();
                 dmp2000_ = std::make_unique<tuxape::Dmp2000>(*font, dmp2000Switches_, dmp2000Paper_);
+                ++dmp2000Number_;
             }
             cpc.setPrinter(dmp2000_.get());
             return true;
@@ -226,11 +227,13 @@ bool Emulator::hasDmp2000()
     return withMachine([&](Cpc&) { return dmp2000_ != nullptr; });
 }
 
-std::vector<tuxape::Dmp2000::Event> Emulator::takeDmp2000Events(uint64_t* now)
+std::vector<tuxape::Dmp2000::Event> Emulator::takeDmp2000Events(uint64_t* now, int* printer)
 {
     return withMachine([&](Cpc& cpc) {
         if (now)
             *now = cpc.microseconds();
+        if (printer)
+            *printer = dmp2000Number_;
         drainDmp2000();
         return std::exchange(dmp2000Events_, {});
     });
@@ -260,6 +263,8 @@ void Emulator::drainDmp2000()
 void Emulator::setPrinterSounds(bool on)
 {
     withMachine([&](Cpc&) {
+        if (printerSounds_ == on)
+            return;
         printerSounds_ = on;
         printerSound_.reset();
     });

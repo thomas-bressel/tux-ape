@@ -326,10 +326,30 @@ void testCpc(const Dmp2000Font& font)
     cpc.setPrinter(nullptr);
 }
 
+// The switches from the two banks as they are set, and back: as it leaves
+// the factory, all off but the beeper's (DS2-6).
+void testSwitches()
+{
+    using Switches = Dmp2000::Switches;
+    const Switches factory;
+    CHECK_EQ(factory.ds1(), 0);
+    CHECK_EQ(factory.ds2(), 1 << 5);
+    CHECK(Switches::fromBanks(0, 1 << 5) == factory);
+    // France (1), CR+LF (DS1-4), no sensor (DS1-5), NLQ (DS1-8); slashed
+    // zero (DS2-1), no beeper, emphasized (DS2-8).
+    const Switches set = Switches::fromBanks(1 | 1 << 3 | 1 << 4 | 1 << 7, 1 | 1 << 7);
+    CHECK(set.country == 1 && set.crLf && !set.paperOutSensor && set.nlq && !set.page12Inch && !set.sevenBits);
+    CHECK(set.slashedZero && !set.beeper && set.bold && !set.condensed && !set.download && !set.skipPerforation);
+    CHECK(Switches::fromBanks(set.ds1(), set.ds2()) == set);
+    for (int ds1 = 0; ds1 < 256; ++ds1)
+        CHECK_EQ(Switches::fromBanks(ds1, 0).ds1(), ds1);
+}
+
 }  // namespace
 
 int main()
 {
+    testSwitches();
     const auto font = loadFont();
     if (!font) {
         std::printf("the DMP2000's and DMP3160's ROM images were not found; skipping\n");

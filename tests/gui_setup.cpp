@@ -5,9 +5,11 @@
 //   gui_setup [prefix]   also saves pictures of the Setup window's pages
 //                        as <prefix>general.png, <prefix>display.png,
 //                        <prefix>sound.png, <prefix>memory.png,
-//                        <prefix>input.png and <prefix>profile.png
+//                        <prefix>input.png and <prefix>profile.png, and
+//                        the DMP2000's window as <prefix>dmp2000.png
 
 #include <array>
+#include <cmath>
 
 #include <cstdio>
 
@@ -1495,8 +1497,12 @@ void testDialog(const QString& picture)
             CHECK_EQ(dialog.settings().printerMode, Settings::PrinterDigiblaster);
             toAssembler->setChecked(true);
             CHECK_EQ(dialog.settings().printerMode, Settings::PrinterAssembler);
+            // The DMP2000's own window: there to open when it is chosen.
+            auto* dmp2000 = dialog.findChild<QPushButton*>("bDmp2000");
+            CHECK(dmp2000 && !dmp2000->isEnabled());
             hostPrinter->setChecked(true);
             CHECK(dialog.settings().printerMode == Settings::PrinterHost && !file->isEnabled());
+            CHECK(dmp2000 && dmp2000->isEnabled());
             toFile->setChecked(true);
             CHECK(file->isEnabled());
             file->setText("/tmp/printed.txt");
@@ -1516,6 +1522,59 @@ void testDialog(const QString& picture)
             disabled->setChecked(true);
             amDrum->setChecked(false);
             file->clear();
+        }
+        // The DMP2000's settings: as it leaves the factory, then as set,
+        // kept with the others, and shown again.
+        {
+            Settings factory;
+            Dmp2000Dialog window(factory);
+            auto* paper = window.findChild<QComboBox*>("cbDmpPaper");
+            auto* lever = window.findChild<QSpinBox*>("sbDmpLever");
+            auto* sounds = window.findChild<QCheckBox*>("ckDmpSounds");
+            auto* country = window.findChild<QComboBox*>("cbDmpCountry");
+            auto* beeper = window.findChild<QCheckBox*>("ckDs2_6");
+            auto* crLf = window.findChild<QCheckBox*>("ckDs1_4");
+            const bool all = paper && lever && sounds && country && beeper && crLf;
+            CHECK(all);
+            if (all && !picture.isEmpty()) {
+                window.show();
+                QApplication::processEvents();
+                CHECK(window.grab().save(QString(picture).replace("general.png", "dmp2000.png")));
+            }
+            if (all) {
+                CHECK(paper->currentIndex() == 0 && lever->value() == 1 && sounds->isChecked());
+                CHECK(country->currentIndex() == 0 && beeper->isChecked() && !crLf->isChecked());
+                paper->setCurrentIndex(Settings::Dmp2000FanFold12);
+                lever->setValue(3);
+                sounds->setChecked(false);
+                country->setCurrentIndex(1);
+                beeper->setChecked(false);
+                crLf->setChecked(true);
+                Settings set = factory;
+                set.dmp2000Ds2 |= 1 << 2;  // DS2-3, not shown: kept as it was
+                Dmp2000Dialog again(set);
+                again.findChild<QComboBox*>("cbDmpCountry")->setCurrentIndex(1);
+                again.store(set);
+                CHECK(set.dmp2000Ds2 & 1 << 2);
+                window.store(set);
+                CHECK(set.dmp2000Paper == Settings::Dmp2000FanFold12 && set.dmp2000Lever == 3 && !set.dmp2000Sounds);
+                CHECK(set.dmp2000Ds1 == (1 | 1 << 3) && set.dmp2000Ds2 == 0);
+                const tuxape::Dmp2000::Switches switches = set.dmp2000Switches();
+                CHECK(switches.country == 1 && switches.crLf && !switches.beeper);
+                CHECK(set.dmp2000PaperSize() == tuxape::Dmp2000::fanFold(true));
+                CHECK(std::fabs(set.dmp2000Impression() - 0.6) < 1e-9);
+                CHECK(set.save());
+                Settings loaded;
+                loaded.load();
+                CHECK(loaded.dmp2000Ds1 == set.dmp2000Ds1 && loaded.dmp2000Ds2 == set.dmp2000Ds2);
+                CHECK(loaded.dmp2000Paper == set.dmp2000Paper && loaded.dmp2000Lever == 3 && !loaded.dmp2000Sounds);
+                QFile::remove(Settings::file());
+                // The Settings window gives back what its DMP2000 window
+                // was given.
+                SetupDialog shown(loaded);
+                const Settings back = shown.settings();
+                CHECK(back.dmp2000Ds1 == set.dmp2000Ds1 && back.dmp2000Paper == set.dmp2000Paper && back.dmp2000Lever == 3);
+            }
         }
         for (const char* name : {"ckIDE", "ckRTC", "ckPS2Mouse", "ckAdjustMouse", "cbSmartWatch"}) {
             const QWidget* widget = dialog.findChild<QWidget*>(name);

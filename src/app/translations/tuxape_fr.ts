@@ -1414,6 +1414,137 @@
     </message>
 </context>
 <context>
+    <name>Dmp2000Dialog</name>
+    <message>
+        <source>DMP2000</source>
+        <translation>DMP2000</translation>
+    </message>
+    <message>
+        <source>Paper</source>
+        <translation>Papier</translation>
+    </message>
+    <message>
+        <source>A4 sheet</source>
+        <translation>Feuille A4</translation>
+    </message>
+    <message>
+        <source>Fan fold, 11 inches</source>
+        <translation>Papier continu, 11 pouces</translation>
+    </message>
+    <message>
+        <source>Fan fold, 12 inches</source>
+        <translation>Papier continu, 12 pouces</translation>
+    </message>
+    <message>
+        <source>Set for the paper: at 1, for a single sheet, the needles strike hardest and print darkest; further, for thicker paper, lighter</source>
+        <translation>Réglé selon le papier : à 1, pour une feuille simple, les aiguilles frappent le plus fort et impriment le plus noir ; plus loin, pour un papier plus épais, plus clair</translation>
+    </message>
+    <message>
+        <source>Printer Sounds</source>
+        <translation>Sons de l&apos;imprimante</translation>
+    </message>
+    <message>
+        <source>The needles, the carriage, the paper and the beeper, heard beside the machine</source>
+        <translation>Les aiguilles, le chariot, le papier et le bip, entendus à côté de la machine</translation>
+    </message>
+    <message>
+        <source>Paper:</source>
+        <translation>Papier :</translation>
+    </message>
+    <message>
+        <source>Paper thickness lever:</source>
+        <translation>Levier d&apos;épaisseur du papier :</translation>
+    </message>
+    <message>
+        <source>DIP Switches</source>
+        <translation>Interrupteurs DIP</translation>
+    </message>
+    <message>
+        <source>USA</source>
+        <translation>États-Unis</translation>
+    </message>
+    <message>
+        <source>France</source>
+        <translation>France</translation>
+    </message>
+    <message>
+        <source>Germany</source>
+        <translation>Allemagne</translation>
+    </message>
+    <message>
+        <source>United Kingdom</source>
+        <translation>Royaume-Uni</translation>
+    </message>
+    <message>
+        <source>Denmark</source>
+        <translation>Danemark</translation>
+    </message>
+    <message>
+        <source>Sweden</source>
+        <translation>Suède</translation>
+    </message>
+    <message>
+        <source>Italy</source>
+        <translation>Italie</translation>
+    </message>
+    <message>
+        <source>Spain</source>
+        <translation>Espagne</translation>
+    </message>
+    <message>
+        <source>Carriage return feeds a line too</source>
+        <translation>Le retour chariot fait aussi un saut de ligne</translation>
+    </message>
+    <message>
+        <source>No paper-out sensor</source>
+        <translation>Pas de détecteur de fin de papier</translation>
+    </message>
+    <message>
+        <source>Page of 12 inches</source>
+        <translation>Page de 12 pouces</translation>
+    </message>
+    <message>
+        <source>Eighth bit always 0</source>
+        <translation>Huitième bit toujours à 0</translation>
+    </message>
+    <message>
+        <source>Near Letter Quality</source>
+        <translation>Qualité courrier (NLQ)</translation>
+    </message>
+    <message>
+        <source>Slashed zero</source>
+        <translation>Zéro barré</translation>
+    </message>
+    <message>
+        <source>Skip over the perforation</source>
+        <translation>Saut de la perforation</translation>
+    </message>
+    <message>
+        <source>Characters defined kept in the buffer</source>
+        <translation>Caractères définis gardés dans la mémoire tampon</translation>
+    </message>
+    <message>
+        <source>Beeper</source>
+        <translation>Bip</translation>
+    </message>
+    <message>
+        <source>Condensed</source>
+        <translation>Condensé</translation>
+    </message>
+    <message>
+        <source>Emphasized</source>
+        <translation>Gras</translation>
+    </message>
+    <message>
+        <source>DS1-1 to 3, characters:</source>
+        <translation>DS1-1 à 3, caractères :</translation>
+    </message>
+    <message>
+        <source>DS%1-%2: %3</source>
+        <translation>DS%1-%2 : %3</translation>
+    </message>
+</context>
+<context>
     <name>DriveSetupDialog</name>
     <message>
         <source>TuxAPE - Drive Setup</source>
@@ -3567,6 +3698,14 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
     <message>
         <source>Printer Output</source>
         <translation>Sortie de l&apos;imprimante</translation>
+    </message>
+    <message>
+        <source>DMP2000...</source>
+        <translation>DMP2000...</translation>
+    </message>
+    <message>
+        <source>The DMP2000&apos;s paper, paper thickness lever, sounds and DIP switches</source>
+        <translation>Le papier de la DMP2000, son levier d&apos;épaisseur du papier, ses sons et ses interrupteurs DIP</translation>
     </message>
     <message>
         <source>Text files (*.txt);;All files (*)</source>

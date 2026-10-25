@@ -82,6 +82,35 @@ uint16_t pins(uint8_t column, bool lower)
 
 }  // namespace
 
+Dmp2000::Switches Dmp2000::Switches::fromBanks(int ds1, int ds2)
+{
+    const auto on = [](int bank, int number) { return (bank >> (number - 1) & 1) != 0; };
+    Switches s;
+    s.country = ds1 & 7;
+    s.crLf = on(ds1, 4);
+    s.paperOutSensor = !on(ds1, 5);
+    s.page12Inch = on(ds1, 6);
+    s.sevenBits = on(ds1, 7);
+    s.nlq = on(ds1, 8);
+    s.slashedZero = on(ds2, 1);
+    s.skipPerforation = on(ds2, 2);
+    s.download = on(ds2, 4);
+    s.beeper = on(ds2, 6);
+    s.condensed = on(ds2, 7);
+    s.bold = on(ds2, 8);
+    return s;
+}
+
+int Dmp2000::Switches::ds1() const
+{
+    return (country & 7) | crLf << 3 | !paperOutSensor << 4 | page12Inch << 5 | sevenBits << 6 | nlq << 7;
+}
+
+int Dmp2000::Switches::ds2() const
+{
+    return slashedZero | skipPerforation << 1 | download << 3 | beeper << 5 | condensed << 6 | bold << 7;
+}
+
 std::optional<Dmp2000Font> Dmp2000Font::fromRoms(std::span<const uint8_t> dmp2000, std::span<const uint8_t> dmp3160)
 {
     if (dmp2000.size() != 0x4000 || dmp3160.size() != 0x8000)

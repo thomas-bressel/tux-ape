@@ -6,6 +6,7 @@
 #include <QString>
 #include <QStringList>
 
+#include "core/dmp2000.h"
 #include "core/setup.h"
 #include "crtlook.h"
 
@@ -71,6 +72,19 @@ struct Settings {
     enum PrinterMode { PrinterDisabled, PrinterDigiblaster, PrinterHost, PrinterFile, PrinterAssembler };
     int printerMode = PrinterDisabled;
     QString printerFile;        // where printing goes, with PrinterFile
+    // The DMP2000 (PrinterHost): its DIP switches as they are set, bit n - 1
+    // for switch n on (see core/dmp2000.h); its paper (an A4 sheet, fan fold
+    // of 11 inches or of 12); its paper thickness lever, from 1 (the thinnest
+    // paper, struck hardest) to 5; its sounds.
+    enum Dmp2000Paper { Dmp2000A4, Dmp2000FanFold11, Dmp2000FanFold12 };
+    int dmp2000Ds1 = 0;
+    int dmp2000Ds2 = 1 << 5;    // DS2-6: the beeper
+    int dmp2000Paper = Dmp2000A4;
+    int dmp2000Lever = 1;
+    bool dmp2000Sounds = true;
+    tuxape::Dmp2000::Switches dmp2000Switches() const { return tuxape::Dmp2000::Switches::fromBanks(dmp2000Ds1, dmp2000Ds2); }
+    tuxape::Dmp2000::Paper dmp2000PaperSize() const;
+    double dmp2000Impression() const { return 1.0 - 0.2 * (dmp2000Lever - 1); }
     int soundBufferSync = 0;    // tenths of a frame of extra sound kept in hand, 0 to 20
 
     // The Input page. The keyboard layout itself is kept in a file of its

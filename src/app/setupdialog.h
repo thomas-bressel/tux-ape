@@ -204,6 +204,7 @@ private:
     // The Other page: what is on the printer's port, by Settings::PrinterMode.
     QRadioButton* printer_[5] = {};
     QLineEdit* printerFile_ = nullptr;
+    Settings dmp2000_;  // the DMP2000's settings, as its window left them
     QCheckBox* driveLed_ = nullptr;
     QCheckBox* showTrack_ = nullptr;
     // Half size, both lines, hide mouse, hide panel, hide menus, no
@@ -290,6 +291,26 @@ private:
     QGroupBox* xmassBox_ = nullptr;
     QLabel* xmassFile_ = nullptr;
     QString xmassDisc_;
+};
+
+// The DMP2000's settings (Settings, Other, Printer, "DMP2000..."): its
+// paper, its paper thickness lever, its sounds, and its DIP switches, each
+// under its name on the printer.
+class Dmp2000Dialog : public QDialog {
+    Q_OBJECT
+
+public:
+    explicit Dmp2000Dialog(const Settings& settings, QWidget* parent = nullptr);
+    // What is set, into the DMP2000's part of `settings`.
+    void store(Settings& settings) const;
+
+private:
+    QComboBox* paper_ = nullptr;
+    QSpinBox* lever_ = nullptr;
+    QCheckBox* sounds_ = nullptr;
+    QComboBox* country_ = nullptr;      // DS1-1 to 3
+    std::vector<std::pair<QCheckBox*, int>> switches_;  // each with its bit: DS1 0-7, DS2 8-17
+    int unshown_ = 0;                   // the switches not shown, as they were
 };
 
 // Which settings go into a profile: WinAPE's "Select Profile Settings"

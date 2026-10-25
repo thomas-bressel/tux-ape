@@ -84,6 +84,11 @@ public:
         bool condensed = false;        // DS2-7
         bool bold = false;             // DS2-8
         bool operator==(const Switches&) const = default;
+        // From the two banks as they are set, bit n - 1 for switch n on
+        // (DS1-1 to 3 the country, DS1-1 its lowest bit), and back.
+        static Switches fromBanks(int ds1, int ds2);
+        int ds1() const;
+        int ds2() const;
     };
 
     // The paper: a cut sheet (fed by friction) of so many inches, or fan

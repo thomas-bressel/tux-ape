@@ -1358,11 +1358,15 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setDiscSounds(settings.discSounds);
     emulator_->setAmDrum(settings.amDrum);
     const bool dmp2000 = settings.printerMode == Settings::PrinterHost;
+    emulator_->setDmp2000(settings.dmp2000Switches(), settings.dmp2000PaperSize());
+    emulator_->setPrinterSounds(settings.dmp2000Sounds);
     if (!emulator_->setPrinter(settings.printerMode, settings.printerFile))
         report(dmp2000 ? tr("The DMP2000's typefaces were not found: DMP2000.ROM and DMP3160.ROM, in the ROM folder's "
                             "printer folder.")
                        : tr("Cannot write what is printed to %1.").arg(QDir::toNativeSeparators(settings.printerFile)));
     updatePrinterWindow(dmp2000 && emulator_->hasDmp2000());
+    if (printer_)
+        printer_->setImpression(settings.dmp2000Impression());
     emulator_->setJoystickEnabled(settings.joystick);
     if (emulator_->amxMouse() != settings.amxMouse)
         emulator_->setAmxMouse(settings.amxMouse);

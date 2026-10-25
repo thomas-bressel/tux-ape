@@ -10,6 +10,7 @@
 #include <QComboBox>
 #include <QDesktopServices>
 #include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QFileDialog>
@@ -1041,6 +1042,18 @@ QWidget* SetupDialog::createOtherPage()
     auto* fileRow = new QHBoxLayout;
     fileRow->addWidget(printerFile_, 1);
     fileRow->addWidget(browsePrinter);
+    // The DMP2000's switches, paper and sounds, in a window of their own.
+    auto* dmp2000 = new QPushButton(tr("DMP2000..."));
+    dmp2000->setObjectName("bDmp2000");
+    dmp2000->setToolTip(tr("The DMP2000's paper, paper thickness lever, sounds and DIP switches"));
+    modes->addWidget(dmp2000, 0, 2);
+    connect(printer_[Settings::PrinterHost], &QRadioButton::toggled, dmp2000, &QPushButton::setEnabled);
+    dmp2000->setEnabled(false);
+    connect(dmp2000, &QPushButton::clicked, this, [this] {
+        Dmp2000Dialog dialog(dmp2000_, this);
+        if (dialog.exec() == QDialog::Accepted)
+            dialog.store(dmp2000_);
+    });
     auto* printerLayout = new QVBoxLayout(printerBox);
     printerLayout->addLayout(modes);
     printerLayout->addLayout(fileRow);
@@ -1366,6 +1379,7 @@ void SetupDialog::setSettings(const Settings& settings)
     flyback_->setChecked(settings.screenshotOnFlyback);
     amDrum_->setChecked(settings.amDrum);
     printer_[std::clamp(settings.printerMode, 0, 4)]->setChecked(true);
+    dmp2000_ = settings;
     printerFile_->setText(QDir::toNativeSeparators(settings.printerFile));
     soundVolumeLabel_->setText(QString::number(settings.soundVolume));
     soundBufferSync_->setValue(settings.soundBufferSync);
@@ -1422,6 +1436,92 @@ namespace {
 const QString kSelectProfile = QStringLiteral("<select file>");
 
 }  // namespace
+
+Dmp2000Dialog::Dmp2000Dialog(const Settings& settings, QWidget* parent)
+    : QDialog(parent)
+{
+    setWindowTitle(tr("DMP2000"));
+
+    auto* paperBox = new QGroupBox(tr("Paper"));
+    paper_ = new QComboBox;
+    paper_->setObjectName("cbDmpPaper");
+    paper_->addItems({tr("A4 sheet"), tr("Fan fold, 11 inches"), tr("Fan fold, 12 inches")});
+    paper_->setCurrentIndex(std::clamp(settings.dmp2000Paper, 0, 2));
+    lever_ = new QSpinBox;
+    lever_->setObjectName("sbDmpLever");
+    lever_->setRange(1, 5);
+    lever_->setValue(settings.dmp2000Lever);
+    lever_->setToolTip(tr("Set for the paper: at 1, for a single sheet, the needles strike hardest and print darkest; "
+                          "further, for thicker paper, lighter"));
+    sounds_ = new QCheckBox(tr("Printer Sounds"));
+    sounds_->setObjectName("ckDmpSounds");
+    sounds_->setToolTip(tr("The needles, the carriage, the paper and the beeper, heard beside the machine"));
+    sounds_->setChecked(settings.dmp2000Sounds);
+    auto* paperLayout = new QFormLayout(paperBox);
+    paperLayout->addRow(tr("Paper:"), paper_);
+    paperLayout->addRow(tr("Paper thickness lever:"), lever_);
+    paperLayout->addRow(sounds_);
+
+    // The switches, as the manual names them; those it leaves unused are
+    // not shown, and kept as they were.
+    auto* switchesBox = new QGroupBox(tr("DIP Switches"));
+    country_ = new QComboBox;
+    country_->setObjectName("cbDmpCountry");
+    country_->addItems({tr("USA"), tr("France"), tr("Germany"), tr("United Kingdom"), tr("Denmark"), tr("Sweden"),
+                        tr("Italy"), tr("Spain")});
+    country_->setCurrentIndex(settings.dmp2000Ds1 & 7);
+    const int banks = settings.dmp2000Ds1 | settings.dmp2000Ds2 << 8;
+    const struct {
+        int bank, number;
+        QString text;
+    } kSwitches[] = {
+        {1, 4, tr("Carriage return feeds a line too")},
+        {1, 5, tr("No paper-out sensor")},
+        {1, 6, tr("Page of 12 inches")},
+        {1, 7, tr("Eighth bit always 0")},
+        {1, 8, tr("Near Letter Quality")},
+        {2, 1, tr("Slashed zero")},
+        {2, 2, tr("Skip over the perforation")},
+        {2, 4, tr("Characters defined kept in the buffer")},
+        {2, 6, tr("Beeper")},
+        {2, 7, tr("Condensed")},
+        {2, 8, tr("Emphasized")},
+    };
+    auto* switchesLayout = new QFormLayout(switchesBox);
+    switchesLayout->addRow(tr("DS1-1 to 3, characters:"), country_);
+    int shown = 7;  // DS1-1 to 3
+    for (const auto& s : kSwitches) {
+        const int bit = (s.bank - 1) * 8 + s.number - 1;
+        auto* box = new QCheckBox(tr("DS%1-%2: %3").arg(s.bank).arg(s.number).arg(s.text));
+        box->setObjectName(QStringLiteral("ckDs%1_%2").arg(s.bank).arg(s.number));
+        box->setChecked(banks >> bit & 1);
+        switchesLayout->addRow(box);
+        switches_.emplace_back(box, bit);
+        shown |= 1 << bit;
+    }
+    unshown_ = banks & ~shown;
+
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    auto* layout = new QVBoxLayout(this);
+    layout->addWidget(paperBox);
+    layout->addWidget(switchesBox);
+    layout->addWidget(buttons);
+}
+
+void Dmp2000Dialog::store(Settings& settings) const
+{
+    int banks = unshown_ | country_->currentIndex();
+    for (const auto& [box, bit] : switches_)
+        if (box->isChecked())
+            banks |= 1 << bit;
+    settings.dmp2000Ds1 = banks & 0xFF;
+    settings.dmp2000Ds2 = banks >> 8 & 0x3FF;
+    settings.dmp2000Paper = paper_->currentIndex();
+    settings.dmp2000Lever = lever_->value();
+    settings.dmp2000Sounds = sounds_->isChecked();
+}
 
 ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
     : QDialog(parent)
@@ -1650,6 +1750,11 @@ Settings SetupDialog::settings() const
         if (printer_[mode]->isChecked())
             settings.printerMode = mode;
     settings.printerFile = QDir::fromNativeSeparators(printerFile_->text().trimmed());
+    settings.dmp2000Ds1 = dmp2000_.dmp2000Ds1;
+    settings.dmp2000Ds2 = dmp2000_.dmp2000Ds2;
+    settings.dmp2000Paper = dmp2000_.dmp2000Paper;
+    settings.dmp2000Lever = dmp2000_.dmp2000Lever;
+    settings.dmp2000Sounds = dmp2000_.dmp2000Sounds;
     settings.soundBufferSync = soundBufferSync_->value();
 
     settings.joystick = joystick_->isChecked();

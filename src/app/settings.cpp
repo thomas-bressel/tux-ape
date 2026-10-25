@@ -21,6 +21,7 @@ constexpr const char* kConfiguration = "Configuration";
 constexpr const char* kDrives = "Drives";
 constexpr const char* kRoms = "ROMS";
 constexpr const char* kExpansions = "Expansions";
+constexpr const char* kDmp2000 = "DMP2000";
 
 std::string upperKey(int slot)
 {
@@ -181,6 +182,11 @@ void Settings::read(const tuxape::IniFile& ini)
     printerMode = std::clamp(ini.getInt(kConfiguration, "Printer", printerMode), 0, static_cast<int>(PrinterAssembler));
     if (ini.has(kConfiguration, "Printer File"))
         printerFile = QString::fromStdString(ini.get(kConfiguration, "Printer File"));
+    dmp2000Ds1 = ini.getInt(kDmp2000, "DS1", dmp2000Ds1) & 0xFF;
+    dmp2000Ds2 = ini.getInt(kDmp2000, "DS2", dmp2000Ds2) & 0x3FF;
+    dmp2000Paper = std::clamp(ini.getInt(kDmp2000, "Paper", dmp2000Paper), 0, static_cast<int>(Dmp2000FanFold12));
+    dmp2000Lever = std::clamp(ini.getInt(kDmp2000, "Lever", dmp2000Lever), 1, 5);
+    dmp2000Sounds = ini.getBool(kDmp2000, "Sounds", dmp2000Sounds);
     // Written like WinAPE's "0.4": frames, with one decimal.
     if (ini.has(kConfiguration, "Sound Frame Delay")) {
         // Read by hand: the C library would want a comma where the user's
@@ -333,6 +339,11 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kConfiguration, "AmDrum Enabled", amDrum);
         ini.setInt(kConfiguration, "Printer", printerMode);
         ini.set(kConfiguration, "Printer File", printerFile.toStdString());
+        ini.setInt(kDmp2000, "DS1", dmp2000Ds1);
+        ini.setInt(kDmp2000, "DS2", dmp2000Ds2);
+        ini.setInt(kDmp2000, "Paper", dmp2000Paper);
+        ini.setInt(kDmp2000, "Lever", dmp2000Lever);
+        ini.setBool(kDmp2000, "Sounds", dmp2000Sounds);
         ini.set(kConfiguration, "Sound Frame Delay",
                 std::to_string(soundBufferSync / 10) + "." + std::to_string(soundBufferSync % 10));
     }
@@ -510,4 +521,11 @@ bool Settings::saveKeyMap(const tuxape::KeyMap& map)
 {
     QDir().mkpath(QFileInfo(keyMapFile()).absolutePath());
     return tuxape::writeFile(keyMapFile().toStdString(), map.save());
+}
+
+tuxape::Dmp2000::Paper Settings::dmp2000PaperSize() const
+{
+    if (dmp2000Paper == Dmp2000A4)
+        return tuxape::Dmp2000::a4();
+    return tuxape::Dmp2000::fanFold(dmp2000Paper == Dmp2000FanFold12);
 }

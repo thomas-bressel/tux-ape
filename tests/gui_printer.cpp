@@ -140,6 +140,16 @@ int main(int argc, char* argv[])
         send(printer, "AGAIN\r\n", printer.idleFrom());
         window.feed(printer.takeEvents(), printer.idleFrom());
         CHECK(window.sheets().size() == 1 && !window.sheets()[0].strikes.empty() && finish && finish->isEnabled());
+
+        // Another printer (its switches changed): what was printed stays,
+        // its sheets come after.
+        window.newPrinter();
+        Dmp2000 other(*font);
+        send(other, "NEW\r\n", 0);
+        window.feed(other.takeEvents(), other.idleFrom());
+        CHECK(window.sheets().size() == 2 && window.sheets()[0].done && window.sheets()[1].number == inPrinter + 1);
+        CHECK(!window.sheets()[1].strikes.empty() && window.sheets()[1].strikes[0].sheet == inPrinter + 1);
+        CHECK_EQ(window.shownSheet(), 1);
     }
 
     // ---- The needles' marks: the same each time, lighter struck softer ----
