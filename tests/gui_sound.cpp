@@ -28,8 +28,8 @@ int main(int argc, char* argv[])
     // The settings this test saves are its own, never the user's.
     Settings::setFile(folder.filePath("TuxAPE.ini"));
     const QByteArray rawPath = folder.filePath("sound.raw").toLocal8Bit();
-    setenv("SDL_AUDIODRIVER", "disk", 1);
-    setenv("SDL_DISKAUDIOFILE", rawPath.constData(), 1);
+    qputenv("SDL_AUDIODRIVER", "disk");
+    qputenv("SDL_DISKAUDIOFILE", rawPath);
 
     QApplication app(argc, argv);
     const int rate = 44100;

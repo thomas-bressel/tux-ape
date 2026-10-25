@@ -20,6 +20,11 @@ option(TUXAPE_UPDATE_DIST "Bring dist/ up to date each time the program is built
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
+elseif(MSVC)
+    # The sources are UTF-8; the standard as it is written; windows.h's
+    # min and max macros left out.
+    add_compile_options(/W3 /utf-8 /permissive- /Zc:__cplusplus /bigobj)
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN _CRT_SECURE_NO_WARNINGS)
 endif()
 
 # The emulation core has no dependency on Qt or on the host system, so it can

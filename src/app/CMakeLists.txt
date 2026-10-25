@@ -1,5 +1,9 @@
 find_package(Qt6 6.4 REQUIRED COMPONENTS Widgets OpenGLWidgets)
 find_package(SDL2 REQUIRED)
+# vcpkg's SDL2 built to be linked in (Windows, Mac) has a name of its own.
+if(NOT TARGET SDL2::SDL2 AND TARGET SDL2::SDL2-static)
+    add_library(SDL2::SDL2 ALIAS SDL2::SDL2-static)
+endif()
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -51,6 +55,8 @@ add_library(tuxape_app STATIC
     ${PROJECT_SOURCE_DIR}/sdk/plugin.h
     pluginmanager.cpp
     pluginmanager.h
+    programfolder.cpp
+    programfolder.h
     registersdialog.cpp
     registersdialog.h
     crtview.cpp
@@ -122,8 +128,14 @@ qt_add_resources(tuxape_app tuxape_translations
     BASE ${CMAKE_CURRENT_BINARY_DIR}
     FILES ${TUXAPE_QM_FILES})
 
-add_executable(tuxape main.cpp)
+# A window program on Windows (no console), an application on a Mac.
+add_executable(tuxape WIN32 MACOSX_BUNDLE main.cpp)
 target_link_libraries(tuxape PRIVATE tuxape_app)
+set_target_properties(tuxape PROPERTIES
+    MACOSX_BUNDLE_BUNDLE_NAME TuxAPE
+    MACOSX_BUNDLE_GUI_IDENTIFIER org.tuxape.TuxAPE
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
 
 # Each program built goes to dist/, TuxAPE ready to run, with the Qt
 # libraries it needs and the folders beside it (see tools/update-dist.cmake).

@@ -10,6 +10,8 @@
 #include <QLocale>
 #include <QTranslator>
 
+#include "programfolder.h"
+
 namespace {
 
 constexpr char kBuiltIn[] = ":/i18n";
@@ -32,7 +34,7 @@ std::unique_ptr<QTranslator> qtTranslator;
 // Beside the program: translations added without building TuxAPE again.
 QString languagesFolder()
 {
-    return QDir(QCoreApplication::applicationDirPath()).filePath("languages");
+    return QDir(programFolder()).filePath("languages");
 }
 
 // The translation of a language, from the languages folder first, so that

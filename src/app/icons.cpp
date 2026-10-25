@@ -3,6 +3,7 @@
 #include "contrast.h"
 
 #include <cmath>
+#include <numbers>
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -41,7 +42,7 @@ void arrow(QPainter& p, QPointF from, QPointF to, const QColor& colour)
     p.drawLine(from, to);
     const qreal angle = std::atan2(to.y() - from.y(), to.x() - from.x());
     for (qreal side : {-1.0, 1.0}) {
-        const qreal a = angle + M_PI + side * 0.6;
+        const qreal a = angle + std::numbers::pi + side * 0.6;
         p.drawLine(to, to + QPointF(std::cos(a), std::sin(a)) * 3.5);
     }
 }

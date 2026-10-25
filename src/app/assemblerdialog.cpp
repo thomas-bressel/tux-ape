@@ -48,6 +48,7 @@
 #include "core/discfiles.h"
 #include "core/files.h"
 #include "core/symbols.h"
+#include "programfolder.h"
 
 namespace {
 
@@ -527,7 +528,7 @@ void AssemblerDialog::buildMenus(QMenuBar* bar)
         // With no file open, the "assembly" folder beside the program if
         // there is one.
         QString folder = currentFile() >= 0 ? QFileInfo(filePath(currentFile())).absolutePath() : QString();
-        if (const QDir beside(QCoreApplication::applicationDirPath()); folder.isEmpty() && beside.exists("assembly"))
+        if (const QDir beside(programFolder()); folder.isEmpty() && beside.exists("assembly"))
             folder = beside.filePath("assembly");
         for (const QString& path : QFileDialog::getOpenFileNames(this, tr("Open"), folder, tr(kFileFilter)))
             if (!openFile(path))

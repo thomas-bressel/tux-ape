@@ -35,6 +35,7 @@
 #include "breakpointsdialog.h"
 #include "debuggerdialog.h"
 #include "graphicsdialog.h"
+#include "programfolder.h"
 #include "registersdialog.h"
 #include "asicdialog.h"
 #include "discdialogs.h"
@@ -2136,7 +2137,7 @@ void MainWindow::chooseDisc(int drive)
 {
     // The first time, the "dsk" folder beside the program if there is one.
     QString folder = discFolder_;
-    if (const QDir beside(QCoreApplication::applicationDirPath()); folder.isEmpty() && beside.exists("dsk"))
+    if (const QDir beside(programFolder()); folder.isEmpty() && beside.exists("dsk"))
         folder = beside.filePath("dsk");
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Insert Disc Image in Drive %1:").arg(driveLetter(drive)), folder, discFilter());
