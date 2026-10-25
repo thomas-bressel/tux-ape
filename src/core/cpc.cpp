@@ -232,6 +232,9 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
         if (digiblaster_) {
             syncSound();
             dac_ = static_cast<uint8_t>(value ^ 0x80);
+        } else if (printer_ && (value & 0x80) && !(printerLatch_ & 0x80)) {
+            const uint8_t eighth = plus_ && (crtc_.reg(12) & 0x08) ? 0x80 : 0x00;
+            printer_->receive(static_cast<uint8_t>((value & 0x7F) | eighth), microseconds());
         } else if (printerHook_ && (value & 0x80) && !(printerLatch_ & 0x80)) {
             printerHook_(value & 0x7F);
         }
@@ -395,9 +398,13 @@ uint8_t Cpc::portB()
     // Bit 5: /EXP, low with nothing on the expansion port. Bit 4: 50 Hz
     // link. Bits 3-1: maker links, 111 = Amstrad.
     uint8_t value = 0x5E;
-    // Bit 6: the printer is busy, unless there is one.
-    if (printerHook_ && !digiblaster_)
+    // Bit 6: the printer is busy, unless there is one that is not.
+    if (printer_ && !digiblaster_) {
+        if (!printer_->busy(microseconds()))
+            value &= static_cast<uint8_t>(~0x40);
+    } else if (printerHook_ && !digiblaster_) {
         value &= static_cast<uint8_t>(~0x40);
+    }
     if (crtc_.vsync())
         value |= 0x01;
     // A program loading from tape reads this port all the time: the sound

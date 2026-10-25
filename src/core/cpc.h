@@ -18,6 +18,7 @@
 #include "core/memory.h"
 #include "core/monitor.h"
 #include "core/ppi.h"
+#include "core/printerport.h"
 #include "core/psg.h"
 #include "core/tape.h"
 #include "core/xmem.h"
@@ -193,6 +194,11 @@ public:
     // line says the printer is ready for more.
     using PrinterHook = std::function<void(uint8_t character)>;
     void setPrinterHook(PrinterHook hook) { printerHook_ = std::move(hook); }
+    // A printer with a mechanism of its own (see dmp2000.h): told each
+    // character at the microsecond the strobe falls, it says when it is
+    // busy. On a Plus it is given eight bits, the eighth being bit 3 of the
+    // CRTC's register 12. It is the caller's, and wins over a hook.
+    void setPrinter(PrinterPort* printer) { printer_ = printer; }
     // Two converters that make sound of the bytes written to them: the
     // Digiblaster, on the printer's port, and the AmDrum, on &FFxx. The
     // last byte either was given is what is heard.
@@ -441,6 +447,7 @@ private:
     uint8_t amxPulse_ = 0;    // the direction bits of the step being given
     uint8_t keyboardLine(int line);
     PrinterHook printerHook_;
+    PrinterPort* printer_ = nullptr;
     uint8_t printerLatch_ = 0;
     bool digiblaster_ = false;
     bool amDrum_ = false;

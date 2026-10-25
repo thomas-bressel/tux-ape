@@ -11,6 +11,7 @@ add_library(tuxape_core STATIC
     disasm.cpp
     disc.cpp
     discfiles.cpp
+    dmp2000.cpp
     fdc.cpp
     files.cpp
     gate_array.cpp

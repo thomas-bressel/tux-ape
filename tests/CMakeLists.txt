@@ -84,6 +84,11 @@ target_link_libraries(core_speed PRIVATE tuxape_core)
 add_test(NAME core_speed COMMAND core_speed)
 set_tests_properties(core_speed PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(dmp2000 dmp2000.cpp)
+target_link_libraries(dmp2000 PRIVATE tuxape_core)
+add_test(NAME dmp2000 COMMAND dmp2000)
+set_tests_properties(dmp2000 PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(machine_setup machine_setup.cpp)
 target_link_libraries(machine_setup PRIVATE tuxape_core)
 add_test(NAME machine_setup COMMAND machine_setup)
