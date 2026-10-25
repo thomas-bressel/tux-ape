@@ -162,7 +162,7 @@ uint64_t Dmp2000::later(uint64_t microsecond) const
     return std::max(microsecond, busyUntil_);
 }
 
-void Dmp2000::emit(Event event)
+void Dmp2000::record(Event event)
 {
     events_.push_back(event);
 }
@@ -545,8 +545,13 @@ void Dmp2000::printable(uint8_t code, uint64_t microsecond)
                 continue;
             }
             add(x, p, 0, 0.0);
-            if (style_.bold)
+            // Double width: each dot struck again half a column on, the
+            // strokes as whole as at the normal width.
+            if (style_.doubleWidth || style_.lineDoubleWidth)
                 add(x + spacing / 2.0, p, 0, 0.0);
+            // Emphasized: each dot again half a dot (1/240 inch) on.
+            if (style_.bold)
+                add(x + 1.0 / 240.0, p, 0, 0.0);
             if (style_.doubleStrike)
                 add(x, p, 1, kDoubleStrike);
         }
@@ -602,7 +607,7 @@ void Dmp2000::homeHead(uint64_t microsecond)
         return;
     const uint64_t t = later(microsecond);
     const uint64_t end = t + us(headX_ / kReturnSpeed);
-    emit({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, headX_ + leftEdge(), leftEdge(), false}});
+    record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, headX_ + leftEdge(), leftEdge(), false}});
     headX_ = 0.0;
     busyUntil_ = end;
 }
@@ -647,17 +652,17 @@ void Dmp2000::printLine(uint64_t microsecond)
         const double from = forward ? left : right, to = forward ? right : left;
         if (std::fabs(headX_ - from) > 1e-6) {
             const uint64_t end = t + us(std::fabs(headX_ - from) / kReturnSpeed);
-            emit({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, headX_ + leftEdge(), from + leftEdge(), false}});
+            record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, headX_ + leftEdge(), from + leftEdge(), false}});
             t = end;
         }
         const uint64_t end = t + us(std::fabs(to - from) / speed);
-        emit({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, from + leftEdge(), to + leftEdge(), true}});
+        record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Carriage, t, end, from + leftEdge(), to + leftEdge(), true}});
         for (const Column& c : line_) {
             if (c.pass != pass)
                 continue;
             const double x = origin + c.x;
             const uint64_t at = t + us(std::fabs(x - from) / speed);
-            emit({Event::Kind::Strike, at, sheet_, {at, sheet_, x + leftEdge(), paperY_ + c.dy, c.pins}});
+            record({Event::Kind::Strike, at, sheet_, {at, sheet_, x + leftEdge(), paperY_ + c.dy, c.pins}});
         }
         if (pass == 0)
             for (Printed p : lineText_) {
@@ -666,7 +671,7 @@ void Dmp2000::printLine(uint64_t microsecond)
                 p.x = x + leftEdge();
                 p.y = paperY_;
                 p.sheet = sheet_;
-                emit({Event::Kind::Printed, p.microsecond, sheet_, {}, p});
+                record({Event::Kind::Printed, p.microsecond, sheet_, {}, p});
             }
         headX_ = to;
         t = end;
@@ -681,7 +686,7 @@ void Dmp2000::printLine(uint64_t microsecond)
 
 void Dmp2000::startSheet(uint64_t microsecond)
 {
-    emit({Event::Kind::SheetStarted, microsecond, sheet_});
+    record({Event::Kind::SheetStarted, microsecond, sheet_});
 }
 
 void Dmp2000::feed(double inches, uint64_t microsecond)
@@ -699,7 +704,7 @@ void Dmp2000::feed(double inches, uint64_t microsecond)
     uint64_t t = later(microsecond);
     double y = paperY_ + inches;
     const uint64_t end = t + us(std::fabs(inches) / kPaperSpeed);
-    emit({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Paper, t, end, paperY_, y, false}});
+    record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Paper, t, end, paperY_, y, false}});
     busyUntil_ = end;
     sinceTopOfForm_ += inches;
     const double page = pageLines_ ? pageLines_ * lineSpacing() : pageLength_;
@@ -710,17 +715,17 @@ void Dmp2000::feed(double inches, uint64_t microsecond)
     if (paper_.fanFold) {
         // Fan fold: past the perforation, the next sheet is under the head.
         while (y >= paper_.length - 1e-9) {
-            emit({Event::Kind::SheetDone, end, sheet_});
+            record({Event::Kind::SheetDone, end, sheet_});
             ++sheet_;
             y -= paper_.length;
             startSheet(end);
         }
     } else if (y >= paper_.length - 1e-9) {
         // A cut sheet: out, and the lamp lit.
-        emit({Event::Kind::SheetDone, end, sheet_});
+        record({Event::Kind::SheetDone, end, sheet_});
         sheetLoaded_ = false;
         paperOut_ = true;
-        emit({Event::Kind::PaperOut, end, sheet_});
+        record({Event::Kind::PaperOut, end, sheet_});
         if (switches_.beeper)
             beep(end);
         y = 0.0;
@@ -745,7 +750,7 @@ void Dmp2000::formFeed(uint64_t microsecond)
 void Dmp2000::beep(uint64_t microsecond)
 {
     if (switches_.beeper)
-        emit({Event::Kind::Beep, later(microsecond), sheet_});
+        record({Event::Kind::Beep, later(microsecond), sheet_});
 }
 
 void Dmp2000::setOnline(bool online, uint64_t microsecond)
@@ -781,7 +786,7 @@ void Dmp2000::loadPaper(uint64_t microsecond)
     const uint64_t t = later(microsecond);
     const double top = paper_.fanFold ? 0.0 : kTopOfSheet;
     const uint64_t end = t + us(top / kLoadSpeed);
-    emit({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Paper, t, end, 0.0, top, false}});
+    record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Paper, t, end, 0.0, top, false}});
     startSheet(t);
     paperY_ = top;
     sinceTopOfForm_ = 0.0;

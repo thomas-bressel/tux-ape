@@ -36,6 +36,7 @@
 #include "debuggerdialog.h"
 #include "graphicsdialog.h"
 #include "programfolder.h"
+#include "printerwindow.h"
 #include "registersdialog.h"
 #include "asicdialog.h"
 #include "discdialogs.h"
@@ -465,6 +466,8 @@ void MainWindow::reopenWindows()
         showGraphics();
     if (wasOpen("Assembler"))
         showAssembler();
+    if (wasOpen("Printer") && printer_)
+        printer_->show();
     // One that goes away while the machine runs waits for it to stop.
     if (wasOpen("Debugger") && (emulator_->isPaused() || !settings_.debuggerHideOnRun))
         showDebugger();
@@ -721,6 +724,10 @@ void MainWindow::createMenus()
     recordWavAction_->setCheckable(true);
     recordYmAction_->setCheckable(true);
     file->addSeparator();
+    // The DMP2000's window: there when it is on the printer's port
+    // (Settings, Other), shown by itself when it prints.
+    printerAction_ = addItem(file, tr("Pr&inter..."), {}, [this] { showPrinter(); });
+    printerAction_->setEnabled(false);
     addItem(file, tr("Aut&o Type..."), CTRL | Qt::ALT | Qt::Key_F5, [this] { autoType(); });
     pasteAction_ = addItem(file, tr("&Paste"), CTRL | Qt::Key_F11, [this] { paste(); });
     pasteAction_->setEnabled(!QApplication::clipboard()->text().isEmpty());
@@ -980,6 +987,36 @@ void MainWindow::updateDebugActions()
     stepOverAction_->setEnabled(paused);
     if (paused)
         statusLabel_->setText(tr("Paused"));
+}
+
+void MainWindow::updatePrinterWindow(bool dmp2000)
+{
+    printerAction_->setEnabled(dmp2000);
+    if (!dmp2000) {
+        if (printer_)
+            printer_->hide();
+        return;
+    }
+    if (!printer_) {
+        printer_ = new PrinterWindow(emulator_, this);
+        placeWindow(printer_, "Printer");
+        // It comes up when the needles start, as the sheet comes out of a
+        // printer beside the computer.
+        connect(printer_, &PrinterWindow::printingStarted, this, [this] {
+            if (!printer_->isVisible())
+                printer_->show();
+        });
+    }
+    printer_->setPaper(emulator_->dmp2000Paper());
+}
+
+void MainWindow::showPrinter()
+{
+    if (!printer_)
+        return;
+    printer_->show();
+    printer_->raise();
+    printer_->activateWindow();
 }
 
 void MainWindow::showRegisters()
@@ -1320,8 +1357,12 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setTapeSounds(settings.tapeSounds);
     emulator_->setDiscSounds(settings.discSounds);
     emulator_->setAmDrum(settings.amDrum);
+    const bool dmp2000 = settings.printerMode == Settings::PrinterHost;
     if (!emulator_->setPrinter(settings.printerMode, settings.printerFile))
-        report(tr("Cannot write what is printed to %1.").arg(QDir::toNativeSeparators(settings.printerFile)));
+        report(dmp2000 ? tr("The DMP2000's typefaces were not found: DMP2000.ROM and DMP3160.ROM, in the ROM folder's "
+                            "printer folder.")
+                       : tr("Cannot write what is printed to %1.").arg(QDir::toNativeSeparators(settings.printerFile)));
+    updatePrinterWindow(dmp2000 && emulator_->hasDmp2000());
     emulator_->setJoystickEnabled(settings.joystick);
     if (emulator_->amxMouse() != settings.amxMouse)
         emulator_->setAmxMouse(settings.amxMouse);

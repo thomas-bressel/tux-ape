@@ -24,6 +24,7 @@ class QLabel;
 class QMenu;
 class QToolButton;
 class AssemblerDialog;
+class PrinterWindow;
 class QDialog;
 class BreakpointsDialog;
 class TimersDialog;
@@ -186,6 +187,7 @@ private:
     QAction* stepOverAction_ = nullptr;
     DebuggerDialog* debugger_ = nullptr;
     AssemblerDialog* assembler_ = nullptr;
+    PrinterWindow* printer_ = nullptr;  // while a DMP2000 is on the printer's port
     RegistersDialog* registers_ = nullptr;
     AsicDialog* asicRegisters_ = nullptr;
     BreakpointsDialog* breakpoints_ = nullptr;
@@ -210,6 +212,7 @@ private:
     QAction* cartridgeAction_ = nullptr;
     QAction* recordWavAction_ = nullptr;
     QAction* recordYmAction_ = nullptr;
+    QAction* printerAction_ = nullptr;
     QAction* recordAviAction_ = nullptr;
     QAction* recordSessionAction_ = nullptr;
     QAction* playSessionAction_ = nullptr;
@@ -255,6 +258,9 @@ private:
     void machineStopped();
     void showDebugger();
     void showAssembler();
+    void showPrinter();
+    // The DMP2000's window, there while one is on the printer's port.
+    void updatePrinterWindow(bool dmp2000);
     void printToAssembler();
     void showRegisters();
     void showAsicRegisters();

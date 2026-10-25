@@ -2,6 +2,8 @@
 
 #include "core/keytables.h"
 
+#include <filesystem>
+
 #include <QFileInfo>
 
 #include "core/condition.h"
@@ -75,6 +77,7 @@ Emulator::~Emulator()
     stop();
     // What the cards keep goes to their files.
     tuxape::saveCards(cpc_);
+    cpc_.setPrinter(nullptr);
 }
 
 QString Emulator::setupMachine(tuxape::CpcModel model)
@@ -145,10 +148,26 @@ void Emulator::setAmDrum(bool on)
 
 bool Emulator::setPrinter(int mode, const QString& file)
 {
+    // The DMP2000's typefaces, read before the machine is held.
+    const std::optional<tuxape::Dmp2000Font> font = mode == 2 ? dmp2000Fonts() : std::nullopt;
     return withMachine([&](Cpc& cpc) {
         cpc.setPrinterHook(nullptr);
+        cpc.setPrinter(nullptr);
         cpc.setDigiblaster(mode == 1);
         printerFile_.close();
+        if (mode == 2) {
+            // The same printer, its paper as it was, unless its switches or
+            // its paper change: then it is another one, switched on.
+            if (!font) {
+                dmp2000_.reset();
+                return false;
+            }
+            if (!dmp2000_ || dmp2000_->switches() != dmp2000Switches_ || dmp2000_->paper() != dmp2000Paper_)
+                dmp2000_ = std::make_unique<tuxape::Dmp2000>(*font, dmp2000Switches_, dmp2000Paper_);
+            cpc.setPrinter(dmp2000_.get());
+            return true;
+        }
+        dmp2000_.reset();
         if (mode == 3) {
             // What is printed is added to the file, a line at a time.
             printerFile_.setFileName(file);
@@ -173,6 +192,89 @@ bool Emulator::setPrinter(int mode, const QString& file)
             });
         }
         return true;
+    });
+}
+
+void Emulator::setDmp2000(const tuxape::Dmp2000::Switches& switches, const tuxape::Dmp2000::Paper& paper)
+{
+    withMachine([&](Cpc&) {
+        dmp2000Switches_ = switches;
+        dmp2000Paper_ = paper;
+    });
+}
+
+tuxape::Dmp2000::Paper Emulator::dmp2000Paper()
+{
+    return withMachine([&](Cpc&) { return dmp2000Paper_; });
+}
+
+std::optional<tuxape::Dmp2000Font> Emulator::dmp2000Fonts()
+{
+    const std::filesystem::path dmp2000 = tuxape::findRom("DMP2000.ROM", tuxape::defaultRomDir());
+    const std::filesystem::path dmp3160 = tuxape::findRom("DMP3160.ROM", tuxape::defaultRomDir());
+    const auto a = dmp2000.empty() ? std::nullopt : tuxape::readFile(dmp2000);
+    const auto b = dmp3160.empty() ? std::nullopt : tuxape::readFile(dmp3160);
+    if (!a || !b)
+        return std::nullopt;
+    return tuxape::Dmp2000Font::fromRoms(*a, *b);
+}
+
+bool Emulator::hasDmp2000()
+{
+    return withMachine([&](Cpc&) { return dmp2000_ != nullptr; });
+}
+
+std::vector<tuxape::Dmp2000::Event> Emulator::takeDmp2000Events(uint64_t* now)
+{
+    return withMachine([&](Cpc& cpc) {
+        if (now)
+            *now = cpc.microseconds();
+        return dmp2000_ ? dmp2000_->takeEvents() : std::vector<tuxape::Dmp2000::Event>();
+    });
+}
+
+void Emulator::setDmp2000Online(bool online)
+{
+    withMachine([&](Cpc& cpc) {
+        if (dmp2000_)
+            dmp2000_->setOnline(online, cpc.microseconds());
+    });
+}
+
+void Emulator::dmp2000LineFeed()
+{
+    withMachine([&](Cpc& cpc) {
+        if (dmp2000_)
+            dmp2000_->lineFeedButton(cpc.microseconds());
+    });
+}
+
+void Emulator::dmp2000FormFeed()
+{
+    withMachine([&](Cpc& cpc) {
+        if (dmp2000_)
+            dmp2000_->formFeedButton(cpc.microseconds());
+    });
+}
+
+void Emulator::dmp2000LoadPaper()
+{
+    withMachine([&](Cpc& cpc) {
+        if (dmp2000_)
+            dmp2000_->loadPaper(cpc.microseconds());
+    });
+}
+
+Emulator::Dmp2000Lamps Emulator::dmp2000Lamps()
+{
+    return withMachine([&](Cpc&) {
+        Dmp2000Lamps lamps;
+        if (dmp2000_) {
+            lamps.present = true;
+            lamps.online = dmp2000_->online();
+            lamps.paperOut = dmp2000_->paperOut();
+        }
+        return lamps;
     });
 }
 

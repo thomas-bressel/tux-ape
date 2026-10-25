@@ -2064,6 +2064,10 @@
         <translation>Enregistrer en &amp;YM...</translation>
     </message>
     <message>
+        <source>Pr&amp;inter...</source>
+        <translation>I&amp;mprimante...</translation>
+    </message>
+    <message>
         <source>Aut&amp;o Type...</source>
         <translation>Saisie aut&amp;omatique...</translation>
     </message>
@@ -2306,6 +2310,10 @@
     <message>
         <source>%1.</source>
         <translation>%1.</translation>
+    </message>
+    <message>
+        <source>The DMP2000&apos;s typefaces were not found: DMP2000.ROM and DMP3160.ROM, in the ROM folder&apos;s printer folder.</source>
+        <translation>Les polices de la DMP2000 sont introuvables : DMP2000.ROM et DMP3160.ROM, dans le dossier printer du dossier des ROM.</translation>
     </message>
     <message>
         <source>Cannot write what is printed to %1.</source>
@@ -2677,6 +2685,77 @@ Enregistrer les modifications dans %2 ?</translation>
     <message>
         <source>%1 cannot be deleted</source>
         <translation>%1 ne peut pas être supprimé</translation>
+    </message>
+</context>
+<context>
+    <name>PrinterWindow</name>
+    <message>
+        <source>DMP2000</source>
+        <translation>DMP2000</translation>
+    </message>
+    <message>
+        <source>ON LINE</source>
+        <translation>ON LINE</translation>
+    </message>
+    <message>
+        <source>Off line, the printer takes nothing in, and its LF and FF buttons move the paper</source>
+        <translation>Hors ligne, l&apos;imprimante ne reçoit plus rien, et ses boutons LF et FF font avancer le papier</translation>
+    </message>
+    <message>
+        <source>FF</source>
+        <translation>FF</translation>
+    </message>
+    <message>
+        <source>Form feed: the paper to the next page&apos;s top, a cut sheet out (off line only)</source>
+        <translation>Saut de page : le papier jusqu&apos;au haut de la page suivante, une feuille simple éjectée (hors ligne seulement)</translation>
+    </message>
+    <message>
+        <source>LF</source>
+        <translation>LF</translation>
+    </message>
+    <message>
+        <source>Line feed: the paper a sixth of an inch up (off line only)</source>
+        <translation>Saut de ligne : le papier avance d&apos;un sixième de pouce (hors ligne seulement)</translation>
+    </message>
+    <message>
+        <source>Insert a Sheet</source>
+        <translation>Insérer une feuille</translation>
+    </message>
+    <message>
+        <source>A new sheet fed in, when the last one has gone out</source>
+        <translation>Une nouvelle feuille engagée, quand la précédente est sortie</translation>
+    </message>
+    <message>
+        <source>The sheet before</source>
+        <translation>La feuille précédente</translation>
+    </message>
+    <message>
+        <source>The sheet after</source>
+        <translation>La feuille suivante</translation>
+    </message>
+    <message>
+        <source>%1: lit</source>
+        <translation>%1 : allumé</translation>
+    </message>
+    <message>
+        <source>%1: out</source>
+        <translation>%1 : éteint</translation>
+    </message>
+    <message>
+        <source>POWER</source>
+        <translation>POWER</translation>
+    </message>
+    <message>
+        <source>PAPER OUT</source>
+        <translation>PAPER OUT</translation>
+    </message>
+    <message>
+        <source>Sheet %1 of %2</source>
+        <translation>Feuille %1 sur %2</translation>
+    </message>
+    <message>
+        <source>No sheet</source>
+        <translation>Aucune feuille</translation>
     </message>
 </context>
 <context>
@@ -3430,12 +3509,20 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Digiblaster</translation>
     </message>
     <message>
+        <source>DMP2000</source>
+        <translation>DMP2000</translation>
+    </message>
+    <message>
         <source>File</source>
         <translation>Fichier</translation>
     </message>
     <message>
         <source>Assembler</source>
         <translation>Assembleur</translation>
+    </message>
+    <message>
+        <source>An Amstrad DMP2000: what is printed comes out on its sheet, in its window</source>
+        <translation>Une Amstrad DMP2000 : ce qui est imprimé sort sur sa feuille, dans sa fenêtre</translation>
     </message>
     <message>
         <source>A sound converter in the printer&apos;s place</source>

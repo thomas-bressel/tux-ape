@@ -205,7 +205,7 @@ private:
     double printableWidth() const { return 8.0; }
     double leftEdge() const;
     void startSheet(uint64_t microsecond);
-    void emit(Event event);
+    void record(Event event);
     uint64_t later(uint64_t microsecond) const;
     char32_t unicode(int glyph) const;
     int glyphIndex(uint8_t code) const;

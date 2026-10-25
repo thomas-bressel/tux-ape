@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -27,6 +28,7 @@
 
 #include "core/autotype.h"
 #include "core/cpc.h"
+#include "core/dmp2000.h"
 #include "core/recording.h"
 #include "core/session.h"
 #include "core/winape_session.h"
@@ -123,12 +125,34 @@ public:
     // The AmDrum sound converter.
     void setAmDrum(bool on);
     // What is on the printer's port, as Settings::PrinterMode says: nothing,
-    // a Digiblaster, a file the characters printed are added to, or the
-    // assembler: printerOutput() is then sent, and takePrinterOutput()
-    // gives what has been printed since it was last asked for. False if
-    // the file cannot be written to.
+    // a Digiblaster, an Amstrad DMP2000, a file the characters printed are
+    // added to, or the assembler: printerOutput() is then sent, and
+    // takePrinterOutput() gives what has been printed since it was last
+    // asked for. False if the file cannot be written to, or the DMP2000's
+    // typefaces are not there (see dmp2000Fonts()).
     bool setPrinter(int mode, const QString& file);
     QByteArray takePrinterOutput();
+
+    // The DMP2000 (Settings::PrinterHost), its DIP switches and its paper
+    // given to setDmp2000() before setPrinter(). Its typefaces are read from
+    // DMP2000.ROM and DMP3160.ROM, found by name in the ROM folders (the
+    // user's roms/printer/).
+    void setDmp2000(const tuxape::Dmp2000::Switches& switches, const tuxape::Dmp2000::Paper& paper);
+    tuxape::Dmp2000::Paper dmp2000Paper();
+    static std::optional<tuxape::Dmp2000Font> dmp2000Fonts();
+    bool hasDmp2000();
+    // What it has done since it was last asked, with the machine's time
+    // now: a window shows each event as the time reaches it.
+    std::vector<tuxape::Dmp2000::Event> takeDmp2000Events(uint64_t* now);
+    // Its buttons and lamps.
+    void setDmp2000Online(bool online);
+    void dmp2000LineFeed();
+    void dmp2000FormFeed();
+    void dmp2000LoadPaper();
+    struct Dmp2000Lamps {
+        bool present = false, online = false, paperOut = false;
+    };
+    Dmp2000Lamps dmp2000Lamps();
 
     // The monitor: its kind (0 colour, 1 green, 2 greyscale), WinAPE's
     // "linear palette", the brightness knob (-100 to 100) and the vertical
@@ -395,6 +419,9 @@ private:
     std::atomic<int> amxDx_{0}, amxDy_{0};
     std::atomic<unsigned> amxButtons_{0};
     QFile printerFile_;          // touched by the emulation thread alone, once open
+    std::unique_ptr<tuxape::Dmp2000> dmp2000_;  // the machine's lock held
+    tuxape::Dmp2000::Switches dmp2000Switches_;
+    tuxape::Dmp2000::Paper dmp2000Paper_;
     std::mutex printerMutex_;
     QByteArray printerBuffer_;   // printed for the assembler, not yet taken
     std::set<uint16_t> breakpoints_;

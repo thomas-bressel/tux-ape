@@ -1474,8 +1474,8 @@ void testDialog(const QString& picture)
     CHECK_EQ(tabs->currentIndex(), 0);
 
     // The Other page: what is on the printer's port. A file's name is
-    // only asked for when printing goes to one; the Symbiface and the
-    // host's printer are still to come.
+    // only asked for when printing goes to one; the DMP2000 is there to
+    // choose, the Symbiface still to come.
     {
         auto* disabled = dialog.findChild<QRadioButton*>("rbPrnDisabled");
         auto* digiblaster = dialog.findChild<QRadioButton*>("rbPrnDigiblaster");
@@ -1487,13 +1487,16 @@ void testDialog(const QString& picture)
         const bool there = disabled && digiblaster && hostPrinter && toFile && toAssembler && file && amDrum;
         CHECK(there);
         if (there) {
-            CHECK(disabled->isChecked() && !hostPrinter->isEnabled() && !file->isEnabled());
+            CHECK(disabled->isChecked() && hostPrinter->isEnabled() && !file->isEnabled());
+            CHECK(hostPrinter->text() == "DMP2000");
             CHECK(amDrum->isEnabled() && !amDrum->isChecked());
             CHECK_EQ(dialog.settings().printerMode, Settings::PrinterDisabled);
             digiblaster->setChecked(true);
             CHECK_EQ(dialog.settings().printerMode, Settings::PrinterDigiblaster);
             toAssembler->setChecked(true);
             CHECK_EQ(dialog.settings().printerMode, Settings::PrinterAssembler);
+            hostPrinter->setChecked(true);
+            CHECK(dialog.settings().printerMode == Settings::PrinterHost && !file->isEnabled());
             toFile->setChecked(true);
             CHECK(file->isEnabled());
             file->setText("/tmp/printed.txt");

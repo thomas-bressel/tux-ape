@@ -1018,7 +1018,7 @@ QWidget* SetupDialog::createOtherPage()
         int row, column;
     } kModes[5] = {{tr("Disabled"), "rbPrnDisabled", 0, 0},
                    {tr("Digiblaster"), "rbPrnDigiblaster", 0, 1},
-                   {tr("Printer"), "rbPrnPrinter", 1, 0},
+                   {tr("DMP2000"), "rbPrnPrinter", 1, 0},
                    {tr("File"), "rbPrnFile", 1, 1},
                    {tr("Assembler"), "rbPrnAssembler", 1, 2}};
     auto* modes = new QGridLayout;
@@ -1027,7 +1027,7 @@ QWidget* SetupDialog::createOtherPage()
         printer_[mode]->setObjectName(kModes[mode].name);
         modes->addWidget(printer_[mode], kModes[mode].row, kModes[mode].column);
     }
-    notYet(printer_[Settings::PrinterHost]);  // no printing on the host's printer
+    printer_[Settings::PrinterHost]->setToolTip(tr("An Amstrad DMP2000: what is printed comes out on its sheet, in its window"));
     printer_[Settings::PrinterDigiblaster]->setToolTip(tr("A sound converter in the printer's place"));
     printer_[Settings::PrinterFile]->setToolTip(tr("What is printed is added to a file"));
     printer_[Settings::PrinterAssembler]->setToolTip(tr("What is printed goes to a tab of the assembler"));
