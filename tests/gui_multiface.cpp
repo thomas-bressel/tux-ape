@@ -3,6 +3,8 @@
 // button. Runs without a display (QT_QPA_PLATFORM=offscreen), with a ROM of
 // the test's own.
 
+#include <cstdio>
+
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
@@ -40,7 +42,10 @@ int main(int argc, char* argv[])
     }
 
     Emulator emulator;
-    emulator.setupMachine(tuxape::stockMachine(tuxape::CpcModel::Cpc6128), true);
+    if (!emulator.setupMachine(tuxape::stockMachine(tuxape::CpcModel::Cpc6128), true).isEmpty()) {
+        std::printf("ROM images not found; skipping\n");
+        return 77;
+    }
     MainWindow window(&emulator);
     window.show();
     QAction* stop = nullptr;

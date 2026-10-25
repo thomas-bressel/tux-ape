@@ -7,6 +7,8 @@
 
 #include <vector>
 
+#include <cstdio>
+
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
@@ -34,7 +36,10 @@ int main(int argc, char* argv[])
     const QString prefix = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString();
 
     Emulator emulator;
-    emulator.setupMachine(tuxape::stockMachine(tuxape::CpcModel::Cpc6128), true);
+    if (!emulator.setupMachine(tuxape::stockMachine(tuxape::CpcModel::Cpc6128), true).isEmpty()) {
+        std::printf("ROM images not found; skipping\n");
+        return 77;
+    }
     MainWindow window(&emulator);
     window.show();
     const auto poke = [&](unsigned address, std::initializer_list<int> bytes) {
