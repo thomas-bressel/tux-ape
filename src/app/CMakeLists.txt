@@ -124,3 +124,20 @@ qt_add_resources(tuxape_app tuxape_translations
 
 add_executable(tuxape main.cpp)
 target_link_libraries(tuxape PRIVATE tuxape_app)
+
+# Each program built goes to dist/, TuxAPE ready to run, with the Qt
+# libraries it needs and the folders beside it (see tools/update-dist.cmake).
+# The target "dist" does it again on demand, the program unchanged: a dist/
+# deleted is made again.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(update_dist ${CMAKE_COMMAND}
+        -DPROGRAM=$<TARGET_FILE:tuxape>
+        -DROOT=${PROJECT_SOURCE_DIR}
+        -DQT_LIBS=$<TARGET_FILE_DIR:Qt6::Core>
+        -DSTRIP=${CMAKE_STRIP}
+        -P ${PROJECT_SOURCE_DIR}/tools/update-dist.cmake)
+    if(TUXAPE_UPDATE_DIST)
+        add_custom_command(TARGET tuxape POST_BUILD COMMAND ${update_dist} COMMENT "Bringing dist/ up to date" VERBATIM)
+    endif()
+    add_custom_target(dist COMMAND ${update_dist} DEPENDS tuxape COMMENT "Bringing dist/ up to date" VERBATIM)
+endif()
