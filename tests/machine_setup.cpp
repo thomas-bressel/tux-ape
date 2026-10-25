@@ -6,6 +6,7 @@
 // reports as "skipped", when they are not available.
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -41,29 +42,68 @@ void testRomNames(const std::filesystem::path& romDir)
     CHECK(has("AMSDOS"));
     CHECK(has("BASIC1-1"));
     CHECK(has("OS6128"));
-    CHECK(has("ParaDOS 1-2+"));
+    CHECK(has("PARADOS_1-2+"));
     CHECK(!has("CPC_PLUS"));  // a cartridge, not a ROM image
     // In alphabetical order whatever the case: "OS664" before "PARADOS"
-    // before "ParaDOS 1-2".
+    // before "PARADOS_1-2".
     auto place = [&](const char* name) { return std::find(names.begin(), names.end(), name) - names.begin(); };
     CHECK(place("AMSDOS") < place("BASIC1-0"));
     CHECK(place("OS664") < place("PARADOS"));
-    CHECK(place("PARADOS") < place("ParaDOS 1-2"));
+    CHECK(place("PARADOS") < place("PARADOS_1-2"));
     CHECK(romNames(romDir / "no such folder").empty());
 
-    CHECK(findRom("OS6128", romDir) == romDir / "OS6128.ROM");
-    CHECK(findRom("os6128", romDir) == romDir / "OS6128.ROM");
-    CHECK(findRom("OS6128.ROM", romDir) == romDir / "OS6128.ROM");
-    CHECK(findRom("os6128.rom", romDir) == romDir / "OS6128.ROM");
-    CHECK(findRom("parados 1-2+", romDir) == romDir / "ParaDOS 1-2+.ROM");
-    CHECK(findRom("ParaDOS 1-2", romDir) == romDir / "ParaDOS 1-2.ROM");
-    CHECK(findRom((romDir / "AMSDOS.ROM").string(), romDir / "elsewhere") == romDir / "AMSDOS.ROM");
+    // The machines' own in system/, ParaDOS in dos/.
+    const std::filesystem::path system = romDir / "system";
+    CHECK(findRom("OS6128", romDir) == system / "OS6128.ROM");
+    CHECK(findRom("os6128", romDir) == system / "OS6128.ROM");
+    CHECK(findRom("OS6128.ROM", romDir) == system / "OS6128.ROM");
+    CHECK(findRom("os6128.rom", romDir) == system / "OS6128.ROM");
+    // WinAPE's names, which its profiles give.
+    CHECK(findRom("parados 1-2+", romDir) == romDir / "dos/PARADOS_1-2+.ROM");
+    CHECK(findRom("ParaDOS 1-2", romDir) == romDir / "dos/PARADOS_1-2.ROM");
+    CHECK(findRom((system / "AMSDOS.ROM").string(), romDir / "elsewhere") == system / "AMSDOS.ROM");
     CHECK(findRom("", romDir).empty());
     CHECK(findRom("NOPE", romDir).empty());
     CHECK(findRom("C:\\ROMS\\OS6128.ROM", romDir).empty());
     // A file of another kind is only found under its full name.
     CHECK(findRom("cpc_plus", romDir).empty());
-    CHECK(findRom("cpc_plus.cpr", romDir) == romDir / "CPC_PLUS.CPR");
+    CHECK(findRom("cpc_plus.cpr", romDir) == system / "CPC_PLUS.CPR");
+}
+
+// One roms/ for every ROM, as dist/ has it: the machines' own in system/,
+// the others in folders of their kind, names in upper case with "_" between
+// their parts. Profiles that ask for WinAPE's names find them.
+void testOneRomFolder()
+{
+    const std::filesystem::path roms = std::filesystem::temp_directory_path() / "tuxape_machine_setup_roms";
+    std::filesystem::remove_all(roms);
+    const std::vector<uint8_t> image(16384, 0xC9);
+    for (const char* file : {"system/OS6128.ROM", "system/BASIC1-1.ROM", "system/CPC_PLUS.CPR", "dos/PARADOS_1-2+.ROM",
+                             "xmem/XMEM_FW_3-15_FR.ROM", "firmware/PLUS_FR.CPR"}) {
+        std::filesystem::create_directories((roms / file).parent_path());
+        CHECK(writeFile(roms / file, image));
+    }
+    const std::string kept = std::getenv("TUXAPE_USER_ROM_DIR") ? std::getenv("TUXAPE_USER_ROM_DIR") : "";
+    setenv("TUXAPE_USER_ROM_DIR", roms.c_str(), 1);
+
+    CHECK(findRom("OS6128", roms) == roms / "system/OS6128.ROM");
+    CHECK(findRom("basic1-1", roms) == roms / "system/BASIC1-1.ROM");
+    CHECK(findRom("ParaDOS 1-2+", roms) == roms / "dos/PARADOS_1-2+.ROM");
+    CHECK(findRom("parados_1_2+", roms) == roms / "dos/PARADOS_1-2+.ROM");
+    CHECK(findRom("XMEM_FW_3_15_FR", roms) == roms / "xmem/XMEM_FW_3-15_FR.ROM");
+    CHECK(findRom("cpc_plus.cpr", roms) == roms / "system/CPC_PLUS.CPR");
+    CHECK(findRom("PLUS_FR.cpr", roms) == roms / "firmware/PLUS_FR.CPR");
+    // The separators are alike, not left out: BASIC1-1 is not BASIC11.
+    CHECK(findRom("BASIC11", roms).empty());
+    CHECK(findRom("ParaDOS 1-2", roms).empty());
+    const std::vector<std::string> names = romNames(roms);
+    CHECK(names.size() == 4 && std::find(names.begin(), names.end(), "PARADOS_1-2+") != names.end());
+
+    if (kept.empty())
+        unsetenv("TUXAPE_USER_ROM_DIR");
+    else
+        setenv("TUXAPE_USER_ROM_DIR", kept.c_str(), 1);
+    std::filesystem::remove_all(roms);
 }
 
 void testStockMachines(const std::filesystem::path& romDir)
@@ -192,7 +232,7 @@ void testRomWithHeader(const std::filesystem::path& romDir)
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
 
-    const auto amsdos = readFile(romDir / "AMSDOS.ROM");
+    const auto amsdos = readFile(romDir / "system/AMSDOS.ROM");
     CHECK(amsdos && amsdos->size() == Memory::kBankSize);
     if (!amsdos)
         return;
@@ -204,7 +244,7 @@ void testRomWithHeader(const std::filesystem::path& romDir)
     file.insert(file.end(), amsdos->begin(), amsdos->end());
     CHECK(writeFile(dir / "Headed.rom", file));
     CHECK(readRom(dir / "Headed.rom") == amsdos);
-    CHECK(readRom(romDir / "AMSDOS.ROM") == amsdos);  // as it is without one
+    CHECK(readRom(romDir / "system/AMSDOS.ROM") == amsdos);  // as it is without one
     CHECK(!readRom(dir / "Gone.rom"));
 
     // A header that speaks of another length is not this file's: such
@@ -239,11 +279,13 @@ void testRomWithHeader(const std::filesystem::path& romDir)
 
 int main()
 {
+    // Without ROM images: files of its own.
+    testOneRomFolder();
     const std::filesystem::path romDir = defaultRomDir();
     Cpc probe;
     if (!setupStockMachine(probe, CpcModel::Cpc6128, romDir, nullptr)) {
-        std::printf("ROM images not found in %s; skipping\n", romDir.string().c_str());
-        return 77;
+        std::printf("ROM images not found in %s; the rest skipped\n", romDir.string().c_str());
+        return checkSummary("machine_setup") == 0 ? 77 : 1;
     }
     testRomNames(romDir);
     testStockMachines(romDir);

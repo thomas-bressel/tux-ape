@@ -41,6 +41,7 @@ CMakeUserPresets.json
 
 # ROM images the user keeps for the emulated machine: not ours to version.
 /roms/
+/roms-avant-convention.tar.gz
 
 # The plugins the user installed: programs of their own makers. The folder
 # itself is kept, for a plugin to be put in by hand.
@@ -51,3 +52,5 @@ CMakeUserPresets.json
 # and that folder zipped.
 /dist/
 /dist.zip
+# What was in dist/ before it was cleaned, for the user to sort.
+/dist-ancien/

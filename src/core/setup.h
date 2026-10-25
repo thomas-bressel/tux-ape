@@ -75,21 +75,26 @@ MachineConfig stockMachine(CpcModel model);
 // The model a configuration comes closest to, going by its firmware ROM.
 CpcModel modelOf(const MachineConfig& config);
 
-// Folder holding the ROM images: $TUXAPE_ROM_DIR if set, otherwise the ROM
-// folder of the WinAPE distribution next to the sources.
+// Folder holding the ROM images: $TUXAPE_ROM_DIR if set, otherwise the
+// "roms" folder next to the sources, the machines' own in roms/system/.
 std::filesystem::path defaultRomDir();
 // The user's own ROM folder, with folders of its own inside it, where a
 // ROM not found in the first is looked for by its name: $TUXAPE_USER_ROM_DIR
-// if set, otherwise the "roms" folder next to the sources.
+// if set, otherwise the "roms" folder next to the sources. The two may be
+// the same: dist/ has only roms/.
 std::filesystem::path userRomDir();
-// Folder holding the profiles (.wpf): $TUXAPE_PROFILE_DIR if set, otherwise
-// the "Profile" folder beside the ROM folder, as in WinAPE.
+// Folder holding the profiles (TuxAPE's .tpf, and WinAPE's .wpf it reads):
+// $TUXAPE_PROFILE_DIR if set; otherwise the "profile" folder beside the ROM
+// folder that $TUXAPE_ROM_DIR gives (WinAPE's "Profile" if that is what is
+// there); otherwise the "profile" folder next to the sources, TuxAPE's own.
 std::filesystem::path defaultProfileDir();
 
 // The ROM images of a folder and of the folders in it, as WinAPE lists
 // them: file names without their ".ROM", in alphabetical order.
 std::vector<std::string> romNames(const std::filesystem::path& romDir);
-// The file a ROM name stands for; an empty path if there is none.
+// The file a ROM name stands for; an empty path if there is none. Upper
+// and lower case are alike in a name, and so are a space, a dash and an
+// underscore: "ParaDOS 1-2+" is PARADOS_1-2+.ROM.
 std::filesystem::path findRom(std::string_view name, const std::filesystem::path& romDir);
 // A ROM image as the machine has it. One kept as a file on a CPC disc, to
 // be burnt from there, has AMSDOS's 128 bytes ahead of it: they are left

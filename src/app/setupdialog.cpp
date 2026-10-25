@@ -50,6 +50,19 @@
 
 namespace {
 
+// A file of the ROM folders goes by its name, as in WinAPE.ini, when that
+// name finds that very file again, in whichever of their folders it is;
+// any other file by its path.
+QString nameOrPath(const QString& path)
+{
+    const QFileInfo file(path);
+    const std::filesystem::path found = tuxape::findRom(file.fileName().toStdString(), tuxape::defaultRomDir());
+    std::error_code ignored;
+    if (!found.empty() && std::filesystem::equivalent(found, file.filesystemAbsoluteFilePath(), ignored))
+        return file.fileName();
+    return QDir::toNativeSeparators(path);
+}
+
 // A control of WinAPE's that TuxAPE has no use for yet.
 template <class Widget>
 Widget* notYet(Widget* widget)
@@ -1202,15 +1215,14 @@ void SetupDialog::setCartridge(const QString& cartridge)
     cartridgeFile_->setToolTip(QDir::toNativeSeparators(cartridge));
 }
 
-// A cartridge from the ROM folder goes by its name, as ROM images do.
+// A cartridge from the ROM folders goes by its name, as ROM images do.
 void SetupDialog::chooseCartridge()
 {
     const QString romDir = QDir::cleanPath(QString::fromStdString(tuxape::defaultRomDir().string()));
     const QString path = QFileDialog::getOpenFileName(this, tr("Cartridge"), romDir, tr("Cartridges (*.cpr);;All files (*)"));
     if (path.isEmpty())
         return;
-    const QFileInfo file(path);
-    setCartridge(QDir::cleanPath(file.absolutePath()) == romDir ? file.fileName() : QDir::toNativeSeparators(path));
+    setCartridge(nameOrPath(path));
     enableCartridge_->setChecked(true);
 }
 
@@ -1231,8 +1243,7 @@ void SetupDialog::chooseMultifaceRom()
                                                       tr("ROM images (*.rom);;All files (*)"));
     if (path.isEmpty())
         return;
-    const QFileInfo file(path);
-    setMultifaceRom(QDir::cleanPath(file.absolutePath()) == romDir ? file.fileName() : QDir::toNativeSeparators(path));
+    setMultifaceRom(nameOrPath(path));
     enableMultiface_->setChecked(true);
 }
 
@@ -1484,10 +1495,12 @@ void SetupDialog::fillProfiles()
     profile_->addItem(tr("(Current Settings)"), QString());
     // In the order of their names, not of their file names: "464 Plus"
     // comes before "464 Plus with ParaDOS".
-    QFileInfoList files = QDir(Settings::profileFolder()).entryInfoList({"*.wpf"}, QDir::Files);
-    // The user's are with WinAPE's in a folder made by tools/make-dist.sh.
+    // TuxAPE's own (.tpf), and WinAPE's (.wpf), which it reads as well.
+    const QStringList kinds = {"*.tpf", "*.wpf"};
+    QFileInfoList files = QDir(Settings::profileFolder()).entryInfoList(kinds, QDir::Files);
+    // The user's are with TuxAPE's in a folder made by tools/make-dist.sh.
     if (QDir(Settings::userProfileFolder()) != QDir(Settings::profileFolder()))
-        files += QDir(Settings::userProfileFolder()).entryInfoList({"*.wpf"}, QDir::Files);
+        files += QDir(Settings::userProfileFolder()).entryInfoList(kinds, QDir::Files);
     std::sort(files.begin(), files.end(), [](const QFileInfo& a, const QFileInfo& b) {
         return a.completeBaseName().compare(b.completeBaseName(), Qt::CaseInsensitive) < 0;
     });
@@ -1507,7 +1520,7 @@ void SetupDialog::profileChosen(int index)
     QString path = profile_->itemData(index).toString();
     if (path == kSelectProfile) {
         path = QFileDialog::getOpenFileName(this, tr("Select File..."), Settings::profileFolder(),
-                                            tr("Profiles (*.wpf);;All files (*)"));
+                                            tr("Profiles (*.tpf *.wpf);;All files (*)"));
         if (path.isEmpty() || !loadProfile(path)) {
             profile_->setCurrentIndex(0);
             return;
@@ -1545,11 +1558,11 @@ void SetupDialog::saveProfileAs()
     // program's own may not be the user's to write in.
     QDir().mkpath(Settings::userProfileFolder());
     QString path = QFileDialog::getSaveFileName(this, tr("Save Profile"), Settings::userProfileFolder(),
-                                                tr("Profiles (*.wpf);;All files (*)"));
+                                                tr("TuxAPE profiles (*.tpf);;All files (*)"));
     if (path.isEmpty())
         return;
     if (QFileInfo(path).suffix().isEmpty())
-        path += ".wpf";
+        path += ".tpf";
     if (saveProfile(path, partsDialog.parts())) {
         const QString chosen = QFileInfo(path).absoluteFilePath();
         fillProfiles();

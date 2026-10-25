@@ -29,7 +29,16 @@ std::filesystem::path defaultProfileDir()
 {
     if (const char* dir = std::getenv("TUXAPE_PROFILE_DIR"); dir && *dir)
         return dir;
-    return defaultRomDir().parent_path() / "Profile";
+    // A ROM folder given: the profiles beside it, in profile/, or in
+    // WinAPE's Profile/ if that is what is there.
+    if (const char* dir = std::getenv("TUXAPE_ROM_DIR"); dir && *dir) {
+        const std::filesystem::path parent = std::filesystem::path(dir).parent_path();
+        std::error_code ignored;
+        return std::filesystem::is_directory(parent / "profile", ignored) || !std::filesystem::is_directory(parent / "Profile", ignored)
+                   ? parent / "profile"
+                   : parent / "Profile";
+    }
+    return TUXAPE_DEV_PROFILE_DIR;
 }
 
 namespace {
@@ -45,6 +54,18 @@ std::string lowered(std::string_view text)
 bool isRomFile(const std::filesystem::path& path)
 {
     return lowered(path.extension().string()) == ".rom";
+}
+
+// A ROM's name as names are compared: upper and lower case alike, and a
+// space, a dash or an underscore alike between its parts. WinAPE's
+// profiles ask for "ParaDOS 1-2+", which roms/ has as PARADOS_1-2+.ROM.
+std::string comparable(std::string_view name)
+{
+    std::string out = lowered(name);
+    for (char& c : out)
+        if (c == ' ' || c == '-')
+            c = '_';
+    return out;
 }
 
 }  // namespace
@@ -121,15 +142,17 @@ std::filesystem::path findRom(std::string_view name, const std::filesystem::path
 
     // WinAPE.ini comes from a file system that does not tell upper case
     // from lower: "cpc_plus" there is CPC_PLUS.ROM here.
-    const std::string wanted = lowered(name);
+    const std::string wanted = comparable(name);
     std::filesystem::path found;
-    for (const auto& entry : std::filesystem::directory_iterator(romDir, ignored)) {
+    // The ROM folder and the folders in it: roms/ has the machines' own in
+    // system/.
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(romDir, ignored)) {
         if (!entry.is_regular_file(ignored))
             continue;
         const std::filesystem::path& file = entry.path();
-        if (lowered(file.filename().string()) == wanted)
+        if (comparable(file.filename().string()) == wanted)
             return file;  // the name as given, extension and all
-        if (isRomFile(file) && lowered(file.stem().string()) == wanted)
+        if (isRomFile(file) && comparable(file.stem().string()) == wanted)
             found = file;
     }
     if (!found.empty())
@@ -139,9 +162,9 @@ std::filesystem::path findRom(std::string_view name, const std::filesystem::path
         if (!entry.is_regular_file(ignored))
             continue;
         const std::filesystem::path& file = entry.path();
-        if (lowered(file.filename().string()) == wanted)
+        if (comparable(file.filename().string()) == wanted)
             return file;
-        if (found.empty() && isRomFile(file) && lowered(file.stem().string()) == wanted)
+        if (found.empty() && isRomFile(file) && comparable(file.stem().string()) == wanted)
             found = file;
     }
     return found;

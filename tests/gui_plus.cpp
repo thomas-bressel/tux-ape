@@ -108,11 +108,11 @@ int main(int argc, char* argv[])
         CHECK(tuxape::modelOf(loaded.machine) == CpcModel::Plus6128);
 
         Settings profile;
-        CHECK(profile.loadProfile(Settings::profileFolder() + "/464 Plus.wpf"));
+        CHECK(profile.loadProfile(Settings::profileFolder() + "/464 Plus.tpf"));
         CHECK(profile.machine.isPlus());
         CHECK(tuxape::modelOf(profile.machine) == CpcModel::Plus464);
         CHECK_EQ(profile.crtcType, 3);
-        CHECK(profile.loadProfile(Settings::profileFolder() + "/CPC6128.wpf"));
+        CHECK(profile.loadProfile(Settings::profileFolder() + "/CPC6128.tpf"));
         CHECK(!profile.machine.isPlus());
         CHECK(profile.machine.lowerRom == "OS6128");
         CHECK_EQ(profile.crtcType, 0);
@@ -412,7 +412,7 @@ int main(int argc, char* argv[])
     // Back to a CPC through the settings: the machine starts afresh.
     {
         Settings settings = window.settings();
-        CHECK(settings.loadProfile(Settings::profileFolder() + "/CPC6128.wpf"));
+        CHECK(settings.loadProfile(Settings::profileFolder() + "/CPC6128.tpf"));
         window.applySettings(settings);
         CHECK(!emulator.machine().isPlus());
         CHECK(!emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.plus(); }));
