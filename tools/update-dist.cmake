@@ -15,9 +15,10 @@
 #   dist/profile/      TuxAPE's profiles (.tpf), the project's profile/
 #   dist/plugins/      no plugin, the folder and what it says of them
 #   dist/library/      the Library window's folders, without their programs
+#                      but the discs that install the cards' software and
+#                      the utilities in ROM, in Utilities/ (see kLibrary)
 #   dist/assembly/     assembler sources
-#   dist/dsk/          disc images: those of the project's root that start
-#                      the cards' software (see kDiscs)
+#   dist/dsk/          the user's disc images: none to begin with
 #   dist/img/          what the cards keep, blank: an X-MASS disc of no
 #                      sector written yet, and an X-MEM flash all erased
 #   dist/savestates/   the states F5 keeps and F6 takes back
@@ -33,8 +34,16 @@ if(NOT DEFINED DIST)
     set(DIST "${ROOT}/dist")
 endif()
 
-# The discs of the project's root that dist/dsk/ starts with.
-set(kDiscs iMPsuite_230807.hfe orgams230517.hfe xmass_xmem-install.hfe)
+# The programs of the project's Library that dist/library/ starts with:
+# the discs that put ROMs in the X-MEM, as on a real CPC.
+set(kLibrary
+    Utilities/iMPsuite_230807.hfe
+    Utilities/orgams230517.hfe
+    Utilities/xmass_xmem-install.hfe
+    Utilities/xmem_side-A.hfe
+    Utilities/xmem_side-B.hfe
+    Utilities/utilitaires.hfe
+    Utilities/utile-gos.hfe)
 
 foreach(folder lib roms profile plugins library assembly dsk img savestates)
     file(MAKE_DIRECTORY "${DIST}/${folder}")
@@ -114,9 +123,9 @@ if(IS_DIRECTORY "${ROOT}/library")
     endforeach()
 endif()
 
-foreach(disc IN LISTS kDiscs)
-    if(EXISTS "${ROOT}/${disc}" AND NOT EXISTS "${DIST}/dsk/${disc}")
-        file(COPY_FILE "${ROOT}/${disc}" "${DIST}/dsk/${disc}")
+foreach(program IN LISTS kLibrary)
+    if(EXISTS "${ROOT}/library/${program}" AND NOT EXISTS "${DIST}/library/${program}")
+        file(COPY_FILE "${ROOT}/library/${program}" "${DIST}/library/${program}")
     endif()
 endforeach()
 
