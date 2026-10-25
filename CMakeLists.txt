@@ -16,6 +16,7 @@ endif()
 
 option(TUXAPE_BUILD_APP "Build the Qt application" ON)
 option(TUXAPE_BUILD_TESTS "Build the test programs" ON)
+option(TUXAPE_UPDATE_DIST "Bring dist/ up to date each time the program is built (Linux)" ON)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
