@@ -23,6 +23,7 @@
 
 #include "core/assembler.h"
 #include "drivesound.h"
+#include "printersound.h"
 #include "avirecorder.h"
 #include "hostjoystick.h"
 
@@ -153,6 +154,9 @@ public:
         bool present = false, online = false, paperOut = false;
     };
     Dmp2000Lamps dmp2000Lamps();
+    // Its needles, motors and beeper heard, beside the machine as the
+    // drives are.
+    void setPrinterSounds(bool on);
 
     // The monitor: its kind (0 colour, 1 green, 2 greyscale), WinAPE's
     // "linear palette", the brightness knob (-100 to 100) and the vertical
@@ -422,6 +426,11 @@ private:
     std::unique_ptr<tuxape::Dmp2000> dmp2000_;  // the machine's lock held
     tuxape::Dmp2000::Switches dmp2000Switches_;
     tuxape::Dmp2000::Paper dmp2000Paper_;
+    std::vector<tuxape::Dmp2000::Event> dmp2000Events_;  // for the window, not yet taken
+    std::atomic<bool> printerSounds_{true};
+    PrinterSound printerSound_;
+    void drainDmp2000();  // its events to the window's list, and heard; the lock held
+    void dropDmp2000();   // no DMP2000 any more, nor what it did; the lock held
     std::mutex printerMutex_;
     QByteArray printerBuffer_;   // printed for the assembler, not yet taken
     std::set<uint16_t> breakpoints_;

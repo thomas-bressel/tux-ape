@@ -159,15 +159,17 @@ bool Emulator::setPrinter(int mode, const QString& file)
             // The same printer, its paper as it was, unless its switches or
             // its paper change: then it is another one, switched on.
             if (!font) {
-                dmp2000_.reset();
+                dropDmp2000();
                 return false;
             }
-            if (!dmp2000_ || dmp2000_->switches() != dmp2000Switches_ || dmp2000_->paper() != dmp2000Paper_)
+            if (!dmp2000_ || dmp2000_->switches() != dmp2000Switches_ || dmp2000_->paper() != dmp2000Paper_) {
+                dropDmp2000();
                 dmp2000_ = std::make_unique<tuxape::Dmp2000>(*font, dmp2000Switches_, dmp2000Paper_);
+            }
             cpc.setPrinter(dmp2000_.get());
             return true;
         }
-        dmp2000_.reset();
+        dropDmp2000();
         if (mode == 3) {
             // What is printed is added to the file, a line at a time.
             printerFile_.setFileName(file);
@@ -229,7 +231,37 @@ std::vector<tuxape::Dmp2000::Event> Emulator::takeDmp2000Events(uint64_t* now)
     return withMachine([&](Cpc& cpc) {
         if (now)
             *now = cpc.microseconds();
-        return dmp2000_ ? dmp2000_->takeEvents() : std::vector<tuxape::Dmp2000::Event>();
+        drainDmp2000();
+        return std::exchange(dmp2000Events_, {});
+    });
+}
+
+void Emulator::dropDmp2000()
+{
+    dmp2000_.reset();
+    dmp2000Events_.clear();
+    printerSound_.reset();
+}
+
+void Emulator::drainDmp2000()
+{
+    if (!dmp2000_) {
+        dmp2000Events_.clear();
+        return;
+    }
+    std::vector<tuxape::Dmp2000::Event> events = dmp2000_->takeEvents();
+    if (events.empty())
+        return;
+    if (printerSounds_)
+        printerSound_.add(events, cpc_.microseconds());
+    dmp2000Events_.insert(dmp2000Events_.end(), events.begin(), events.end());
+}
+
+void Emulator::setPrinterSounds(bool on)
+{
+    withMachine([&](Cpc&) {
+        printerSounds_ = on;
+        printerSound_.reset();
     });
 }
 
@@ -352,6 +384,11 @@ void Emulator::playSound()
             headAt_[drive] = at;
         }
         driveSound_.mix(samples, audio_->sampleRate(), cpc_.fdc().motor(), steps);
+    }
+    // So is the printer.
+    if (dmp2000_ && printerSounds_) {
+        drainDmp2000();
+        printerSound_.mix(samples, audio_->sampleRate(), cpc_.microseconds());
     }
 
     // "8 bit": 256 levels instead of 65536, as a sound card of the time

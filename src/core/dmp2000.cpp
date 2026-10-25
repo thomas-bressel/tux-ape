@@ -14,6 +14,7 @@ constexpr double kPrintSpeed = 10.5;         // inches a second
 constexpr double kColumnRate = 1260.0;       // half-dot columns a second, at most
 constexpr double kReturnSpeed = 20.0;        // the carriage moving without printing
 constexpr double kPaperSpeed = (1.0 / 6.0) / 0.2;
+constexpr double kPaperRun = 2.5;            // past a line's move, the paper's stepper up to speed
 constexpr double kLoadSpeed = 2.0;           // a cut sheet fed in by friction
 constexpr double kTopOfSheet = 1.0 / 3.0;    // the first line, under the head once a sheet is in
 constexpr uint64_t kTakeCharacter = 10;      // microseconds
@@ -733,7 +734,10 @@ void Dmp2000::feed(double inches, uint64_t microsecond)
     }
     uint64_t t = later(microsecond);
     double y = paperY_ + inches;
-    const uint64_t end = t + us(std::fabs(inches) / kPaperSpeed);
+    // A line in 200 ms (manual, chapter 7); a longer move, a form feed,
+    // faster once the stepper is going.
+    const double line = std::min(std::fabs(inches), 1.0 / 6.0);
+    const uint64_t end = t + us(line / kPaperSpeed + (std::fabs(inches) - line) / kPaperRun);
     record({Event::Kind::Motion, t, sheet_, {}, {}, {Motion::Kind::Paper, t, end, paperY_, y, false}});
     busyUntil_ = end;
     slip_ = static_cast<float>(kPaperError) * paperError(++paperMoves_);

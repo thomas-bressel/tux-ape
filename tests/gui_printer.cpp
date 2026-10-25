@@ -16,6 +16,7 @@
 
 #include <QApplication>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QLabel>
 #include <QPainter>
 #include <QPushButton>
@@ -25,6 +26,7 @@
 
 #include "check.h"
 #include "emulator.h"
+#include "printersound.h"
 #include "printerwindow.h"
 #include "settings.h"
 
@@ -146,6 +148,64 @@ int main(int argc, char* argv[])
         again.fill(Qt::transparent);
         SheetView::paint(again, 200, back, 1.0);
         CHECK(again != once);
+    }
+
+    // ---- What is heard: nothing before, the needles and the motors while
+    // it prints, nothing once done; the same each time ----
+    {
+        const auto hear = [&](std::vector<int16_t>& all) {
+            Dmp2000 printer(*font);
+            send(printer, "HELLO, WORLD\r\n", 100000);
+            printer.formFeedButton(0);  // on line: nothing
+            const std::vector<Event> events = printer.takeEvents();
+            PrinterSound sound;
+            constexpr int kRate = 44100;
+            const uint64_t until = printer.idleFrom() + 500000;
+            for (uint64_t t = 20000; t <= until; t += 20000) {
+                if (t == 20000)
+                    sound.add(events, t);
+                std::vector<int16_t> chunk(2 * kRate / 50, 0);
+                sound.mix(chunk, kRate, t);
+                all.insert(all.end(), chunk.begin(), chunk.end());
+            }
+            return printer.idleFrom();
+        };
+        std::vector<int16_t> heard, again;
+        const uint64_t end = hear(heard);
+        hear(again);
+        CHECK(heard == again);
+        // 20 ms a chunk, from 20 ms: chunk n ends at (n + 1) * 20 ms.
+        const auto loudest = [&](uint64_t from, uint64_t to) {
+            int most = 0;
+            for (size_t i = from / 20000 * 1764; i < std::min(heard.size(), to / 20000 * 1764); ++i)
+                most = std::max(most, std::abs(static_cast<int>(heard[i])));
+            return most;
+        };
+        CHECK_EQ(loudest(0, 100000), 0);
+        CHECK(loudest(120000, end) > 2000 && loudest(120000, end) < 32000);
+        CHECK(loudest(end + 300000, end + 500000) < 50);
+        if (argc > 1) {
+            // To listen to.
+            QFile wav(QString::fromLocal8Bit(argv[1]) + "printer.wav");
+            if (wav.open(QIODevice::WriteOnly)) {
+                const auto u32 = [&](uint32_t v) { wav.write(reinterpret_cast<const char*>(&v), 4); };
+                const auto u16 = [&](uint16_t v) { wav.write(reinterpret_cast<const char*>(&v), 2); };
+                const uint32_t bytes = static_cast<uint32_t>(heard.size() * 2);
+                wav.write("RIFF");
+                u32(36 + bytes);
+                wav.write("WAVEfmt ");
+                u32(16);
+                u16(1);
+                u16(2);
+                u32(44100);
+                u32(44100 * 4);
+                u16(4);
+                u16(16);
+                wav.write("data");
+                u32(bytes);
+                wav.write(reinterpret_cast<const char*>(heard.data()), bytes);
+            }
+        }
     }
 
     // ---- A page of what it prints, for whoever looks ----

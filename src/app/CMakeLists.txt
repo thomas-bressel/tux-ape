@@ -55,6 +55,8 @@ add_library(tuxape_app STATIC
     ${PROJECT_SOURCE_DIR}/sdk/plugin.h
     pluginmanager.cpp
     pluginmanager.h
+    printersound.cpp
+    printersound.h
     printerwindow.cpp
     printerwindow.h
     programfolder.cpp
