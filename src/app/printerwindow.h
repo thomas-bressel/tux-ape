@@ -44,9 +44,11 @@ public:
     // shown again.
     void setImpression(double impression);
     // A column of needles struck on a picture of `dotsPerInch` (ink on
-    // transparent, premultiplied ARGB): the dots as the paper takes them,
-    // the same on the screen and in the PDF.
+    // transparent, premultiplied ARGB; or in grey on white, Grayscale8):
+    // the dots as the paper takes them, the same on the screen and in the
+    // PDF.
     static void paint(QImage& picture, double dotsPerInch, const tuxape::Dmp2000::Strike& strike, double impression);
+    double impression() const { return impression_; }
     // Where the head is, in inches on the sheet; hidden if `shown` is false.
     void setHead(double x, double y, bool shown);
     // Where the print line is, in the widget, for the window to scroll to.
@@ -93,6 +95,15 @@ public:
     void showSheet(int index);
     SheetView* view() const { return view_; }
 
+    // The sheets with something printed on them, a page each of a PDF: the
+    // dots as the window has them (at `dotsPerInch`), and under them the
+    // characters, unseen, to be found and copied.
+    bool writePdf(const QString& path, int dotsPerInch = 600) const;
+    // The print done ("Finish..."): the PDF written where the user says,
+    // then the sheets taken away.
+    void finish();
+    void takeAway();
+
 signals:
     // Needles have started striking after a while of none.
     void printingStarted();
@@ -118,6 +129,8 @@ private:
     QPushButton* formFeed_;
     QPushButton* lineFeed_;
     QPushButton* loadPaper_;
+    QPushButton* finish_;
+    QString pdfFolder_;  // where the last PDF went
     QToolButton* previous_;
     QToolButton* next_;
     QLabel* sheetLabel_;

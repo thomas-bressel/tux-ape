@@ -3,12 +3,21 @@
 #include <algorithm>
 #include <cmath>
 
+#include <QApplication>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QFontDatabase>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMessageBox>
+#include <QPageLayout>
 #include <QPainter>
+#include <QPdfWriter>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -126,6 +135,9 @@ void SheetView::paint(QImage& picture, double dotsPerInch, const Dmp2000::Strike
     // when the picture is coarser.
     const double edge = std::max(0.0018 * dotsPerInch, 0.75);
     const int r = kInk.red(), g = kInk.green(), b = kInk.blue();
+    // Or the ink in grey on white paper, a third of the memory.
+    const bool grey = picture.format() == QImage::Format_Grayscale8;
+    const int inkGrey = qGray(kInk.rgb());
     const int w = picture.width(), h = picture.height();
     for (int pin = 0; pin < 9; ++pin) {
         if (!(strike.pins & (0x100 >> pin)))
@@ -170,6 +182,11 @@ void SheetView::paint(QImage& picture, double dotsPerInch, const Dmp2000::Strike
                 const double weave = 0.76 + 0.24 * unit(thread);
                 const double ink = std::min(1.0, cover * strength * force * middle * weave);
                 // On what is there already: a dot on a dot is darker.
+                if (grey) {
+                    uchar& pixel = reinterpret_cast<uchar*>(line)[px];
+                    pixel = static_cast<uchar>(pixel - std::lround((pixel - inkGrey) * ink));
+                    continue;
+                }
                 QRgb& pixel = line[px];
                 const int a = qAlpha(pixel);
                 const int now = a + static_cast<int>(std::lround((255 - a) * ink));
@@ -324,6 +341,10 @@ PrinterWindow::PrinterWindow(Emulator* emulator, QWidget* parent)
             emulator_->dmp2000LoadPaper();
         updateLamps();
     });
+    finish_ = new QPushButton(tr("Finish..."));
+    finish_->setObjectName("bFinish");
+    finish_->setToolTip(tr("The print is done: its sheets saved as a PDF, then taken away"));
+    connect(finish_, &QPushButton::clicked, this, &PrinterWindow::finish);
 
     previous_ = new QToolButton;
     previous_->setObjectName("tbPreviousSheet");
@@ -348,6 +369,7 @@ PrinterWindow::PrinterWindow(Emulator* emulator, QWidget* parent)
     panel->addWidget(lineFeed_);
     panel->addSpacing(12);
     panel->addWidget(loadPaper_);
+    panel->addWidget(finish_);
     panel->addStretch(1);
     panel->addWidget(previous_);
     panel->addWidget(sheetLabel_);
@@ -524,4 +546,130 @@ void PrinterWindow::updateSheetControls()
     sheetLabel_->setText(count ? tr("Sheet %1 of %2").arg(shown_ + 1).arg(count) : tr("No sheet"));
     previous_->setEnabled(shown_ > 0);
     next_->setEnabled(shown_ >= 0 && shown_ < count - 1);
+    finish_->setEnabled(std::any_of(sheets_.begin(), sheets_.end(), [](const PrintedSheet& s) { return !s.strikes.empty(); }));
+}
+
+void PrinterWindow::finish()
+{
+    if (!finish_->isEnabled())
+        return;
+    if (pdfFolder_.isEmpty())
+        pdfFolder_ = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    QString path = QFileDialog::getSaveFileName(this, tr("Save the Print"), QDir(pdfFolder_).filePath(tr("print.pdf")),
+                                                tr("PDF Files (*.pdf)"));
+    if (path.isEmpty())
+        return;
+    if (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
+        path += QStringLiteral(".pdf");
+    pdfFolder_ = QFileInfo(path).absolutePath();
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool written = writePdf(path);
+    QApplication::restoreOverrideCursor();
+    if (!written) {
+        QMessageBox::warning(this, windowTitle(), tr("Cannot write the print to %1.").arg(QDir::toNativeSeparators(path)));
+        return;
+    }
+    takeAway();
+}
+
+void PrinterWindow::takeAway()
+{
+    // The sheet still in the printer stays, blank above the head: what was
+    // on it has gone with the others.
+    std::vector<PrintedSheet> kept;
+    if (!sheets_.empty() && !sheets_.back().done) {
+        PrintedSheet blank;
+        blank.number = sheets_.back().number;
+        kept.push_back(blank);
+    }
+    sheets_.swap(kept);
+    shown_ = -1;
+    following_ = true;
+    if (!sheets_.empty())
+        showSheet(0);
+    else
+        view_->setPaper(paper_);
+    updateSheetControls();
+}
+
+bool PrinterWindow::writePdf(const QString& path, int dotsPerInch) const
+{
+    std::vector<const PrintedSheet*> printed;
+    for (const PrintedSheet& s : sheets_)
+        if (!s.strikes.empty())
+            printed.push_back(&s);
+    if (printed.empty())
+        return false;
+    QPdfWriter pdf(path);
+    pdf.setCreator(QStringLiteral("TuxAPE"));
+    pdf.setTitle(tr("DMP2000 print"));
+    pdf.setResolution(dotsPerInch);
+    // Pages the paper's size, printed to their edges.
+    pdf.setPageLayout(QPageLayout(QPageSize(QSizeF(paper_.width, paper_.length), QPageSize::Inch, QString(), QPageSize::ExactMatch),
+                                  QPageLayout::Portrait, QMarginsF()));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    pdf.setColorModel(QPdfWriter::ColorModel::Grayscale);
+#endif
+    QPainter painter;
+    if (!painter.begin(&pdf))
+        return false;
+    // The dots as they are, not as JPEG would have them.
+    painter.setRenderHint(QPainter::LosslessImageRendering);
+    const int width = static_cast<int>(std::lround(paper_.width * dotsPerInch));
+    const int height = static_cast<int>(std::lround(paper_.length * dotsPerInch));
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    // The text over the dots, as big as they are: the nine needles' height.
+    font.setPixelSize(std::max(1, static_cast<int>(std::lround(dotsPerInch * 9.0 / 72.0))));
+    painter.setFont(font);
+    const QFontMetricsF metrics(font, &pdf);
+    for (size_t page = 0; page < printed.size(); ++page) {
+        if (page > 0)
+            pdf.newPage();
+        // The dots, in grey on white: the ink of each and the paper's
+        // white, not the screen's paper.
+        {
+            QImage dots(width, height, QImage::Format_Grayscale8);
+            dots.fill(255);
+            for (const Dmp2000::Strike& strike : printed[page]->strikes)
+                SheetView::paint(dots, dotsPerInch, strike, view_->impression());
+            painter.drawImage(QRectF(0, 0, width, height), dots);
+        }
+        // The characters, where they are printed and unseen, to be found
+        // and copied: a line's run at a time, spaces where the head went
+        // by without printing.
+        std::vector<Dmp2000::Printed> text = printed[page]->text;
+        std::stable_sort(text.begin(), text.end(), [](const Dmp2000::Printed& a, const Dmp2000::Printed& b) {
+            return std::fabs(a.y - b.y) > 1e-6 ? a.y < b.y : a.x < b.x;
+        });
+        painter.setPen(QColor(0, 0, 0, 0));
+        for (size_t i = 0; i < text.size();) {
+            const Dmp2000::Printed& first = text[i];
+            QString run = QString::fromUcs4(&first.character, 1);
+            double end = first.x + first.width;
+            size_t j = i + 1;
+            for (; j < text.size(); ++j) {
+                const Dmp2000::Printed& next = text[j];
+                if (std::fabs(next.y - first.y) > 1e-6 || std::fabs(next.width - first.width) > 1e-6 || next.x < end - 1e-6)
+                    break;
+                const double gap = (next.x - end) / first.width;
+                if (std::fabs(gap - std::round(gap)) > 0.05)
+                    break;
+                run += QString(static_cast<int>(std::lround(gap)), QLatin1Char(' '));
+                run += QString::fromUcs4(&next.character, 1);
+                end = next.x + next.width;
+            }
+            const double natural = metrics.horizontalAdvance(run);
+            if (natural > 0) {
+                painter.save();
+                // The top needle's line, then the base line at the
+                // seventh needle.
+                painter.translate(first.x * dotsPerInch, (first.y + 7.0 / 72.0) * dotsPerInch);
+                painter.scale((end - first.x) * dotsPerInch / natural, 1.0);
+                painter.drawText(QPointF(0, 0), run);
+                painter.restore();
+            }
+            i = j;
+        }
+    }
+    return painter.end();
 }

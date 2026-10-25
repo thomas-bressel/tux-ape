@@ -2726,6 +2726,14 @@ Enregistrer les modifications dans %2 ?</translation>
         <translation>Une nouvelle feuille engagée, quand la précédente est sortie</translation>
     </message>
     <message>
+        <source>Finish...</source>
+        <translation>Terminer...</translation>
+    </message>
+    <message>
+        <source>The print is done: its sheets saved as a PDF, then taken away</source>
+        <translation>L&apos;impression est finie : ses feuilles enregistrées en PDF, puis retirées</translation>
+    </message>
+    <message>
         <source>The sheet before</source>
         <translation>La feuille précédente</translation>
     </message>
@@ -2756,6 +2764,26 @@ Enregistrer les modifications dans %2 ?</translation>
     <message>
         <source>No sheet</source>
         <translation>Aucune feuille</translation>
+    </message>
+    <message>
+        <source>Save the Print</source>
+        <translation>Enregistrer l&apos;impression</translation>
+    </message>
+    <message>
+        <source>print.pdf</source>
+        <translation>impression.pdf</translation>
+    </message>
+    <message>
+        <source>PDF Files (*.pdf)</source>
+        <translation>Fichiers PDF (*.pdf)</translation>
+    </message>
+    <message>
+        <source>Cannot write the print to %1.</source>
+        <translation>Impossible d&apos;enregistrer l&apos;impression dans %1.</translation>
+    </message>
+    <message>
+        <source>DMP2000 print</source>
+        <translation>Impression DMP2000</translation>
     </message>
 </context>
 <context>

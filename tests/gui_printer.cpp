@@ -121,6 +121,25 @@ int main(int argc, char* argv[])
         CHECK(window.shownSheet() == 0 && label && label->text() == "Sheet 1 of 2");
         // The first sheet as it was.
         CHECK(qAlpha(window.view()->picture().pixel(at)) > 128);
+
+        // Finished: a PDF of the two sheets, then none left but the one
+        // still in the printer, blank.
+        auto* finish = window.findChild<QPushButton*>("bFinish");
+        CHECK(finish && finish->isEnabled());
+        const QString pdf = folder.filePath("print.pdf");
+        CHECK(window.writePdf(pdf, 150));
+        QFile written(pdf);
+        CHECK(written.open(QIODevice::ReadOnly) && written.read(5) == "%PDF-");
+        CHECK(written.size() > 1000);
+        const int inPrinter = window.sheets().back().number;
+        window.takeAway();
+        CHECK(window.sheets().size() == 1 && window.sheets()[0].strikes.empty() && window.sheets()[0].number == inPrinter);
+        CHECK(finish && !finish->isEnabled());
+        CHECK(!window.writePdf(pdf, 150));
+        // The next line goes on it.
+        send(printer, "AGAIN\r\n", printer.idleFrom());
+        window.feed(printer.takeEvents(), printer.idleFrom());
+        CHECK(window.sheets().size() == 1 && !window.sheets()[0].strikes.empty() && finish && finish->isEnabled());
     }
 
     // ---- The needles' marks: the same each time, lighter struck softer ----
@@ -244,6 +263,7 @@ int main(int argc, char* argv[])
                 SheetView::paint(ink, 600, Dmp2000::Strike{s.microsecond, s.sheet, s.x - 0.55, s.y - 0.25, s.pins, s.backward, s.ink, s.slip}, 1.0);
         QPainter(&fine).drawImage(0, 0, ink);
         fine.save(QString::fromLocal8Bit(argv[1]) + "printer_600.png");
+        CHECK(window.writePdf(QString::fromLocal8Bit(argv[1]) + "printer.pdf"));
         // How long a full page takes to draw again, when a sheet is shown.
         Dmp2000 full(*font);
         std::string lines;
