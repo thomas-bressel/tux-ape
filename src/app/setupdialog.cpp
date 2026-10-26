@@ -728,6 +728,9 @@ QWidget* SetupDialog::createSoundPage()
     auto* discSounds = discSounds_;
     tapeSounds_ = new QCheckBox(tr("Tape Loading Sounds"));
     tapeSounds_->setObjectName("ckTapeSound");
+    printerSounds_ = new QCheckBox(tr("Printer Sounds"));
+    printerSounds_->setObjectName("ckPrinterSound");
+    printerSounds_->setToolTip(tr("The DMP2000's needles, carriage, paper and beeper, heard beside the machine"));
     amDrum_ = new QCheckBox(tr("AmDrum"));
     amDrum_->setObjectName("ckAmDrum");
     amDrum_->setToolTip(tr("A sound converter on ports #FF00 to #FFFF"));
@@ -735,6 +738,7 @@ QWidget* SetupDialog::createSoundPage()
     auto* otherLayout = new QHBoxLayout(otherBox);
     otherLayout->addWidget(discSounds);
     otherLayout->addWidget(tapeSounds_);
+    otherLayout->addWidget(printerSounds_);
     otherLayout->addWidget(amDrum);
 
     // ---- Volume ----
@@ -1042,10 +1046,10 @@ QWidget* SetupDialog::createOtherPage()
     auto* fileRow = new QHBoxLayout;
     fileRow->addWidget(printerFile_, 1);
     fileRow->addWidget(browsePrinter);
-    // The DMP2000's switches, paper and sounds, in a window of their own.
+    // The DMP2000's switches and paper, in a window of their own.
     auto* dmp2000 = new QPushButton(tr("DMP2000..."));
     dmp2000->setObjectName("bDmp2000");
-    dmp2000->setToolTip(tr("The DMP2000's paper, paper thickness lever, sounds and DIP switches"));
+    dmp2000->setToolTip(tr("The DMP2000's paper, paper thickness lever and DIP switches"));
     modes->addWidget(dmp2000, 0, 2);
     connect(printer_[Settings::PrinterHost], &QRadioButton::toggled, dmp2000, &QPushButton::setEnabled);
     dmp2000->setEnabled(false);
@@ -1376,6 +1380,7 @@ void SetupDialog::setSettings(const Settings& settings)
     soundVolume_->setValue(settings.soundVolume);
     tapeSounds_->setChecked(settings.tapeSounds);
     discSounds_->setChecked(settings.discSounds);
+    printerSounds_->setChecked(settings.printerSounds);
     flyback_->setChecked(settings.screenshotOnFlyback);
     amDrum_->setChecked(settings.amDrum);
     printer_[std::clamp(settings.printerMode, 0, 4)]->setChecked(true);
@@ -1453,14 +1458,9 @@ Dmp2000Dialog::Dmp2000Dialog(const Settings& settings, QWidget* parent)
     lever_->setValue(settings.dmp2000Lever);
     lever_->setToolTip(tr("Set for the paper: at 1, for a single sheet, the needles strike hardest and print darkest; "
                           "further, for thicker paper, lighter"));
-    sounds_ = new QCheckBox(tr("Printer Sounds"));
-    sounds_->setObjectName("ckDmpSounds");
-    sounds_->setToolTip(tr("The needles, the carriage, the paper and the beeper, heard beside the machine"));
-    sounds_->setChecked(settings.dmp2000Sounds);
     auto* paperLayout = new QFormLayout(paperBox);
     paperLayout->addRow(tr("Paper:"), paper_);
     paperLayout->addRow(tr("Paper thickness lever:"), lever_);
-    paperLayout->addRow(sounds_);
 
     // The switches, as the manual names them; those it leaves unused are
     // not shown, and kept as they were.
@@ -1520,7 +1520,6 @@ void Dmp2000Dialog::store(Settings& settings) const
     settings.dmp2000Ds2 = banks >> 8 & 0x3FF;
     settings.dmp2000Paper = paper_->currentIndex();
     settings.dmp2000Lever = lever_->value();
-    settings.dmp2000Sounds = sounds_->isChecked();
 }
 
 ProfilePartsDialog::ProfilePartsDialog(QWidget* parent)
@@ -1744,6 +1743,7 @@ Settings SetupDialog::settings() const
     settings.soundVolume = soundVolume_->value();
     settings.tapeSounds = tapeSounds_->isChecked();
     settings.discSounds = discSounds_->isChecked();
+    settings.printerSounds = printerSounds_->isChecked();
     settings.screenshotOnFlyback = flyback_->isChecked();
     settings.amDrum = amDrum_->isChecked();
     for (int mode = 0; mode < 5; ++mode)
@@ -1754,7 +1754,6 @@ Settings SetupDialog::settings() const
     settings.dmp2000Ds2 = dmp2000_.dmp2000Ds2;
     settings.dmp2000Paper = dmp2000_.dmp2000Paper;
     settings.dmp2000Lever = dmp2000_.dmp2000Lever;
-    settings.dmp2000Sounds = dmp2000_.dmp2000Sounds;
     settings.soundBufferSync = soundBufferSync_->value();
 
     settings.joystick = joystick_->isChecked();

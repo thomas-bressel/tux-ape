@@ -1440,14 +1440,6 @@
         <translation>Réglé selon le papier : à 1, pour une feuille simple, les aiguilles frappent le plus fort et impriment le plus noir ; plus loin, pour un papier plus épais, plus clair</translation>
     </message>
     <message>
-        <source>Printer Sounds</source>
-        <translation>Sons de l&apos;imprimante</translation>
-    </message>
-    <message>
-        <source>The needles, the carriage, the paper and the beeper, heard beside the machine</source>
-        <translation>Les aiguilles, le chariot, le papier et le bip, entendus à côté de la machine</translation>
-    </message>
-    <message>
         <source>Paper:</source>
         <translation>Papier :</translation>
     </message>
@@ -3552,6 +3544,14 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Bruits du chargement des cassettes</translation>
     </message>
     <message>
+        <source>Printer Sounds</source>
+        <translation>Sons de l&apos;imprimante</translation>
+    </message>
+    <message>
+        <source>The DMP2000&apos;s needles, carriage, paper and beeper, heard beside the machine</source>
+        <translation>Les aiguilles, le chariot, le papier et le bip de la DMP2000, entendus à côté de la machine</translation>
+    </message>
+    <message>
         <source>AmDrum</source>
         <translation>AmDrum</translation>
     </message>
@@ -3704,8 +3704,8 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>DMP2000...</translation>
     </message>
     <message>
-        <source>The DMP2000&apos;s paper, paper thickness lever, sounds and DIP switches</source>
-        <translation>Le papier de la DMP2000, son levier d&apos;épaisseur du papier, ses sons et ses interrupteurs DIP</translation>
+        <source>The DMP2000&apos;s paper, paper thickness lever and DIP switches</source>
+        <translation>Le papier de la DMP2000, son levier d&apos;épaisseur du papier et ses interrupteurs DIP</translation>
     </message>
     <message>
         <source>Text files (*.txt);;All files (*)</source>

@@ -1362,7 +1362,7 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setAmDrum(settings.amDrum);
     const bool dmp2000 = settings.printerMode == Settings::PrinterHost;
     emulator_->setDmp2000(settings.dmp2000Switches(), settings.dmp2000PaperSize());
-    emulator_->setPrinterSounds(settings.dmp2000Sounds);
+    emulator_->setPrinterSounds(settings.printerSounds);
     if (!emulator_->setPrinter(settings.printerMode, settings.printerFile))
         report(dmp2000 ? tr("The DMP2000's typefaces were not found: DMP2000.ROM and DMP3160.ROM, in the ROM folder's "
                             "printer folder.")

@@ -730,6 +730,30 @@ void testSoundPage(const QString& picture)
         const auto* tapeSound = dialog.findChild<QCheckBox*>("ckTapeSound");
         CHECK(tapeSound && tapeSound->isEnabled() && !tapeSound->isChecked());
     }
+    // The DMP2000 too, as it leaves the factory; kept with the other sounds,
+    // and read where it was kept before, with the DMP2000's settings.
+    {
+        auto* printerSound = dialog.findChild<QCheckBox*>("ckPrinterSound");
+        CHECK(printerSound && printerSound->isEnabled() && printerSound->isChecked());
+        if (printerSound) {
+            printerSound->setChecked(false);
+            Settings quiet = dialog.settings();
+            CHECK(!quiet.printerSounds);
+            CHECK(quiet.save());
+            Settings read;
+            read.load();
+            CHECK(!read.printerSounds);
+            printerSound->setChecked(true);
+            QFile ini(Settings::file());
+            CHECK(ini.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            ini.write("[DMP2000]\nSounds=0\n");
+            ini.close();
+            Settings old;
+            old.load();
+            CHECK(!old.printerSounds);
+            QFile::remove(Settings::file());
+        }
+    }
 
     if (!picture.isEmpty()) {
         SetupDialog fresh((Settings()));
@@ -1530,11 +1554,12 @@ void testDialog(const QString& picture)
             Dmp2000Dialog window(factory);
             auto* paper = window.findChild<QComboBox*>("cbDmpPaper");
             auto* lever = window.findChild<QSpinBox*>("sbDmpLever");
-            auto* sounds = window.findChild<QCheckBox*>("ckDmpSounds");
             auto* country = window.findChild<QComboBox*>("cbDmpCountry");
             auto* beeper = window.findChild<QCheckBox*>("ckDs2_6");
             auto* crLf = window.findChild<QCheckBox*>("ckDs1_4");
-            const bool all = paper && lever && sounds && country && beeper && crLf;
+            const bool all = paper && lever && country && beeper && crLf;
+            // The sounds are not there: on the Sound page.
+            CHECK(!window.findChild<QCheckBox*>("ckDmpSounds"));
             CHECK(all);
             if (all && !picture.isEmpty()) {
                 window.show();
@@ -1542,11 +1567,10 @@ void testDialog(const QString& picture)
                 CHECK(window.grab().save(QString(picture).replace("general.png", "dmp2000.png")));
             }
             if (all) {
-                CHECK(paper->currentIndex() == 0 && lever->value() == 1 && sounds->isChecked());
+                CHECK(paper->currentIndex() == 0 && lever->value() == 1);
                 CHECK(country->currentIndex() == 0 && beeper->isChecked() && !crLf->isChecked());
                 paper->setCurrentIndex(Settings::Dmp2000FanFold12);
                 lever->setValue(3);
-                sounds->setChecked(false);
                 country->setCurrentIndex(1);
                 beeper->setChecked(false);
                 crLf->setChecked(true);
@@ -1557,7 +1581,7 @@ void testDialog(const QString& picture)
                 again.store(set);
                 CHECK(set.dmp2000Ds2 & 1 << 2);
                 window.store(set);
-                CHECK(set.dmp2000Paper == Settings::Dmp2000FanFold12 && set.dmp2000Lever == 3 && !set.dmp2000Sounds);
+                CHECK(set.dmp2000Paper == Settings::Dmp2000FanFold12 && set.dmp2000Lever == 3);
                 CHECK(set.dmp2000Ds1 == (1 | 1 << 3) && set.dmp2000Ds2 == 0);
                 const tuxape::Dmp2000::Switches switches = set.dmp2000Switches();
                 CHECK(switches.country == 1 && switches.crLf && !switches.beeper);
@@ -1567,7 +1591,7 @@ void testDialog(const QString& picture)
                 Settings loaded;
                 loaded.load();
                 CHECK(loaded.dmp2000Ds1 == set.dmp2000Ds1 && loaded.dmp2000Ds2 == set.dmp2000Ds2);
-                CHECK(loaded.dmp2000Paper == set.dmp2000Paper && loaded.dmp2000Lever == 3 && !loaded.dmp2000Sounds);
+                CHECK(loaded.dmp2000Paper == set.dmp2000Paper && loaded.dmp2000Lever == 3);
                 QFile::remove(Settings::file());
                 // The Settings window gives back what its DMP2000 window
                 // was given.

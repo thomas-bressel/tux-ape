@@ -197,6 +197,7 @@ private:
     QCheckBox* plusPpi_ = nullptr;
     QCheckBox* tapeSounds_ = nullptr;
     QCheckBox* discSounds_ = nullptr;
+    QCheckBox* printerSounds_ = nullptr;
     QCheckBox* flyback_ = nullptr;
     QCheckBox* amDrum_ = nullptr;
     QCheckBox* fourDrives_ = nullptr;
@@ -294,8 +295,8 @@ private:
 };
 
 // The DMP2000's settings (Settings, Other, Printer, "DMP2000..."): its
-// paper, its paper thickness lever, its sounds, and its DIP switches, each
-// under its name on the printer.
+// paper, its paper thickness lever, and its DIP switches, each under its
+// name on the printer. Its sounds are on the Sound page.
 class Dmp2000Dialog : public QDialog {
     Q_OBJECT
 
@@ -307,7 +308,6 @@ public:
 private:
     QComboBox* paper_ = nullptr;
     QSpinBox* lever_ = nullptr;
-    QCheckBox* sounds_ = nullptr;
     QComboBox* country_ = nullptr;      // DS1-1 to 3
     std::vector<std::pair<QCheckBox*, int>> switches_;  // each with its bit: DS1 0-7, DS2 8-17
     int unshown_ = 0;                   // the switches not shown, as they were

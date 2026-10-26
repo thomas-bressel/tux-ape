@@ -177,6 +177,8 @@ void Settings::read(const tuxape::IniFile& ini)
     soundVolume = std::clamp(ini.getInt(kConfiguration, "Sound Volume", soundVolume), 0, 15);
     tapeSounds = ini.getBool(kConfiguration, "Tape Sound", tapeSounds);
     discSounds = ini.getBool(kConfiguration, "Disc Sound", discSounds);
+    // Kept with the DMP2000 at first, then with the other sounds.
+    printerSounds = ini.getBool(kConfiguration, "Printer Sound", ini.getBool(kDmp2000, "Sounds", printerSounds));
     screenshotOnFlyback = ini.getBool(kConfiguration, "Save On Flyback", screenshotOnFlyback);
     amDrum = ini.getBool(kConfiguration, "AmDrum Enabled", amDrum);
     printerMode = std::clamp(ini.getInt(kConfiguration, "Printer", printerMode), 0, static_cast<int>(PrinterAssembler));
@@ -186,7 +188,6 @@ void Settings::read(const tuxape::IniFile& ini)
     dmp2000Ds2 = ini.getInt(kDmp2000, "DS2", dmp2000Ds2) & 0x3FF;
     dmp2000Paper = std::clamp(ini.getInt(kDmp2000, "Paper", dmp2000Paper), 0, static_cast<int>(Dmp2000FanFold12));
     dmp2000Lever = std::clamp(ini.getInt(kDmp2000, "Lever", dmp2000Lever), 1, 5);
-    dmp2000Sounds = ini.getBool(kDmp2000, "Sounds", dmp2000Sounds);
     // Written like WinAPE's "0.4": frames, with one decimal.
     if (ini.has(kConfiguration, "Sound Frame Delay")) {
         // Read by hand: the C library would want a comma where the user's
@@ -335,6 +336,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt(kConfiguration, "Sound Volume", soundVolume);
         ini.setBool(kConfiguration, "Tape Sound", tapeSounds);
         ini.setBool(kConfiguration, "Disc Sound", discSounds);
+        ini.setBool(kConfiguration, "Printer Sound", printerSounds);
         ini.setBool(kConfiguration, "Save On Flyback", screenshotOnFlyback);
         ini.setBool(kConfiguration, "AmDrum Enabled", amDrum);
         ini.setInt(kConfiguration, "Printer", printerMode);
@@ -343,7 +345,6 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt(kDmp2000, "DS2", dmp2000Ds2);
         ini.setInt(kDmp2000, "Paper", dmp2000Paper);
         ini.setInt(kDmp2000, "Lever", dmp2000Lever);
-        ini.setBool(kDmp2000, "Sounds", dmp2000Sounds);
         ini.set(kConfiguration, "Sound Frame Delay",
                 std::to_string(soundBufferSync / 10) + "." + std::to_string(soundBufferSync % 10));
     }
