@@ -697,8 +697,10 @@ void MainWindow::createMenus()
     addItem(file, tr("Quick Loa&d State"), Qt::Key_F6, [this] { quickLoadState(); });
     loadSnapshotAction_ = addItem(file, tr("&Load Snapshot..."), CTRL | Qt::Key_F5, [this] { chooseSnapshot(); });
     saveSnapshotAction_ = addItem(file, tr("Save S&napshot..."), CTRL | Qt::Key_F6, [this] { saveSnapshotAs(); });
-    // Writes again to the snapshot last loaded or saved.
-    updateSnapshotAction_ = addItem(file, tr("&Update Snapshot"), CTRL | Qt::ALT | Qt::Key_F6,
+    // Writes again to the snapshot last loaded or saved. On Shift, not on
+    // WinAPE's Ctrl+Alt: under Linux, Ctrl+Alt and a function key go to a
+    // text console.
+    updateSnapshotAction_ = addItem(file, tr("&Update Snapshot"), SHIFT | Qt::Key_F6,
                                     [this] { saveSnapshotFile(snapshotPath_); });
     updateSnapshotAction_->setEnabled(false);
     file->addSeparator();
@@ -728,7 +730,8 @@ void MainWindow::createMenus()
     // (Settings, Other), shown by itself when it prints.
     printerAction_ = addItem(file, tr("Pr&inter..."), {}, [this] { showPrinter(); });
     printerAction_->setEnabled(false);
-    addItem(file, tr("Aut&o Type..."), CTRL | Qt::ALT | Qt::Key_F5, [this] { autoType(); });
+    // Shift+F5, not WinAPE's Ctrl+Alt+F5 (see Update Snapshot).
+    addItem(file, tr("Aut&o Type..."), SHIFT | Qt::Key_F5, [this] { autoType(); });
     pasteAction_ = addItem(file, tr("&Paste"), CTRL | Qt::Key_F11, [this] { paste(); });
     pasteAction_->setEnabled(!QApplication::clipboard()->text().isEmpty());
     file->addSeparator();

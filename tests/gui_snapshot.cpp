@@ -102,16 +102,17 @@ int main(int argc, char* argv[])
     CHECK(QFileInfo(path).lastModified() > before);
 
     // The keys: Ctrl for the snapshots' windows, F5 and F6 for the quick
-    // state, Ctrl+Alt+F5 for Auto Type.
+    // state, Shift+F6 to update the snapshot and Shift+F5 for Auto Type
+    // (not WinAPE's Ctrl+Alt: Linux takes them for its text consoles).
     QAction* quickSave = actionNamed(window, "Quick Save State");
     QAction* quickLoad = actionNamed(window, "Quick Load State");
     CHECK(load && load->shortcut() == QKeySequence(Qt::CTRL | Qt::Key_F5));
     CHECK(save && save->shortcut() == QKeySequence(Qt::CTRL | Qt::Key_F6));
-    CHECK(update && update->shortcut() == QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_F6));
+    CHECK(update && update->shortcut() == QKeySequence(Qt::SHIFT | Qt::Key_F6));
     CHECK(quickSave && quickSave->shortcut() == QKeySequence(Qt::Key_F5));
     CHECK(quickLoad && quickLoad->shortcut() == QKeySequence(Qt::Key_F6));
     QAction* autoType = actionNamed(window, "Auto Type");
-    CHECK(autoType && autoType->shortcut() == QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_F5));
+    CHECK(autoType && autoType->shortcut() == QKeySequence(Qt::SHIFT | Qt::Key_F5));
 
     // The snapshots' windows stop the machine while they are up, and let
     // it go on after.
