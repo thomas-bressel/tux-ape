@@ -87,6 +87,9 @@ void checkLegends(const KeyTables& tables, KeyboardLanguage language)
         break;
     case KeyboardLanguage::Spanish:
         CHECK(key(CpcKey::Colon).top == U'Ñ' && !key(CpcKey::Colon).bottom);
+        // The Spanish keyboard's own words.
+        CHECK(word(CpcKey::Copy) == "COPIA" && word(CpcKey::CapsLock) == "FIJA MAYS" && word(CpcKey::Enter) == "INTRO");
+        CHECK(word(CpcKey::Control) == "CONTROL" && word(CpcKey::Return) == "RETURN");
         break;
     case KeyboardLanguage::Danish:
         CHECK(key(CpcKey::Colon).top == U'Æ' && !key(CpcKey::Colon).bottom);
@@ -146,6 +149,16 @@ void testGermanTables()
     CHECK(keyboardLanguage(german) == KeyboardLanguage::German);
     CHECK(keyboardLanguage(englishKeyTables()) == KeyboardLanguage::English);
     checkLegends(englishKeyTables(), KeyboardLanguage::English);
+    // The older keyboards' words: ENTER on the large key, CTRL; and the
+    // 464's keypad, figures alone.
+    const auto on = [](KeyboardModel model, CpcKey key) {
+        const char* word = keyLegend(englishKeyTables(), static_cast<uint8_t>(key), model).word;
+        return std::string(word ? word : "");
+    };
+    CHECK(on(KeyboardModel::Cpc6128, CpcKey::Return) == "RETURN" && on(KeyboardModel::Cpc6128, CpcKey::F7) == "f7");
+    CHECK(on(KeyboardModel::Cpc664, CpcKey::Return) == "ENTER" && on(KeyboardModel::Cpc664, CpcKey::Control) == "CTRL");
+    CHECK(on(KeyboardModel::Cpc664, CpcKey::F7) == "f7" && on(KeyboardModel::Cpc464, CpcKey::F7) == "7");
+    CHECK(on(KeyboardModel::Cpc464, CpcKey::Enter) == "ENTER" && on(KeyboardModel::Cpc464, CpcKey::FDot) == ".");
     CHECK(keyLegend(german, static_cast<uint8_t>(CpcKey::Y)).top == U'Z');
     CHECK(cpcCharacter(0x7B, KeyboardLanguage::German) == U'ä');
     CHECK(cpcCharacter(0x7B, KeyboardLanguage::English) == U'{');

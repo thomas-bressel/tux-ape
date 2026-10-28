@@ -177,7 +177,7 @@ int main(int argc, char* argv[])
     // The joystick's buttons are keys of the CPC's like the others.
     emulator.withMachine([&](tuxape::Cpc&) { emulator.applyJoystick(HostJoystick::Up | HostJoystick::Fire1); });
     CHECK(QTest::qWaitFor([&] { return screen->keysOnScreen().size() == 2; }, 1000));
-    CHECK(screen->keysOnScreen() == QStringList({"JOY ↑", "FIRE 2"}));
+    CHECK(screen->keysOnScreen() == QStringList({"JOY ↑", "FIRE 1"}));
     emulator.withMachine([&](tuxape::Cpc&) { emulator.applyJoystick(0); });
     CHECK(QTest::qWaitFor([&] { return screen->keysOnScreen().isEmpty(); }, 2000));
 

@@ -333,7 +333,8 @@ void ScreenWidget::watchKeys()
             return;
         if (keys_.size() == kMostKeys)
             keys_.removeFirst();
-        const tuxape::KeyLegend legend = tuxape::keyLegend(keyTables_, static_cast<uint8_t>(key));
+        const tuxape::KeyLegend legend =
+            tuxape::keyLegend(keyTables_, static_cast<uint8_t>(key), tuxape::keyboardModel(emulator_->model()));
         ShownKey shown{key, keys.down[static_cast<size_t>(key)], QString::fromUtf8(legend.word), {}, {}};
         if (legend.top)
             shown.top = QString::fromUcs4(&legend.top, 1);

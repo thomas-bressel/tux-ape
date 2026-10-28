@@ -15,6 +15,8 @@ struct KeyTables {
     std::array<uint8_t, 80> normal{};
     std::array<uint8_t, 80> shift{};
     std::array<uint8_t, 80> control{};
+
+    bool operator==(const KeyTables&) const = default;
 };
 
 // The tables in a firmware ROM, or in RAM where a program may have changed
@@ -40,16 +42,24 @@ int cpcCharCode(char32_t c, KeyboardLanguage language);
 // language (the French &7B is "é"), or 0 for a code that shows nothing.
 char32_t cpcCharacter(uint8_t code, KeyboardLanguage language);
 
-// What a key has printed on it, as the keyboard that goes with those tables
-// has it. The keys that give no character have the same English word on
-// every CPC ("ESC", "SHIFT", "COPY", "f7", an arrow); the others their
-// characters: one for a letter, its capital; otherwise the one it gives
-// with SHIFT over the one it gives alone ("2" over "é" on a French CPC).
+// The three kinds of CPC keyboard. The 464's and the 664's have the cursor
+// keys around COPY above the keypad, ENTER on the large key and CTRL beside
+// the space bar; the 464's keypad has bare figures. The 6128's, which the
+// Plus machines took, has RETURN, CONTROL and COPY at the left, ENTER
+// beside the space bar, and the cursor keys in its keypad.
+enum class KeyboardModel : uint8_t { Cpc464, Cpc664, Cpc6128 };
+
+// What a key has printed on it, on that keyboard with those tables. The
+// keys that give no character have a word ("ESC", "SHIFT", "f7", an
+// arrow), English on every keyboard but the Spanish ("MAYS", "COPIA"); the
+// others their characters: one for a letter, its capital; otherwise the
+// one it gives with SHIFT over the one it gives alone ("2" over "é" on a
+// French CPC).
 struct KeyLegend {
     const char* word = nullptr;  // UTF-8
     char32_t top = 0, bottom = 0;
 };
-KeyLegend keyLegend(const KeyTables& tables, uint8_t key);
+KeyLegend keyLegend(const KeyTables& tables, uint8_t key, KeyboardModel model = KeyboardModel::Cpc6128);
 
 // The key that gives a code, and whether SHIFT or CONTROL goes with it:
 // alone first, then with SHIFT, then with CONTROL. False if no key does.

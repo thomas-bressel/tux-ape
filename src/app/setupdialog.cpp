@@ -3,6 +3,7 @@
 #include "help.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 
 #include <QLineEdit>
@@ -44,6 +45,7 @@
 #include "pluginsignature.h"
 
 #include "contrast.h"
+#include "core/cartridge.h"
 #include "core/files.h"
 #include "core/gate_array.h"
 #include "core/setup.h"
@@ -238,10 +240,13 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
 
     // The keyboard layout's Load and Save sit beside OK, on the Input page
     // only.
-    loadKeys_ = new QPushButton(style()->standardIcon(QStyle::SP_DialogOpenButton), tr("Load"));
+    loadKeys_ = new QPushButton(style()->standardIcon(QStyle::SP_DialogOpenButton), tr("Load Layout..."));
     loadKeys_->setObjectName("bLoadKeys");
-    saveKeys_ = new QPushButton(style()->standardIcon(QStyle::SP_DialogSaveButton), tr("Save"));
+    loadKeys_->setToolTip(tr("Which keys of this computer press which keys of the CPC: a layout saved before, or "
+                             "one of WinAPE's (.kbd)"));
+    saveKeys_ = new QPushButton(style()->standardIcon(QStyle::SP_DialogSaveButton), tr("Save Layout..."));
     saveKeys_->setObjectName("bSaveKeys");
+    saveKeys_->setToolTip(tr("Keeps which keys of this computer press which keys of the CPC, in a file (.kbd)"));
     connect(loadKeys_, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(this, tr("Load Keyboard Layout"), keyboardFile_,
                                                           tr("Keyboard layouts (*.kbd);;All files (*)"));
@@ -266,6 +271,9 @@ SetupDialog::SetupDialog(const Settings& settings, QWidget* parent)
     auto showKeyButtons = [this](int page) {
         loadKeys_->setVisible(page == Input);
         saveKeys_->setVisible(page == Input);
+        // The machine may have changed on the Memory page meanwhile.
+        if (page == Input)
+            updateKeyboard();
     };
     connect(tabs_, &QTabWidget::currentChanged, this, showKeyButtons);
     showKeyButtons(tabs_->currentIndex());
@@ -818,93 +826,39 @@ void SetupDialog::updateSoundOptions()
 
 QWidget* SetupDialog::createInputPage()
 {
-    using tuxape::CpcKey;
     auto* page = new QWidget;
 
-    // ---- The CPC's keyboard and joystick, to click on ----
-    constexpr int kUnit = 28;    // width of an ordinary key
-    constexpr int kRow = 26;     // height of a row of keys
-    auto* keyboard = new QWidget;
-    keyboard->setObjectName("pKeyboard");
-    QFont keyFont = font();
-    keyFont.setPointSizeF(keyFont.pointSizeF() * 0.72);
-    auto addKey = [&](const QString& text, CpcKey key, double x, int row, double width, int rows = 1,
-                      const char* name = nullptr) {
-        auto* button = new QToolButton(keyboard);
-        button->setText(text);
-        button->setFont(keyFont);
-        button->setCheckable(true);
-        button->setFocusPolicy(Qt::NoFocus);
-        button->setGeometry(qRound(x * kUnit), row * kRow, qRound(width * kUnit) - 1, rows * kRow - 1);
-        button->setObjectName(name ? QString::fromLatin1(name) : QStringLiteral("k%1").arg(static_cast<int>(key)));
-        button->setProperty("cpcKey", static_cast<int>(key));
-        connect(button, &QToolButton::clicked, this, [this, key] { selectCpcKey(static_cast<int>(key)); });
-        keyButtons_.append(button);
-    };
-    struct Key {
-        const char* text;
-        CpcKey key;
-        double width;
-    };
-    static const Key rows[5][16] = {
-        {{"ESC", CpcKey::Escape, 1},    {"!\n1", CpcKey::Num1, 1},  {"\"\n2", CpcKey::Num2, 1}, {"#\n3", CpcKey::Num3, 1},
-         {"$\n4", CpcKey::Num4, 1},    {"%\n5", CpcKey::Num5, 1},  {"&&\n6", CpcKey::Num6, 1},  {"'\n7", CpcKey::Num7, 1},
-         {"(\n8", CpcKey::Num8, 1},    {")\n9", CpcKey::Num9, 1},  {"_\n0", CpcKey::Num0, 1},  {"=\n-", CpcKey::Minus, 1},
-         {"\u00a3\n^", CpcKey::Caret, 1}, {"CLR", CpcKey::Clr, 1},   {"DEL", CpcKey::Del, 1}},
-        {{"TAB", CpcKey::Tab, 1.5},     {"Q", CpcKey::Q, 1},        {"W", CpcKey::W, 1},        {"E", CpcKey::E, 1},
-         {"R", CpcKey::R, 1},           {"T", CpcKey::T, 1},        {"Y", CpcKey::Y, 1},        {"U", CpcKey::U, 1},
-         {"I", CpcKey::I, 1},           {"O", CpcKey::O, 1},        {"P", CpcKey::P, 1},        {"|\n@", CpcKey::At, 1},
-         {"{\n[", CpcKey::LeftBracket, 1}},
-        {{"CAPS\nLOCK", CpcKey::CapsLock, 1.75}, {"A", CpcKey::A, 1}, {"S", CpcKey::S, 1},      {"D", CpcKey::D, 1},
-         {"F", CpcKey::F, 1},           {"G", CpcKey::G, 1},        {"H", CpcKey::H, 1},        {"J", CpcKey::J, 1},
-         {"K", CpcKey::K, 1},           {"L", CpcKey::L, 1},        {"*\n:", CpcKey::Colon, 1}, {"+\n;", CpcKey::Semicolon, 1},
-         {"}\n]", CpcKey::RightBracket, 1}},
-        {{"SHIFT", CpcKey::Shift, 2.25}, {"Z", CpcKey::Z, 1},       {"X", CpcKey::X, 1},        {"C", CpcKey::C, 1},
-         {"V", CpcKey::V, 1},           {"B", CpcKey::B, 1},        {"N", CpcKey::N, 1},        {"M", CpcKey::M, 1},
-         {"<\n,", CpcKey::Comma, 1},    {">\n.", CpcKey::Period, 1}, {"?\n/", CpcKey::Slash, 1}, {"`\n\\", CpcKey::Backslash, 1}},
-        {{"CONTROL", CpcKey::Control, 2.25}, {"COPY", CpcKey::Copy, 1.75}, {"", CpcKey::Space, 8}, {"ENTER", CpcKey::Enter, 3}},
-    };
-    for (int row = 0; row < 5; ++row) {
-        double x = 0;
-        for (const Key& key : rows[row]) {
-            if (!key.text)
-                break;
-            addKey(QString::fromUtf8(key.text), key.key, x, row, key.width);
-            x += key.width;
-        }
-    }
-    // RETURN takes two rows; the second SHIFT is the same key as the first.
-    addKey(tr("RETURN"), CpcKey::Return, 13.75, 1, 1.25, 2);
-    // A narrow key for a long word.
-    QFont narrow = keyFont;
-    narrow.setPointSizeF(keyFont.pointSizeF() * 0.8);
-    narrow.setStretch(QFont::Condensed);
-    keyButtons_.last()->setFont(narrow);
-    addKey(tr("SHIFT"), CpcKey::Shift, 13.25, 3, 1.75, 1, "j21");
-    // The function keys and the cursor keys.
-    static const Key pad[5][3] = {
-        {{"f7", CpcKey::F7, 1}, {"f8", CpcKey::F8, 1}, {"f9", CpcKey::F9, 1}},
-        {{"f4", CpcKey::F4, 1}, {"f5", CpcKey::F5, 1}, {"f6", CpcKey::F6, 1}},
-        {{"f1", CpcKey::F1, 1}, {"f2", CpcKey::F2, 1}, {"f3", CpcKey::F3, 1}},
-        {{"f0", CpcKey::F0, 1}, {"\u2191", CpcKey::CursorUp, 1}, {".", CpcKey::FDot, 1}},
-        {{"\u2190", CpcKey::CursorLeft, 1}, {"\u2193", CpcKey::CursorDown, 1}, {"\u2192", CpcKey::CursorRight, 1}},
-    };
-    for (int row = 0; row < 5; ++row)
-        for (int column = 0; column < 3; ++column)
-            addKey(QString::fromUtf8(pad[row][column].text), pad[row][column].key, 15.3 + column, row, 1);
-    // The joystick.
-    auto* joystickLabel = new QLabel(tr("Joystick"), keyboard);
-    joystickLabel->setAlignment(Qt::AlignHCenter);
-    joystickLabel->setGeometry(qRound(18.8 * kUnit), 0, 3 * kUnit, kRow - 4);
-    addKey(QString::fromUtf8("\u2191"), CpcKey::JoyUp, 19.8, 1, 1);
-    addKey(QString::fromUtf8("\u2190"), CpcKey::JoyLeft, 18.8, 2, 1);
-    addKey(QString::fromUtf8("\u2192"), CpcKey::JoyRight, 20.8, 2, 1);
-    addKey(QString::fromUtf8("\u2193"), CpcKey::JoyDown, 19.8, 3, 1);
-    // The CPC's main fire button is the one its firmware calls "fire 2".
-    addKey(tr("FIRE 1"), CpcKey::JoyFire2, 18.6, 4, 1.6);
-    addKey(tr("FIRE 2"), CpcKey::JoyFire1, 20.2, 4, 1.6);
-    addKey(tr("FIRE 3"), CpcKey::JoyFire3, 19.4, 5, 1.6);
-    keyboard->setFixedSize(qRound(21.9 * kUnit), 6 * kRow);
+    // ---- Which keyboard: the machine's, in its firmware's language ----
+    keyboardModel_ = new QLabel;
+    keyboardModel_->setObjectName("lKeyboardModel");
+    QFont bold = keyboardModel_->font();
+    bold.setBold(true);
+    keyboardModel_->setFont(bold);
+    keyboardLanguage_ = new QComboBox;
+    keyboardLanguage_->setObjectName("cbKeyboardLanguage");
+    keyboardLanguage_->setToolTip(tr("A CPC's keyboard is in the language of its firmware: choosing a language here "
+                                     "puts its firmware on the Memory page. Those of the ROM folders are offered."));
+    connect(keyboardLanguage_, &QComboBox::activated, this, &SetupDialog::chooseKeyboardLanguage);
+    auto* languageLabel = new QLabel(tr("&Language:"));
+    languageLabel->setBuddy(keyboardLanguage_);
+    keyboardFirmware_ = new QLabel;
+    keyboardFirmware_->setObjectName("lKeyboardFirmware");
+    auto* keyboardRow = new QHBoxLayout;
+    keyboardRow->addWidget(keyboardModel_);
+    keyboardRow->addSpacing(16);
+    keyboardRow->addWidget(languageLabel);
+    keyboardRow->addWidget(keyboardLanguage_);
+    keyboardRow->addSpacing(16);
+    keyboardRow->addWidget(keyboardFirmware_);
+    keyboardRow->addStretch(1);
+
+    // ---- The CPC's keyboard and joystick, to click on: drawn by
+    // drawKeyboard ----
+    keyboard_ = new QWidget;
+    keyboard_->setObjectName("pKeyboard");
+    auto* hint = new QLabel(tr("Click a key of the CPC to see, and change, the keys of this computer that press it."));
+    hint->setObjectName("lKeyboardHint");
+    hint->setWordWrap(true);
 
     // ---- The PC keys of the CPC key clicked ----
     QGroupBox* boxes[2] = {new QGroupBox(tr("With Num Lock Off")), new QGroupBox(tr("With Num Lock On"))};
@@ -948,11 +902,359 @@ QWidget* SetupDialog::createInputPage()
     checks->addStretch(1);
 
     auto* layout = new QVBoxLayout(page);
-    layout->addWidget(keyboard, 0, Qt::AlignHCenter);
+    layout->addLayout(keyboardRow);
+    layout->addWidget(keyboard_, 0, Qt::AlignHCenter);
+    layout->addWidget(hint);
     layout->addLayout(bindings);
     layout->addLayout(checks);
     layout->addStretch(1);
     return page;
+}
+
+namespace {
+
+std::string lowered(std::string text)
+{
+    for (char& c : text)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return text;
+}
+
+// A firmware of the ROM folders: its name as the Memory page has it, the
+// language of its key tables, and whether its BASIC comes after it in the
+// same file (32K).
+struct Firmware {
+    QString name;
+    tuxape::KeyboardLanguage language;
+    bool withBasic = false;
+};
+
+// The key tables of a file: a ROM, or a Plus cartridge's first page.
+std::optional<tuxape::KeyTables> fileKeyTables(const std::filesystem::path& file, bool* withBasic = nullptr)
+{
+    if (lowered(file.extension().string()) == ".cpr") {
+        const auto image = tuxape::readFile(file);
+        const auto cartridge = image ? tuxape::Cartridge::parseCpr(*image) : std::nullopt;
+        if (!cartridge || cartridge->pages() == 0)
+            return std::nullopt;
+        return tuxape::findKeyTables(std::span<const uint8_t>(cartridge->data).first(tuxape::Cartridge::kPageSize));
+    }
+    const auto rom = tuxape::readRom(file);
+    if (!rom)
+        return std::nullopt;
+    if (withBasic)
+        *withBasic = rom->size() >= 2 * tuxape::Cartridge::kPageSize;
+    return tuxape::findKeyTables(*rom);
+}
+
+// The firmware named on the Memory page (a ROM, or the cartridge).
+std::filesystem::path firmwareFile(const QString& name, bool cartridge)
+{
+    std::filesystem::path file = tuxape::findRom(name.toStdString(), tuxape::defaultRomDir());
+    if (file.empty() && cartridge && !name.isEmpty())
+        file = tuxape::findRom((name + ".cpr").toStdString(), tuxape::defaultRomDir());
+    return file;
+}
+
+// The firmwares of the ROM folders for a model, the first found of each
+// language: the 6128's are the OS6128 files, the Plus's the cartridges
+// with "plus" in their names.
+std::vector<Firmware> firmwaresFor(tuxape::CpcModel model)
+{
+    const bool plus = model == tuxape::CpcModel::Plus464 || model == tuxape::CpcModel::Plus6128;
+    const char* const number = model == tuxape::CpcModel::Cpc464 ? "464" : model == tuxape::CpcModel::Cpc664 ? "664" : "6128";
+    std::vector<std::filesystem::path> files;
+    std::error_code ignored;
+    for (const std::filesystem::path& folder : {tuxape::defaultRomDir(), tuxape::userRomDir()})
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(folder, ignored)) {
+            const std::string stem = lowered(entry.path().stem().string());
+            const std::string extension = lowered(entry.path().extension().string());
+            if (!entry.is_regular_file(ignored))
+                continue;
+            if (plus ? extension == ".cpr" && stem.find("plus") != std::string::npos
+                     : extension == ".rom" && stem.rfind("os", 0) == 0 && stem.find(number) != std::string::npos)
+                files.push_back(entry.path());
+        }
+    // The stock one first: its name is the shortest of those alike.
+    std::stable_sort(files.begin(), files.end(), [](const auto& a, const auto& b) {
+        return lowered(a.stem().string()) < lowered(b.stem().string());
+    });
+    std::vector<Firmware> found;
+    for (const std::filesystem::path& file : files) {
+        bool withBasic = false;
+        const auto tables = fileKeyTables(file, &withBasic);
+        if (!tables)
+            continue;
+        const tuxape::KeyboardLanguage language = tuxape::keyboardLanguage(*tables);
+        if (std::any_of(found.begin(), found.end(), [&](const Firmware& f) { return f.language == language; }))
+            continue;
+        const QString name = QString::fromStdString(plus ? file.filename().string() : file.stem().string());
+        // Found again by that name; otherwise by its path.
+        const bool byName = firmwareFile(name, plus) == file;
+        found.push_back({byName ? name : QString::fromStdString(file.string()), language, withBasic});
+    }
+    std::sort(found.begin(), found.end(), [](const Firmware& a, const Firmware& b) { return a.language < b.language; });
+    return found;
+}
+
+}  // namespace
+
+QString SetupDialog::languageName(tuxape::KeyboardLanguage language)
+{
+    switch (language) {
+    case tuxape::KeyboardLanguage::English: return tr("English (QWERTY)");
+    case tuxape::KeyboardLanguage::French: return tr("French (AZERTY)");
+    case tuxape::KeyboardLanguage::Spanish: return tr("Spanish (QWERTY with Ñ)");
+    case tuxape::KeyboardLanguage::Danish: return tr("Danish (QWERTY with Æ Ø Å)");
+    case tuxape::KeyboardLanguage::German: return tr("German (QWERTZ)");
+    }
+    return {};
+}
+
+// The machine set up in this window, as far as its keyboard goes.
+tuxape::MachineConfig SetupDialog::keyboardMachine() const
+{
+    tuxape::MachineConfig machine;
+    machine.ram = chosenRam();
+    machine.plus = enablePlus_->isChecked();
+    machine.cartridgeEnabled = enableCartridge_->isChecked();
+    machine.cartridge = cartridge_.toStdString();
+    machine.lowerRom = romNames_[0].toStdString();
+    return machine;
+}
+
+// The Input page's keyboard as the machine set up in this window has it:
+// its model's, in its firmware's language; and the languages there are
+// firmwares of in the ROM folders.
+void SetupDialog::updateKeyboard()
+{
+    if (!keyboard_)
+        return;
+    const tuxape::MachineConfig machine = keyboardMachine();
+    const tuxape::CpcModel model = tuxape::modelOf(machine);
+    const bool plus = machine.isPlus();
+    const QString current = plus ? cartridge_ : romNames_[0];
+    const auto tables = fileKeyTables(firmwareFile(current, plus));
+    const tuxape::KeyboardLanguage language =
+        tables ? tuxape::keyboardLanguage(*tables) : tuxape::KeyboardLanguage::English;
+
+    switch (model) {
+    case tuxape::CpcModel::Cpc464: keyboardModel_->setText(tr("Keyboard of the CPC 464")); break;
+    case tuxape::CpcModel::Cpc664: keyboardModel_->setText(tr("Keyboard of the CPC 664")); break;
+    case tuxape::CpcModel::Cpc6128: keyboardModel_->setText(tr("Keyboard of the CPC 6128")); break;
+    case tuxape::CpcModel::Plus464:
+    case tuxape::CpcModel::Plus6128: keyboardModel_->setText(tr("Keyboard of the Plus (the 6128's)")); break;
+    }
+    keyboardFirmware_->setText(tables ? tr("Firmware: %1").arg(QFileInfo(current).fileName())
+                                      : tr("Firmware not found: the keys as on an English CPC"));
+
+    keyboardLanguage_->clear();
+    for (const Firmware& firmware : firmwaresFor(model))
+        keyboardLanguage_->addItem(languageName(firmware.language), firmware.name);
+    // The firmware in use, if it is none of those.
+    int index = keyboardLanguage_->findData(current, Qt::UserRole, Qt::MatchFixedString);
+    if (index < 0 && tables)
+        index = keyboardLanguage_->findText(languageName(language));
+    if (index < 0) {
+        keyboardLanguage_->addItem(languageName(language), current);
+        index = keyboardLanguage_->count() - 1;
+    }
+    keyboardLanguage_->setCurrentIndex(index);
+    keyboardLanguage_->setEnabled(keyboardLanguage_->count() > 1);
+
+    drawKeyboard(tuxape::keyboardModel(model), tables.value_or(tuxape::englishKeyTables()));
+}
+
+// Another language chosen: its firmware on the Memory page, with its BASIC
+// when it comes with it, or the model's own BASIC in place of one that came
+// with the firmware it replaces.
+void SetupDialog::chooseKeyboardLanguage(int index)
+{
+    const QString name = keyboardLanguage_->itemData(index).toString();
+    const tuxape::MachineConfig machine = keyboardMachine();
+    const tuxape::CpcModel model = tuxape::modelOf(machine);
+    if (machine.isPlus()) {
+        if (name.compare(cartridge_, Qt::CaseInsensitive) != 0)
+            setCartridge(name);
+    } else if (name.compare(romNames_[0], Qt::CaseInsensitive) != 0) {
+        const std::vector<Firmware> firmwares = firmwaresFor(model);
+        const auto withBasic = [&](const QString& rom) {
+            return std::any_of(firmwares.begin(), firmwares.end(), [&](const Firmware& f) {
+                return f.withBasic && f.name.compare(rom, Qt::CaseInsensitive) == 0;
+            });
+        };
+        const QString basic = QString::fromStdString(tuxape::stockMachine(model).upperRoms[0]);
+        if (withBasic(name))
+            setRom(1, name);
+        else if (romNames_[1].isEmpty() || withBasic(romNames_[1]))
+            setRom(1, basic);
+        setRom(0, name);
+    }
+    updateKeyboard();
+}
+
+// The keyboard of a model, with what is printed on its keys in the
+// firmware's language, and the joystick beside it.
+void SetupDialog::drawKeyboard(tuxape::KeyboardModel model, const tuxape::KeyTables& tables)
+{
+    using tuxape::CpcKey;
+    using tuxape::KeyboardModel;
+    // The same keyboard stays as it is, its key clicked with it.
+    if (keyboardDrawn_ && keyboardDrawn_->first == model && keyboardDrawn_->second == tables)
+        return;
+    keyboardDrawn_.emplace(model, tables);
+    qDeleteAll(keyboard_->findChildren<QWidget*>(Qt::FindDirectChildrenOnly));
+    keyButtons_.clear();
+
+    constexpr int kUnit = 28;  // width of an ordinary key
+    constexpr int kRow = 26;   // height of a row of keys
+    QFont keyFont = font();
+    keyFont.setPointSizeF(keyFont.pointSizeF() * 0.72);
+    // A narrow key for a long word.
+    QFont narrow = keyFont;
+    narrow.setPointSizeF(keyFont.pointSizeF() * 0.8);
+    narrow.setStretch(QFont::Condensed);
+    const QFontMetrics metrics(keyFont);
+    auto addKey = [&](CpcKey key, double x, double y, double width, double height = 1, const char* name = nullptr) {
+        const tuxape::KeyLegend legend = tuxape::keyLegend(tables, static_cast<uint8_t>(key), model);
+        QString text;
+        if (key == CpcKey::Space)
+            text.clear();  // the bar has nothing on it
+        else if (key >= CpcKey::JoyUp && key <= CpcKey::JoyRight)
+            text = QString::fromUtf8(legend.word).section(' ', 1);  // the arrow
+        else if (legend.word)
+            text = QString::fromUtf8(legend.word);
+        else if (legend.bottom)
+            text = QString::fromUcs4(&legend.top, 1) + '\n' + QString::fromUcs4(&legend.bottom, 1);
+        else
+            text = QString::fromUcs4(&legend.top, 1);
+        // Two words that do not fit on a line take two, as CAPS LOCK does.
+        if (metrics.horizontalAdvance(text) > width * kUnit - 6)
+            text.replace(' ', '\n');
+        auto* button = new QToolButton(keyboard_);
+        button->setText(QString(text).replace('&', QLatin1String("&&")));
+        int widest = 0;
+        for (const QString& line : text.split('\n'))
+            widest = std::max(widest, metrics.horizontalAdvance(line));
+        button->setFont(widest > width * kUnit - 6 ? narrow : keyFont);
+        button->setCheckable(true);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setGeometry(qRound(x * kUnit), qRound(y * kRow), qRound(width * kUnit) - 1, qRound(height * kRow) - 1);
+        button->setObjectName(name ? QString::fromLatin1(name) : QStringLiteral("k%1").arg(static_cast<int>(key)));
+        button->setProperty("cpcKey", static_cast<int>(key));
+        connect(button, &QToolButton::clicked, this, [this, key] { selectCpcKey(static_cast<int>(key)); });
+        button->show();
+        keyButtons_.append(button);
+    };
+    // A row of keys from the left, each as wide as said.
+    auto line = [&](double x, double y, std::initializer_list<std::pair<CpcKey, double>> keys) {
+        for (const auto& [key, width] : keys) {
+            addKey(key, x, y, width);
+            x += width;
+        }
+    };
+    const auto letters = [](std::initializer_list<CpcKey> keys) {
+        std::vector<std::pair<CpcKey, double>> out;
+        for (const CpcKey key : keys)
+            out.emplace_back(key, 1.0);
+        return out;
+    };
+    const auto lineOf = [&](double x, double y, const std::vector<std::pair<CpcKey, double>>& keys) {
+        for (const auto& [key, width] : keys) {
+            addKey(key, x, y, width);
+            x += width;
+        }
+        return x;
+    };
+    const auto digits = letters({CpcKey::Num1, CpcKey::Num2, CpcKey::Num3, CpcKey::Num4, CpcKey::Num5, CpcKey::Num6,
+                                 CpcKey::Num7, CpcKey::Num8, CpcKey::Num9, CpcKey::Num0, CpcKey::Minus, CpcKey::Caret});
+    const auto top = letters({CpcKey::Q, CpcKey::W, CpcKey::E, CpcKey::R, CpcKey::T, CpcKey::Y, CpcKey::U, CpcKey::I,
+                              CpcKey::O, CpcKey::P, CpcKey::At, CpcKey::LeftBracket});
+    const auto middle = letters({CpcKey::A, CpcKey::S, CpcKey::D, CpcKey::F, CpcKey::G, CpcKey::H, CpcKey::J, CpcKey::K,
+                                 CpcKey::L, CpcKey::Colon, CpcKey::Semicolon, CpcKey::RightBracket});
+    const auto bottom = letters({CpcKey::Z, CpcKey::X, CpcKey::C, CpcKey::V, CpcKey::B, CpcKey::N, CpcKey::M,
+                                 CpcKey::Comma, CpcKey::Period, CpcKey::Slash, CpcKey::Backslash});
+    double joystickX = 0, joystickY = 0;
+    int rows = 6;
+    if (model == KeyboardModel::Cpc6128) {
+        // The 6128's, and the Plus's: COPY and CONTROL at the left of the
+        // space bar, ENTER at its right, the cursor keys in the keypad.
+        addKey(CpcKey::Escape, 0, 0, 1);
+        line(lineOf(1, 0, digits), 0, {{CpcKey::Clr, 1}, {CpcKey::Del, 1}});
+        addKey(CpcKey::Tab, 0, 1, 1.5);
+        lineOf(1.5, 1, top);
+        addKey(CpcKey::Return, 13.75, 1, 1.25, 2);
+        addKey(CpcKey::CapsLock, 0, 2, 1.75);
+        lineOf(1.75, 2, middle);
+        addKey(CpcKey::Shift, 0, 3, 2.25);
+        addKey(CpcKey::Shift, lineOf(2.25, 3, bottom), 3, 1.75, 1, "j21");
+        line(0, 4, {{CpcKey::Control, 2.25}, {CpcKey::Copy, 1.75}, {CpcKey::Space, 8}, {CpcKey::Enter, 3}});
+        const CpcKey pad[5][3] = {{CpcKey::F7, CpcKey::F8, CpcKey::F9},
+                                  {CpcKey::F4, CpcKey::F5, CpcKey::F6},
+                                  {CpcKey::F1, CpcKey::F2, CpcKey::F3},
+                                  {CpcKey::F0, CpcKey::CursorUp, CpcKey::FDot},
+                                  {CpcKey::CursorLeft, CpcKey::CursorDown, CpcKey::CursorRight}};
+        for (int row = 0; row < 5; ++row)
+            for (int column = 0; column < 3; ++column)
+                addKey(pad[row][column], 15.3 + column, row, 1);
+        joystickX = 18.8;
+    } else {
+        // The 464's and the 664's: the main keys two rows down, CTRL
+        // beside the space bar, the cursor keys around COPY above the
+        // keypad, which is level with the lower four rows.
+        constexpr double y = 2;
+        addKey(CpcKey::Escape, 0, y, 1);
+        line(lineOf(1, y, digits), y, {{CpcKey::Clr, 1}, {CpcKey::Del, 1.25}});
+        addKey(CpcKey::Tab, 0, y + 1, 1.25);
+        lineOf(1.25, y + 1, top);
+        addKey(CpcKey::Return, 13.5, y + 1, 1.75, 2);
+        addKey(CpcKey::CapsLock, 0, y + 2, 1.5);
+        lineOf(1.5, y + 2, middle);
+        addKey(CpcKey::Shift, 0, y + 3, 2);
+        addKey(CpcKey::Shift, lineOf(2, y + 3, bottom), y + 3, 2.25, 1, "j21");
+        line(3.25, y + 4, {{CpcKey::Space, 8.75}, {CpcKey::Control, 1}});
+        constexpr double x = 16.25;
+        if (model == KeyboardModel::Cpc464) {
+            // Five keys in a cross.
+            addKey(CpcKey::CursorUp, x + 1, 0, 1);
+            line(x, 1, {{CpcKey::CursorLeft, 1}, {CpcKey::Copy, 1}, {CpcKey::CursorRight, 1}});
+            addKey(CpcKey::CursorDown, x + 1, 2, 1);
+        } else {
+            // One pad, as on an MSX: the arrows round its edges, COPY in
+            // its middle.
+            addKey(CpcKey::CursorUp, x, 0, 3, 0.75);
+            addKey(CpcKey::CursorLeft, x, 0.75, 0.85, 1.5);
+            addKey(CpcKey::Copy, x + 0.85, 0.75, 1.3, 1.5);
+            addKey(CpcKey::CursorRight, x + 2.15, 0.75, 0.85, 1.5);
+            addKey(CpcKey::CursorDown, x, 2.25, 3, 0.75);
+        }
+        const CpcKey pad[4][3] = {{CpcKey::F7, CpcKey::F8, CpcKey::F9},
+                                  {CpcKey::F4, CpcKey::F5, CpcKey::F6},
+                                  {CpcKey::F1, CpcKey::F2, CpcKey::F3},
+                                  {CpcKey::F0, CpcKey::FDot, CpcKey::Enter}};
+        for (int row = 0; row < 4; ++row)
+            for (int column = 0; column < 3; ++column)
+                addKey(pad[row][column], x + column, y + 1 + row, 1);
+        joystickX = 19.75;
+        joystickY = 1;
+        rows = 7;
+    }
+    // The joystick.
+    auto* joystickLabel = new QLabel(tr("Joystick"), keyboard_);
+    joystickLabel->setAlignment(Qt::AlignHCenter);
+    joystickLabel->setGeometry(qRound(joystickX * kUnit), qRound(joystickY * kRow), 3 * kUnit, kRow - 4);
+    joystickLabel->show();
+    const double jx = joystickX, jy = joystickY;
+    addKey(CpcKey::JoyUp, jx + 1, jy + 1, 1);
+    addKey(CpcKey::JoyLeft, jx, jy + 2, 1);
+    addKey(CpcKey::JoyRight, jx + 2, jy + 2, 1);
+    addKey(CpcKey::JoyDown, jx + 1, jy + 3, 1);
+    // The CPC's main fire button is the one its firmware calls "fire 2".
+    addKey(CpcKey::JoyFire2, jx - 0.2, jy + 4, 1.6);
+    addKey(CpcKey::JoyFire1, jx + 1.4, jy + 4, 1.6);
+    addKey(CpcKey::JoyFire3, jx + 0.6, jy + 5, 1.6);
+    keyboard_->setFixedSize(qRound((joystickX + 3.1) * kUnit), rows * kRow);
+    selectCpcKey(selectedKey_);
 }
 
 void SetupDialog::setKeyMap(const tuxape::KeyMap& map)
@@ -1469,6 +1771,7 @@ void SetupDialog::setSettings(const Settings& settings)
 
     disabledPlugins_ = settings.disabledPlugins;
     fillPlugins();
+    updateKeyboard();
 }
 
 // ---- Profiles ---------------------------------------------------------

@@ -140,7 +140,7 @@ char32_t cpcCharacter(uint8_t code, KeyboardLanguage language)
     return 0;
 }
 
-KeyLegend keyLegend(const KeyTables& tables, uint8_t key)
+KeyLegend keyLegend(const KeyTables& tables, uint8_t key, KeyboardModel model)
 {
     // The keys known by a word, by their place on the keyboard's lines.
     static constexpr struct {
@@ -148,18 +148,42 @@ KeyLegend keyLegend(const KeyTables& tables, uint8_t key)
         const char* word;
     } kWords[] = {
         {0, "\u2191"}, {1, "\u2192"},  {2, "\u2193"},   {3, "f9"},         {4, "f6"},      {5, "f3"},
-        {6, "ENTER"},   {7, "f."},       {8, "\u2190"},   {9, "COPY"},       {10, "f7"},     {11, "f8"},
+        {6, "ENTER"},   {7, "."},        {8, "\u2190"},   {9, "COPY"},       {10, "f7"},     {11, "f8"},
         {12, "f5"},     {13, "f1"},      {14, "f2"},       {15, "f0"},        {16, "CLR"},    {18, "RETURN"},
         {20, "f4"},     {21, "SHIFT"},   {23, "CONTROL"},  {47, "SPACE"},     {66, "ESC"},    {68, "TAB"},
         {70, "CAPS LOCK"}, {72, "JOY \u2191"}, {73, "JOY \u2193"}, {74, "JOY \u2190"}, {75, "JOY \u2192"},
-        {76, "FIRE 2"}, {77, "FIRE 1"},  {78, "FIRE 3"},   {79, "DEL"},
+        // The joystick's main button is the one the firmware calls "fire
+        // 2", and its first.
+        {76, "FIRE 1"}, {77, "FIRE 2"},  {78, "FIRE 3"},   {79, "DEL"},
     };
+    // Where the older keyboards differ: their large key is ENTER, and the
+    // 464's keypad has its figures alone.
+    static constexpr struct {
+        uint8_t key;
+        const char* word;
+    } kOlder[] = {{18, "ENTER"}, {23, "CTRL"}}, k464[] = {
+        {3, "9"}, {4, "6"}, {5, "3"}, {10, "7"}, {11, "8"}, {12, "5"}, {13, "1"}, {14, "2"}, {15, "0"}, {20, "4"},
+    };
+    // The Spanish keyboard's words, as the 6128 Plus has them.
+    static constexpr struct {
+        uint8_t key;
+        const char* word;
+    } kSpanish[] = {{6, "INTRO"}, {9, "COPIA"}, {21, "MAYS"}, {70, "FIJA MAYS"}, {79, "BORR"}};
     KeyLegend legend;
-    for (const auto& entry : kWords)
-        if (entry.key == key) {
-            legend.word = entry.word;
-            return legend;
-        }
+    const auto find = [&](const auto& words) {
+        for (const auto& entry : words)
+            if (entry.key == key)
+                legend.word = entry.word;
+    };
+    find(kWords);
+    if (model != KeyboardModel::Cpc6128)
+        find(kOlder);
+    if (model == KeyboardModel::Cpc464)
+        find(k464);
+    if (legend.word && model == KeyboardModel::Cpc6128 && keyboardLanguage(tables) == KeyboardLanguage::Spanish)
+        find(kSpanish);
+    if (legend.word)
+        return legend;
     if (key >= 80)
         return legend;
     const KeyboardLanguage language = keyboardLanguage(tables);

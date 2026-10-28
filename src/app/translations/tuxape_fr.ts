@@ -3172,10 +3172,6 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Extensions</translation>
     </message>
     <message>
-        <source>Load</source>
-        <translation>Charger</translation>
-    </message>
-    <message>
         <source>Load Keyboard Layout</source>
         <translation>Charger une disposition de clavier</translation>
     </message>
@@ -3604,28 +3600,36 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Volume</translation>
     </message>
     <message>
-        <source>RETURN</source>
-        <translation>RETURN</translation>
-    </message>
-    <message>
-        <source>SHIFT</source>
-        <translation>SHIFT</translation>
-    </message>
-    <message>
         <source>Joystick</source>
         <translation>Joystick</translation>
     </message>
     <message>
-        <source>FIRE 1</source>
-        <translation>FIRE 1</translation>
+        <source>Load Layout...</source>
+        <translation>Charger une disposition...</translation>
     </message>
     <message>
-        <source>FIRE 2</source>
-        <translation>FIRE 2</translation>
+        <source>Which keys of this computer press which keys of the CPC: a layout saved before, or one of WinAPE&apos;s (.kbd)</source>
+        <translation>Quelles touches de cet ordinateur appuient sur quelles touches du CPC : une disposition enregistrée avant, ou une de WinAPE (.kbd)</translation>
     </message>
     <message>
-        <source>FIRE 3</source>
-        <translation>FIRE 3</translation>
+        <source>Save Layout...</source>
+        <translation>Enregistrer la disposition...</translation>
+    </message>
+    <message>
+        <source>Keeps which keys of this computer press which keys of the CPC, in a file (.kbd)</source>
+        <translation>Garde dans un fichier (.kbd) quelles touches de cet ordinateur appuient sur quelles touches du CPC</translation>
+    </message>
+    <message>
+        <source>A CPC&apos;s keyboard is in the language of its firmware: choosing a language here puts its firmware on the Memory page. Those of the ROM folders are offered.</source>
+        <translation>Le clavier d&apos;un CPC est dans la langue de son firmware : choisir une langue ici met son firmware dans l&apos;onglet Mémoire. Celles des dossiers de ROM sont proposées.</translation>
+    </message>
+    <message>
+        <source>&amp;Language:</source>
+        <translation>&amp;Langue :</translation>
+    </message>
+    <message>
+        <source>Click a key of the CPC to see, and change, the keys of this computer that press it.</source>
+        <translation>Cliquez sur une touche du CPC pour voir, et changer, les touches de cet ordinateur qui l&apos;appuient.</translation>
     </message>
     <message>
         <source>With Num Lock Off</source>
@@ -3654,6 +3658,50 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
     <message>
         <source>This computer&apos;s mouse, over the picture, is an AMX mouse on the CPC&apos;s joystick port</source>
         <translation>La souris de cet ordinateur, sur l&apos;image, est une souris AMX sur le port joystick du CPC</translation>
+    </message>
+    <message>
+        <source>English (QWERTY)</source>
+        <translation>Anglais (QWERTY)</translation>
+    </message>
+    <message>
+        <source>French (AZERTY)</source>
+        <translation>Français (AZERTY)</translation>
+    </message>
+    <message>
+        <source>Spanish (QWERTY with Ñ)</source>
+        <translation>Espagnol (QWERTY avec Ñ)</translation>
+    </message>
+    <message>
+        <source>Danish (QWERTY with Æ Ø Å)</source>
+        <translation>Danois (QWERTY avec Æ Ø Å)</translation>
+    </message>
+    <message>
+        <source>German (QWERTZ)</source>
+        <translation>Allemand (QWERTZ)</translation>
+    </message>
+    <message>
+        <source>Keyboard of the CPC 464</source>
+        <translation>Clavier du CPC 464</translation>
+    </message>
+    <message>
+        <source>Keyboard of the CPC 664</source>
+        <translation>Clavier du CPC 664</translation>
+    </message>
+    <message>
+        <source>Keyboard of the CPC 6128</source>
+        <translation>Clavier du CPC 6128</translation>
+    </message>
+    <message>
+        <source>Keyboard of the Plus (the 6128&apos;s)</source>
+        <translation>Clavier des Plus (celui du 6128)</translation>
+    </message>
+    <message>
+        <source>Firmware: %1</source>
+        <translation>Firmware : %1</translation>
+    </message>
+    <message>
+        <source>Firmware not found: the keys as on an English CPC</source>
+        <translation>Firmware introuvable : les touches comme sur un CPC anglais</translation>
     </message>
     <message>
         <source>Key #%1</source>

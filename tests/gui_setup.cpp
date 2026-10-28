@@ -356,6 +356,124 @@ void testMemoryPage(const QString& picture)
     }
 }
 
+// The Input page's keyboard is the machine's: the 464's and the 664's with
+// the cursor keys around COPY above the keypad and ENTER on the large key,
+// the 6128's and the Plus's with COPY beside CONTROL; in the language of
+// the firmware, which can be chosen there among those of the ROM folders.
+void testKeyboards(const QString& prefix)
+{
+    using tuxape::CpcModel;
+    const struct {
+        CpcModel model;
+        const char* title;
+        const char* large;
+        const char* control;
+        const char* f7;
+        const char* picture;
+    } kModels[] = {
+        {CpcModel::Cpc464, "CPC 464", "ENTER", "CTRL", "7", "input_464.png"},
+        {CpcModel::Cpc664, "CPC 664", "ENTER", "CTRL", "f7", "input_664.png"},
+        {CpcModel::Cpc6128, "CPC 6128", "RETURN", "CONTROL", "f7", nullptr},
+        {CpcModel::Plus6128, "Plus", "RETURN", "CONTROL", "f7", "input_plus.png"},
+    };
+    for (const auto& test : kModels) {
+        Settings settings;
+        settings.machine = tuxape::stockMachine(test.model);
+        SetupDialog dialog(settings);
+        dialog.showPage(SetupDialog::Input);
+        dialog.show();
+        QApplication::processEvents();
+        auto* title = dialog.findChild<QLabel*>("lKeyboardModel");
+        auto* keyboard = dialog.findChild<QWidget*>("pKeyboard");
+        const auto key = [&](tuxape::CpcKey k) {
+            return keyboard->findChild<QAbstractButton*>(QStringLiteral("k%1").arg(static_cast<int>(k)));
+        };
+        CHECK(title && title->text().contains(test.title));
+        CHECK_EQ(keyboard->findChildren<QAbstractButton*>().size(), 81);
+        QAbstractButton* copy = key(tuxape::CpcKey::Copy);
+        QAbstractButton* f7 = key(tuxape::CpcKey::F7);
+        QAbstractButton* control = key(tuxape::CpcKey::Control);
+        CHECK(copy && f7 && control && key(tuxape::CpcKey::Return));
+        if (!copy || !f7 || !control || !key(tuxape::CpcKey::Return))
+            continue;
+        CHECK(key(tuxape::CpcKey::Return)->text() == test.large);
+        CHECK(control->text() == test.control);
+        CHECK(f7->text() == test.f7);
+        const bool older = test.model == CpcModel::Cpc464 || test.model == CpcModel::Cpc664;
+        // COPY above the keypad, or at the left of the space bar.
+        CHECK(older ? copy->geometry().bottom() < f7->geometry().top() && copy->x() > control->x()
+                    : copy->y() > f7->y() && copy->x() > control->x() && copy->x() < key(tuxape::CpcKey::Space)->x());
+        if (!prefix.isEmpty() && test.picture)
+            CHECK(dialog.grab().save(prefix + test.picture));
+    }
+
+    // Another language: its firmware on the Memory page, with its BASIC when
+    // the file has it; and back.
+    Settings settings;
+    settings.machine = tuxape::stockMachine(CpcModel::Cpc6128);
+    SetupDialog dialog(settings);
+    dialog.showPage(SetupDialog::Input);
+    dialog.show();
+    auto* language = dialog.findChild<QComboBox*>("cbKeyboardLanguage");
+    CHECK(language && language->currentText().startsWith("English"));
+    if (!language)
+        return;
+    QStringList offered;
+    for (int i = 0; i < language->count(); ++i)
+        offered << language->itemText(i) + " = " + language->itemData(i).toString();
+    std::printf("languages for the 6128: %s\n", qPrintable(offered.join(", ")));
+    const int french = language->findText("French (AZERTY)");
+    if (french < 0) {
+        std::printf("no French firmware for the 6128 in the ROM folders: not tried\n");
+        return;
+    }
+    const QString name = language->itemData(french).toString();
+    language->setCurrentIndex(french);
+    emit language->activated(french);
+    CHECK(dialog.rom(0) == name);
+    CHECK(dialog.rom(1) == name);  // a file of 32K: the French BASIC after the firmware
+    auto* keyboard = dialog.findChild<QWidget*>("pKeyboard");
+    const auto text = [&](tuxape::CpcKey k) {
+        auto* button = keyboard->findChild<QAbstractButton*>(QStringLiteral("k%1").arg(static_cast<int>(k)));
+        return button ? button->text() : QString();
+    };
+    CHECK(text(tuxape::CpcKey::Q) == "A" && text(tuxape::CpcKey::Num2) == QString::fromUtf8("2\né"));
+    CHECK(dialog.settings().machine.lowerRom == name.toStdString());
+    QApplication::processEvents();
+    if (!prefix.isEmpty())
+        CHECK(dialog.grab().save(prefix + "input_fr.png"));
+    const int english = language->findText("English (QWERTY)");
+    language->setCurrentIndex(english);
+    emit language->activated(english);
+    CHECK(dialog.rom(0) == "OS6128" && dialog.rom(1) == "BASIC1-1");
+    CHECK(text(tuxape::CpcKey::Q) == "Q");
+
+    // A Plus: its cartridge is its firmware; the Spanish one has Spanish
+    // words on its keys.
+    Settings plus;
+    plus.machine = tuxape::stockMachine(CpcModel::Plus6128);
+    SetupDialog plusDialog(plus);
+    plusDialog.showPage(SetupDialog::Input);
+    auto* plusLanguage = plusDialog.findChild<QComboBox*>("cbKeyboardLanguage");
+    const int spanish = plusLanguage ? plusLanguage->findText("Spanish (QWERTY with Ñ)") : -1;
+    if (spanish < 0) {
+        std::printf("no Spanish cartridge in the ROM folders: not tried\n");
+        return;
+    }
+    plusLanguage->setCurrentIndex(spanish);
+    emit plusLanguage->activated(spanish);
+    CHECK(plusDialog.settings().machine.cartridge == plusLanguage->itemData(spanish).toString().toStdString());
+    CHECK(plusDialog.settings().machine.lowerRom == plus.machine.lowerRom);
+    auto* copy = plusDialog.findChild<QWidget*>("pKeyboard")->findChild<QAbstractButton*>(
+        QStringLiteral("k%1").arg(static_cast<int>(tuxape::CpcKey::Copy)));
+    CHECK(copy && copy->text() == "COPIA");
+    if (!prefix.isEmpty()) {
+        plusDialog.show();
+        QApplication::processEvents();
+        CHECK(plusDialog.grab().save(prefix + "input_plus_es.png"));
+    }
+}
+
 // Profiles: TuxAPE's own (.tpf), WinAPE's read as they stand (.wpf), and
 // ones saved from here.
 void testProfiles(const QString& folder, const QString& picture)
@@ -1674,6 +1792,7 @@ int main(int argc, char* argv[])
     testExpansionsPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "expansions.png");
     testCardProfiles(folder.path());
     testInputPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "input.png");
+    testKeyboards(prefix);
     testProfiles(folder.path(), prefix.isEmpty() ? QString() : prefix + "profile.png");
 
     Emulator emulator;

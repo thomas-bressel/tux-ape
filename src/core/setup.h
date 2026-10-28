@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/keytables.h"
 #include "core/memory.h"
 #include "core/xmem.h"
 
@@ -74,6 +75,8 @@ struct MachineConfig {
 MachineConfig stockMachine(CpcModel model);
 // The model a configuration comes closest to, going by its firmware ROM.
 CpcModel modelOf(const MachineConfig& config);
+// The keyboard a model has: the Plus machines have the 6128's.
+KeyboardModel keyboardModel(CpcModel model);
 
 // Folder holding the ROM images: $TUXAPE_ROM_DIR if set, otherwise the
 // "roms" folder next to the sources, the machines' own in roms/system/.

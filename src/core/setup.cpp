@@ -117,6 +117,18 @@ CpcModel modelOf(const MachineConfig& config)
     return CpcModel::Cpc6128;
 }
 
+KeyboardModel keyboardModel(CpcModel model)
+{
+    switch (model) {
+    case CpcModel::Cpc464: return KeyboardModel::Cpc464;
+    case CpcModel::Cpc664: return KeyboardModel::Cpc664;
+    case CpcModel::Cpc6128:
+    case CpcModel::Plus464:
+    case CpcModel::Plus6128: break;
+    }
+    return KeyboardModel::Cpc6128;
+}
+
 std::vector<std::string> romNames(const std::filesystem::path& romDir)
 {
     std::vector<std::string> names;

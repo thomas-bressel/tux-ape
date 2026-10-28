@@ -1,6 +1,8 @@
 #pragma once
 
 #include <map>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include <QByteArray>
@@ -228,6 +230,18 @@ private:
     QString keyboardFile_;
     int selectedKey_ = -1;
     QList<QAbstractButton*> keyButtons_;
+    // The Input page's keyboard: the machine's model's, in its firmware's
+    // language, which can be chosen there.
+    QWidget* keyboard_ = nullptr;
+    QLabel* keyboardModel_ = nullptr;
+    QComboBox* keyboardLanguage_ = nullptr;
+    QLabel* keyboardFirmware_ = nullptr;
+    tuxape::MachineConfig keyboardMachine() const;
+    void updateKeyboard();
+    void chooseKeyboardLanguage(int index);
+    void drawKeyboard(tuxape::KeyboardModel model, const tuxape::KeyTables& tables);
+    std::optional<std::pair<tuxape::KeyboardModel, tuxape::KeyTables>> keyboardDrawn_;
+    static QString languageName(tuxape::KeyboardLanguage language);
     QComboBox* keyCombos_[2][3] = {};  // Num Lock off then on; first, second, third key
     QCheckBox* joystick_ = nullptr;
     QPushButton* loadKeys_ = nullptr;
