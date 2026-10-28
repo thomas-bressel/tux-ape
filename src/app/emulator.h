@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <bitset>
 #include <chrono>
 #include <map>
 #include <memory>
@@ -207,6 +208,18 @@ public:
     // for tests.
     void applyJoystick(unsigned bits);
 
+    // The CPC keys the host is holding down (the PC's keys and the
+    // joystick; not Auto Type's, nor a session's), and those it has
+    // pressed since this was last asked, let go since or not: for the keys
+    // shown on the screen. Bit n is key n. Does not wait for the machine.
+    struct HostKeys {
+        std::bitset<tuxape::kCpcKeyCount> down, pressed;
+    };
+    HostKeys takeHostKeys();
+    // What the keys of the machine's keyboard have on them: its firmware's
+    // key tables, or the English ones where none are found.
+    tuxape::KeyTables keyTables();
+
     // Types text on the CPC keyboard (WinAPE Auto-Type syntax).
     void autoType(const QString& text);
     // Whether Auto Type is still typing; and stopping it. It stops by
@@ -396,6 +409,11 @@ private:
     int keyHolds_[tuxape::kCpcKeyCount] = {};
     // PC keys that are down, with the Num Lock state they went down in.
     bool pcDown_[2][256] = {};
+    // keyHolds_ as bits, and the keys pressed since takeHostKeys: 64 keys
+    // to a word.
+    std::atomic<uint64_t> hostDown_[2], hostPressed_[2];
+    void holdKey(tuxape::CpcKey key, bool down);
+    void forgetHeldKeys();
     HostJoystick joystick_;
     std::atomic<bool> joystickEnabled_{false};
     unsigned joystickBits_ = 0;  // what the host's joystick holds down

@@ -1,6 +1,7 @@
 #include "core/keytables.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace tuxape {
 
@@ -50,9 +51,13 @@ struct Substitute {
 // What each language draws in place of ASCII, or beyond it, as its
 // firmware's font has it (French, Spanish and Danish read from their ROMs;
 // German as the Schneider CPC's DIN set has it).
+// The English, Spanish and Danish fonts draw "^" as an arrow, as their keys
+// have it.
+constexpr Substitute kBritish[] = {{U'↑', 0x5E}};
 constexpr Substitute kFrench[] = {{U'à', 0x40}, {U'ç', 0x5C}, {U'é', 0x7B}, {U'ù', 0x7C}, {U'è', 0x7D}, {U'°', 0xA2}};
-constexpr Substitute kSpanish[] = {{U'ñ', 0xAB}, {U'Ñ', 0xA1}, {U'₧', 0xA3}};
-constexpr Substitute kDanish[] = {{U'Æ', 0x5B}, {U'Ø', 0x5C}, {U'Å', 0x5D}, {U'æ', 0x7B}, {U'ø', 0x7C}, {U'å', 0x7D}};
+constexpr Substitute kSpanish[] = {{U'ñ', 0xAB}, {U'Ñ', 0xA1}, {U'₧', 0xA3}, {U'↑', 0x5E}};
+constexpr Substitute kDanish[] = {{U'Æ', 0x5B}, {U'Ø', 0x5C}, {U'Å', 0x5D}, {U'æ', 0x7B},
+                                  {U'ø', 0x7C}, {U'å', 0x7D}, {U'↑', 0x5E}};
 constexpr Substitute kGerman[] = {{U'§', 0x40}, {U'Ä', 0x5B}, {U'Ö', 0x5C}, {U'Ü', 0x5D},
                                   {U'ä', 0x7B}, {U'ö', 0x7C}, {U'ü', 0x7D}, {U'ß', 0x7E}};
 // What every CPC has beyond ASCII.
@@ -65,7 +70,7 @@ std::span<const Substitute> substitutes(KeyboardLanguage language)
     case KeyboardLanguage::Spanish: return kSpanish;
     case KeyboardLanguage::Danish: return kDanish;
     case KeyboardLanguage::German: return kGerman;
-    case KeyboardLanguage::English: break;
+    case KeyboardLanguage::English: return kBritish;
     }
     return {};
 }
@@ -119,6 +124,69 @@ int cpcCharCode(char32_t c, KeyboardLanguage language)
         if (entry.c == c && std::none_of(own.begin(), own.end(), [&](const Substitute& s) { return s.code == entry.code; }))
             return entry.code;
     return -1;
+}
+
+char32_t cpcCharacter(uint8_t code, KeyboardLanguage language)
+{
+    const std::span<const Substitute> own = substitutes(language);
+    for (const Substitute& entry : own)
+        if (entry.code == code)
+            return entry.c;
+    if (code >= 0x20 && code < 0x7F)
+        return code;
+    for (const Substitute& entry : kCommon)
+        if (entry.code == code)
+            return entry.c;
+    return 0;
+}
+
+KeyLegend keyLegend(const KeyTables& tables, uint8_t key)
+{
+    // The keys known by a word, by their place on the keyboard's lines.
+    static constexpr struct {
+        uint8_t key;
+        const char* word;
+    } kWords[] = {
+        {0, "\u2191"}, {1, "\u2192"},  {2, "\u2193"},   {3, "f9"},         {4, "f6"},      {5, "f3"},
+        {6, "ENTER"},   {7, "f."},       {8, "\u2190"},   {9, "COPY"},       {10, "f7"},     {11, "f8"},
+        {12, "f5"},     {13, "f1"},      {14, "f2"},       {15, "f0"},        {16, "CLR"},    {18, "RETURN"},
+        {20, "f4"},     {21, "SHIFT"},   {23, "CONTROL"},  {47, "SPACE"},     {66, "ESC"},    {68, "TAB"},
+        {70, "CAPS LOCK"}, {72, "JOY \u2191"}, {73, "JOY \u2193"}, {74, "JOY \u2190"}, {75, "JOY \u2192"},
+        {76, "FIRE 2"}, {77, "FIRE 1"},  {78, "FIRE 3"},   {79, "DEL"},
+    };
+    KeyLegend legend;
+    for (const auto& entry : kWords)
+        if (entry.key == key) {
+            legend.word = entry.word;
+            return legend;
+        }
+    if (key >= 80)
+        return legend;
+    const KeyboardLanguage language = keyboardLanguage(tables);
+    const char32_t alone = cpcCharacter(tables.normal[key], language);
+    const char32_t shifted = cpcCharacter(tables.shift[key], language);
+    // A letter shows its capital alone: the one SHIFT gives, when that is
+    // another letter than the one the key gives.
+    const auto upper = [](char32_t c) -> char32_t {
+        if (c >= U'a' && c <= U'z')
+            return c - 32;
+        static constexpr std::pair<char32_t, char32_t> kOthers[] = {{U'ñ', U'Ñ'}, {U'æ', U'Æ'}, {U'ø', U'Ø'},
+                                                                    {U'å', U'Å'}, {U'ä', U'Ä'}, {U'ö', U'Ö'},
+                                                                    {U'ü', U'Ü'}};
+        for (const auto& [small, capital] : kOthers)
+            if (c == small)
+                return capital;
+        return 0;
+    };
+    if (alone && upper(alone) && upper(alone) == shifted) {
+        legend.top = shifted;
+    } else if (shifted && alone && shifted != alone) {
+        legend.top = shifted;
+        legend.bottom = alone;
+    } else {
+        legend.top = shifted ? shifted : alone;
+    }
+    return legend;
 }
 
 bool keyForCode(const KeyTables& tables, uint8_t code, KeyStroke& stroke)

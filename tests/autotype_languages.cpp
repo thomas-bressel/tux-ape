@@ -8,6 +8,7 @@
 // whose image is not there is left out, and the test is skipped (77) when
 // none is.
 
+#include <cctype>
 #include <filesystem>
 #include <string>
 
@@ -23,7 +24,7 @@ namespace {
 using namespace tuxape;
 
 struct Case {
-    const char* file;
+    const char* file;    // its names, as they may be spelt, between '|'; any case
     KeyboardLanguage language;
     const char* typed;   // UTF-8
     const char* shown;   // what the screen then has, spaces and line breaks aside; lines between '|'
@@ -32,20 +33,67 @@ struct Case {
 // The letters that move between AZERTY, QWERTY and QWERTZ, the digits, and
 // each language's own characters.
 const Case kCases[] = {
-    {"OS6128_UK.rom", KeyboardLanguage::English,
+    {"os6128_uk.rom", KeyboardLanguage::English,
      "PRINT ASC(\"a\");ASC(\"q\");ASC(\"z\");ASC(\"w\");ASC(\"m\");ASC(\"y\");ASC(\";\");ASC(\":\");ASC(\"£\")\n",
      "97 113 122 119 109 121 59 58 163"},
-    {"OS6128_FR.rom", KeyboardLanguage::French,
+    {"os6128_fr.rom", KeyboardLanguage::French,
      "PRINT ASC(\"a\");ASC(\"q\");ASC(\"z\");ASC(\"w\");ASC(\"m\");ASC(\"y\");ASC(\";\");ASC(\":\");12+3\n"
      "PRINT ASC(\"é\");ASC(\"à\");ASC(\"ç\");ASC(\"ù\");ASC(\"è\")\n",
      "97 113 122 119 109 121 59 58 15|123 64 92 124 125"},
-    {"OS6128_S.rom", KeyboardLanguage::Spanish,
+    {"os6128_es.rom|os6128_s.rom", KeyboardLanguage::Spanish,
      "PRINT ASC(\"a\");ASC(\"q\");ASC(\"z\");ASC(\":\");ASC(\"ñ\");ASC(\"Ñ\")\n",
      "97 113 122 58 171 161"},
-    {"OS6128_DK.rom", KeyboardLanguage::Danish,
+    {"os6128_dk.rom", KeyboardLanguage::Danish,
      "PRINT ASC(\"a\");ASC(\"q\");ASC(\"æ\");ASC(\"ø\");ASC(\"å\");ASC(\"Æ\");ASC(\"Ø\");ASC(\"Å\")\n",
      "97 113 123 124 125 91 92 93"},
 };
+
+// The file of the folder that has one of those names, whatever its case.
+std::filesystem::path findFile(const std::filesystem::path& folder, const std::string& names)
+{
+    std::error_code ignored;
+    for (const auto& entry : std::filesystem::directory_iterator(folder, ignored)) {
+        std::string name = entry.path().filename().string();
+        for (char& c : name)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (("|" + names + "|").find("|" + name + "|") != std::string::npos)
+            return entry.path();
+    }
+    return {};
+}
+
+// What the keys have printed on them: the words, and characters read from
+// the tables in each language's own font.
+void checkLegends(const KeyTables& tables, KeyboardLanguage language)
+{
+    const auto key = [&](CpcKey k) { return keyLegend(tables, static_cast<uint8_t>(k)); };
+    const auto word = [&](CpcKey k) { return std::string(key(k).word ? key(k).word : ""); };
+    CHECK(word(CpcKey::Escape) == std::string("ESC"));
+    CHECK(word(CpcKey::Control) == std::string("CONTROL"));
+    CHECK(word(CpcKey::CursorLeft) == std::string("\u2190"));
+    CHECK(word(CpcKey::F7) == std::string("f7"));
+    // A letter: its capital alone.
+    CHECK(!key(CpcKey::K).word && key(CpcKey::K).top == U'K' && !key(CpcKey::K).bottom);
+    switch (language) {
+    case KeyboardLanguage::English:
+        CHECK(key(CpcKey::Num2).top == U'"' && key(CpcKey::Num2).bottom == U'2');
+        CHECK(key(CpcKey::Caret).top == U'£' && key(CpcKey::Caret).bottom == U'↑');
+        CHECK(key(CpcKey::Q).top == U'Q');
+        break;
+    case KeyboardLanguage::French:
+        CHECK(key(CpcKey::Num2).top == U'2' && key(CpcKey::Num2).bottom == U'é');
+        CHECK(key(CpcKey::Q).top == U'A');
+        CHECK(key(CpcKey::Semicolon).top == U'%' && key(CpcKey::Semicolon).bottom == U'ù');
+        break;
+    case KeyboardLanguage::Spanish:
+        CHECK(key(CpcKey::Colon).top == U'Ñ' && !key(CpcKey::Colon).bottom);
+        break;
+    case KeyboardLanguage::Danish:
+        CHECK(key(CpcKey::Colon).top == U'Æ' && !key(CpcKey::Colon).bottom);
+        break;
+    case KeyboardLanguage::German: break;
+    }
+}
 
 std::string typeOn(const std::filesystem::path& firmware, const char* text, KeyboardLanguage* language, bool* inRam)
 {
@@ -74,6 +122,8 @@ std::string typeOn(const std::filesystem::path& firmware, const char* text, Keyb
     if (tables)
         autoType.setKeyTables(*tables);
     *language = autoType.language();
+    if (tables)
+        checkLegends(*tables, *language);
     autoType.type("CLS\n");
     autoType.type(text);
     while (autoType.active()) {
@@ -95,6 +145,11 @@ void testGermanTables()
     std::swap(german.shift[43], german.shift[71]);
     CHECK(keyboardLanguage(german) == KeyboardLanguage::German);
     CHECK(keyboardLanguage(englishKeyTables()) == KeyboardLanguage::English);
+    checkLegends(englishKeyTables(), KeyboardLanguage::English);
+    CHECK(keyLegend(german, static_cast<uint8_t>(CpcKey::Y)).top == U'Z');
+    CHECK(cpcCharacter(0x7B, KeyboardLanguage::German) == U'ä');
+    CHECK(cpcCharacter(0x7B, KeyboardLanguage::English) == U'{');
+    CHECK(cpcCharacter(0x00, KeyboardLanguage::English) == 0);
     KeyStroke stroke;
     CHECK(keyForCode(german, 'z', stroke) && stroke.key == static_cast<uint8_t>(CpcKey::Y) && !stroke.shift);
     CHECK(keyForCode(german, 'Y', stroke) && stroke.key == static_cast<uint8_t>(CpcKey::Z) && stroke.shift);
@@ -126,14 +181,14 @@ int main()
     const std::filesystem::path folder = userRomDir() / "firmware";
     int booted = 0;
     for (const Case& test : kCases) {
-        const std::filesystem::path file = folder / test.file;
-        if (!std::filesystem::exists(file))
+        const std::filesystem::path file = findFile(folder, test.file);
+        if (file.empty())
             continue;
         ++booted;
         KeyboardLanguage language = KeyboardLanguage::English;
         bool inRam = false;
         const std::string screen = typeOn(file, test.typed, &language, &inRam);
-        std::printf("%s: tables in RAM too: %s\n", test.file, inRam ? "yes" : "no");
+        std::printf("%s: tables in RAM too: %s\n", file.filename().string().c_str(), inRam ? "yes" : "no");
         CHECK(language == test.language);
         // The screen's lines are 40 characters: what is looked for may run
         // over two. Spaces and line breaks are left aside on both sides.
@@ -155,7 +210,7 @@ int main()
         }
         CHECK(shown);
         if (!shown)
-            std::printf("%s, screen was:\n%s\n", test.file, screen.c_str());
+            std::printf("%s, screen was:\n%s\n", file.filename().string().c_str(), screen.c_str());
     }
     if (booted == 0) {
         std::printf("no firmware of roms/firmware: skipped\n");

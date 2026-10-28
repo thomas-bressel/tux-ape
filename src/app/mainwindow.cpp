@@ -1349,6 +1349,7 @@ void MainWindow::applySettings(const Settings& settings)
     emulator_->setDisplayEvery(settings.displayEvery ? settings.displayEveryFrames : 0);
     emulator_->setMonitor(settings.monitorType, settings.linearPalette, settings.brightness);
     screen_->setDriveLight(settings.driveLed, settings.showDriveCylinders);
+    screen_->setKeysShown(settings.keysOnScreen, settings.keysCorner, settings.keysLarge);
     screen_->setPalEmulation(settings.palEmulation);
     screen_->setCrtShader(settings.crtShader, settings.monitorType == 0, settings.crtLook);
     // Without the shader, the whole raster if it is wanted.

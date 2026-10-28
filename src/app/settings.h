@@ -44,6 +44,9 @@ struct Settings {
     bool screenshotOnFlyback = true;  // a screenshot is of a whole frame, not of the one being drawn
     bool driveLed = false;            // a light on the picture while a drive is at work
     bool showDriveCylinders = false;  // with the cylinder its head is on
+    bool keysOnScreen = false;        // the CPC keys being pressed, on the picture: for a stream
+    int keysCorner = 3;               // which corner: 0 top left, 1 top right, 2 bottom left, 3 bottom right
+    bool keysLarge = false;           // the larger of the two sizes
     // What the window shows around the picture, and how the picture is
     // drawn: one set of choices for the window, one for full screen.
     struct WindowOptions {

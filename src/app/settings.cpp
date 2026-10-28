@@ -165,6 +165,9 @@ void Settings::read(const tuxape::IniFile& ini)
     welcomePicture = ini.getBool(kConfiguration, "Welcome Picture", welcomePicture);
     driveLed = ini.getBool(kConfiguration, "On Screen Drive LED", driveLed);
     showDriveCylinders = ini.getBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
+    keysOnScreen = ini.getBool(kConfiguration, "Keys On Screen", keysOnScreen);
+    keysCorner = std::clamp(ini.getInt(kConfiguration, "Keys Corner", keysCorner), 0, 3);
+    keysLarge = ini.getBool(kConfiguration, "Keys Large", keysLarge);
     readWindowOptions(ini, "", windowed);
     readWindowOptions(ini, " FS", fullScreen);
 
@@ -323,6 +326,9 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setBool(kConfiguration, "Welcome Picture", welcomePicture);
         ini.setBool(kConfiguration, "On Screen Drive LED", driveLed);
         ini.setBool(kConfiguration, "Show Drive Cylinders", showDriveCylinders);
+        ini.setBool(kConfiguration, "Keys On Screen", keysOnScreen);
+        ini.setInt(kConfiguration, "Keys Corner", keysCorner);
+        ini.setBool(kConfiguration, "Keys Large", keysLarge);
     }
     if (parts & WindowedPart)
         writeWindowOptions(ini, "", windowed);

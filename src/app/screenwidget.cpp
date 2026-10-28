@@ -169,6 +169,7 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
             paintDriveLight(painter, driveLightRect().translated(-crt_->pos()));
             paintInterruptMarks(painter, crt_->rect());
             paintNote(painter, crt_->rect());
+            paintKeys(painter, crt_->rect());
             paintBeamMarker(painter, crt_->rect());
         };
         // A graphics card that will not have the shaders: plain drawing.
@@ -270,14 +271,192 @@ void ScreenWidget::paintNote(QPainter& painter, const QRect& picture) const
     font.setBold(true);
     font.setPixelSize(std::max(12, picture.height() / 28));
     painter.setFont(font);
-    const QFontMetrics metrics(font);
-    const int margin = metrics.height() / 2;
-    const QRect box(picture.left() + margin, picture.top() + margin, metrics.horizontalAdvance(note_) + 2 * margin,
-                    metrics.height() + margin);
+    const QRect box = noteRect(picture);
     const QColor back(0, 0, 0, 200);
     painter.fillRect(box, back);
     painter.setPen(inkOn(Qt::black));
     painter.drawText(box, Qt::AlignCenter, note_);
+}
+
+// Where the note is drawn; empty when there is none.
+QRect ScreenWidget::noteRect(const QRect& picture) const
+{
+    if (note_.isEmpty())
+        return {};
+    QFont font = this->font();
+    font.setBold(true);
+    font.setPixelSize(std::max(12, picture.height() / 28));
+    const QFontMetrics metrics(font);
+    const int margin = metrics.height() / 2;
+    return QRect(picture.left() + margin, picture.top() + margin, metrics.horizontalAdvance(note_) + 2 * margin,
+                 metrics.height() + margin);
+}
+
+void ScreenWidget::setKeysShown(bool shown, int corner, bool large)
+{
+    keysCorner_ = std::clamp(corner, 0, 3);
+    keysLarge_ = large;
+    if (shown && !keysTimer_) {
+        emulator_->takeHostKeys();  // what was pressed before is not shown
+        keysTimer_ = new QTimer(this);
+        connect(keysTimer_, &QTimer::timeout, this, &ScreenWidget::watchKeys);
+        keysTimer_->start(50);
+    } else if (!shown && keysTimer_) {
+        delete keysTimer_;
+        keysTimer_ = nullptr;
+        keys_.clear();
+    }
+    repaintOverlay();
+}
+
+QStringList ScreenWidget::keysOnScreen() const
+{
+    QStringList keys;
+    for (const ShownKey& key : keys_)
+        keys << (!key.word.isEmpty() ? key.word : key.bottom.isEmpty() ? key.top : key.top + '\n' + key.bottom);
+    return keys;
+}
+
+// Twenty times a second while the keys are shown: those pressed since are
+// added, and all go a while after the last one held is let go.
+void ScreenWidget::watchKeys()
+{
+    const Emulator::HostKeys keys = emulator_->takeHostKeys();
+    bool changed = false;
+    // What is printed on them is read once for each burst of keys: the
+    // machine may have been changed in between.
+    if (keys.pressed.any() && keys_.isEmpty())
+        keyTables_ = emulator_->keyTables();
+    const auto add = [&](int key) {
+        if (!keys.pressed[static_cast<size_t>(key)]
+            || std::any_of(keys_.begin(), keys_.end(), [key](const ShownKey& shown) { return shown.key == key; }))
+            return;
+        if (keys_.size() == kMostKeys)
+            keys_.removeFirst();
+        const tuxape::KeyLegend legend = tuxape::keyLegend(keyTables_, static_cast<uint8_t>(key));
+        ShownKey shown{key, keys.down[static_cast<size_t>(key)], QString::fromUtf8(legend.word), {}, {}};
+        if (legend.top)
+            shown.top = QString::fromUcs4(&legend.top, 1);
+        if (legend.bottom)
+            shown.bottom = QString::fromUcs4(&legend.bottom, 1);
+        keys_.append(shown);
+        changed = true;
+    };
+    // SHIFT and CONTROL first of the keys pressed together, as they go in
+    // a combination.
+    add(static_cast<int>(tuxape::CpcKey::Shift));
+    add(static_cast<int>(tuxape::CpcKey::Control));
+    for (int key = 0; key < tuxape::kCpcKeyCount; ++key)
+        add(key);
+    for (ShownKey& shown : keys_) {
+        const bool down = keys.down[static_cast<size_t>(shown.key)];
+        changed = changed || down != shown.down;
+        shown.down = down;
+    }
+    // A key that came and went since the last look is the keyboard at
+    // work as much as one held.
+    if (keys.down.any()) {
+        keysLetGo_.invalidate();
+    } else if (keys.pressed.any() || (!keys_.isEmpty() && !keysLetGo_.isValid())) {
+        keysLetGo_.start();
+    } else if (!keys_.isEmpty() && keysLetGo_.elapsed() >= kKeysStay) {
+        keys_.clear();
+        keysLetGo_.invalidate();
+        changed = true;
+    }
+    if (changed)
+        repaintOverlay();
+}
+
+void ScreenWidget::repaintOverlay()
+{
+    update();
+    if (crt_)
+        crt_->update();
+}
+
+// The keys as keycaps in a row, from the corner chosen: white on a dark
+// cap that lets a little of the picture through, the keys still held with
+// a thicker, white edge.
+void ScreenWidget::paintKeys(QPainter& painter, const QRect& picture) const
+{
+    if (keys_.isEmpty())
+        return;
+    const int high = std::max(16, static_cast<int>(std::lround(picture.height() * (keysLarge_ ? 0.075 : 0.05))));
+    const int gap = std::max(2, high / 6), margin = std::max(4, high / 3);
+    // A letter, two characters one above the other, a word.
+    QFont letterFont = painter.font();
+    letterFont.setBold(true);
+    letterFont.setPixelSize(std::max(8, high / 2));
+    QFont pairFont = letterFont;
+    pairFont.setPixelSize(std::max(7, high * 2 / 5));
+    QFont wordFont = letterFont;
+    wordFont.setPixelSize(std::max(7, high * 9 / 25));
+    const QFontMetrics pair(pairFont), words(wordFont);
+    QList<int> widths;
+    for (const ShownKey& key : keys_) {
+        const int text = !key.word.isEmpty() ? words.horizontalAdvance(key.word)
+                                             : std::max(pair.horizontalAdvance(key.top), pair.horizontalAdvance(key.bottom));
+        widths << std::max(high, text + high / 2);
+    }
+    // In rows no wider than the picture, the oldest keys in the first,
+    // which is the one at the edge of the picture.
+    const int room = picture.width() - 2 * margin;
+    QList<QList<int>> rows{{}};
+    int used = 0;
+    for (int i = 0; i < widths.size(); ++i) {
+        if (!rows.last().isEmpty() && used + gap + widths[i] > room) {
+            rows.append(QList<int>());
+            used = 0;
+        }
+        used += (rows.last().isEmpty() ? 0 : gap) + widths[i];
+        rows.last() << i;
+    }
+    const bool right = keysCorner_ == 1 || keysCorner_ == 3, bottom = keysCorner_ >= 2;
+    // Clear of the note and of the drive's light, which have the top corners.
+    int top = picture.top() + margin;
+    const QRect taken = keysCorner_ == 0 ? noteRect(picture)
+                        : keysCorner_ == 1 && crt_ ? driveLightRect().translated(-crt_->pos())
+                        : keysCorner_ == 1         ? driveLightRect()
+                                                   : QRect();
+    if (!taken.isEmpty())
+        top = std::max(top, taken.bottom() + 1 + gap);
+    const QColor cap(0, 0, 0, 204);  // the darkest any picture makes it is a grey of 51: white reads on it
+    const QColor ink = inkOn(Qt::black);
+    const QColor edgeUp = readable(QColor(128, 128, 128), QColor(51, 51, 51), kGraphicContrast);
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing);
+    for (int r = 0; r < rows.size(); ++r) {
+        // The first row at the edge: at the bottom, the others above it.
+        const int y = bottom ? picture.bottom() + 1 - margin - high - r * (high + gap) : top + r * (high + gap);
+        int rowWidth = -gap;
+        for (const int i : rows[r])
+            rowWidth += gap + widths[i];
+        int x = right ? picture.right() + 1 - margin - rowWidth : picture.left() + margin;
+        for (const int i : rows[r]) {
+            const ShownKey& key = keys_[i];
+            const QRectF box(x, y, widths[i], high);
+            const qreal edge = key.down ? std::max(2, high / 12) : 1;
+            painter.setPen(QPen(key.down ? ink : edgeUp, edge));
+            painter.setBrush(cap);
+            painter.drawRoundedRect(box.adjusted(edge / 2, edge / 2, -edge / 2, -edge / 2), high / 6.0, high / 6.0);
+            painter.setPen(ink);
+            if (!key.word.isEmpty()) {
+                painter.setFont(wordFont);
+                painter.drawText(box, Qt::AlignCenter, key.word);
+            } else if (!key.bottom.isEmpty()) {
+                painter.setFont(pairFont);
+                const QRectF upper(box.left(), box.top() + high * 0.08, box.width(), high * 0.42);
+                painter.drawText(upper, Qt::AlignCenter, key.top);
+                painter.drawText(upper.translated(0, high * 0.42), Qt::AlignCenter, key.bottom);
+            } else {
+                painter.setFont(letterFont);
+                painter.drawText(box, Qt::AlignCenter, key.top);
+            }
+            x += widths[i] + gap;
+        }
+    }
+    painter.restore();
 }
 
 void ScreenWidget::setInterruptMarksShown(bool on)
@@ -421,6 +600,7 @@ void ScreenWidget::paintEvent(QPaintEvent*)
     paintInterruptMarks(painter, target);
     paintBeamMarker(painter, target);
     paintNote(painter, target);
+    paintKeys(painter, target);
 }
 
 // The drive's light: red, with the drive's letter and its cylinder.

@@ -422,9 +422,43 @@ QWidget* SetupDialog::createDisplayPage()
     preview_->setFrameShape(QFrame::Panel);
     preview_->setFrameShadow(QFrame::Sunken);
     preview_->setStyleSheet("background-color: black;");
+    // ---- TuxAPE's own: the keys being pressed, on the picture ----
+    auto* keysBox = new QGroupBox(tr("Keys on Screen"));
+    keysBox->setObjectName("gbKeysOnScreen");
+    keysOnScreen_ = new QCheckBox(tr("Show the CPC Keys Pressed"));
+    keysOnScreen_->setObjectName("ckKeysOnScreen");
+    keysOnScreen_->setToolTip(tr("The keys of the CPC being pressed, as its own keyboard has them printed, shown "
+                                 "on the picture until a moment after they are let go: for a stream or a video "
+                                 "of what is typed. Eight at most."));
+    keysCorner_ = new QComboBox;
+    keysCorner_->setObjectName("cbKeysCorner");
+    keysCorner_->addItems({tr("Top Left"), tr("Top Right"), tr("Bottom Left"), tr("Bottom Right")});
+    keysSize_[0] = new QRadioButton(tr("Small"));
+    keysSize_[0]->setObjectName("rbKeysSmall");
+    keysSize_[1] = new QRadioButton(tr("Large"));
+    keysSize_[1]->setObjectName("rbKeysLarge");
+    auto* cornerLabel = new QLabel(tr("Corner:"));
+    cornerLabel->setBuddy(keysCorner_);
+    auto* keysGrid = new QGridLayout(keysBox);
+    keysGrid->setVerticalSpacing(2);
+    keysGrid->addWidget(keysOnScreen_, 0, 0, 1, 4);
+    keysGrid->addWidget(cornerLabel, 1, 0);
+    keysGrid->addWidget(keysCorner_, 1, 1);
+    keysGrid->addWidget(keysSize_[0], 1, 2);
+    keysGrid->addWidget(keysSize_[1], 1, 3);
+    keysGrid->setColumnStretch(4, 1);
+    const auto keysEnabled = [this, cornerLabel](bool on) {
+        for (QWidget* widget : {static_cast<QWidget*>(cornerLabel), static_cast<QWidget*>(keysCorner_),
+                                static_cast<QWidget*>(keysSize_[0]), static_cast<QWidget*>(keysSize_[1])})
+            widget->setEnabled(on);
+    };
+    connect(keysOnScreen_, &QCheckBox::toggled, this, keysEnabled);
+    keysEnabled(false);
+
     auto* left = new QVBoxLayout;
     left->addLayout(monitorRow);
     left->addWidget(preview_);
+    left->addWidget(keysBox);
     left->addStretch(1);
 
     // ---- V Hold ----
@@ -1364,6 +1398,9 @@ void SetupDialog::setSettings(const Settings& settings)
     throughX11_->setChecked(settings.windowsThroughX11);
     driveLed_->setChecked(settings.driveLed);
     showTrack_->setChecked(settings.showDriveCylinders);
+    keysOnScreen_->setChecked(settings.keysOnScreen);
+    keysCorner_->setCurrentIndex(settings.keysCorner);
+    keysSize_[settings.keysLarge ? 1 : 0]->setChecked(true);
     const Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
     for (int mode = 0; mode < 2; ++mode) {
         const bool values[6] = {options[mode]->halfSize,  options[mode]->renderBothLines, options[mode]->hideMouse,
@@ -1726,6 +1763,9 @@ Settings SetupDialog::settings() const
     settings.windowsThroughX11 = throughX11_->isChecked();
     settings.driveLed = driveLed_->isChecked();
     settings.showDriveCylinders = showTrack_->isChecked();
+    settings.keysOnScreen = keysOnScreen_->isChecked();
+    settings.keysCorner = keysCorner_->currentIndex();
+    settings.keysLarge = keysSize_[1]->isChecked();
     Settings::WindowOptions* options[2] = {&settings.windowed, &settings.fullScreen};
     for (int mode = 0; mode < 2; ++mode) {
         options[mode]->halfSize = windowOptions_[mode][0]->isChecked();

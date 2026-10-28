@@ -36,6 +36,21 @@ KeyboardLanguage keyboardLanguage(const KeyTables& tables);
 // (the French "{" is "é" on the screen).
 int cpcCharCode(char32_t c, KeyboardLanguage language);
 
+// The other way: the character a code of the CPC's set shows in that
+// language (the French &7B is "é"), or 0 for a code that shows nothing.
+char32_t cpcCharacter(uint8_t code, KeyboardLanguage language);
+
+// What a key has printed on it, as the keyboard that goes with those tables
+// has it. The keys that give no character have the same English word on
+// every CPC ("ESC", "SHIFT", "COPY", "f7", an arrow); the others their
+// characters: one for a letter, its capital; otherwise the one it gives
+// with SHIFT over the one it gives alone ("2" over "é" on a French CPC).
+struct KeyLegend {
+    const char* word = nullptr;  // UTF-8
+    char32_t top = 0, bottom = 0;
+};
+KeyLegend keyLegend(const KeyTables& tables, uint8_t key);
+
 // The key that gives a code, and whether SHIFT or CONTROL goes with it:
 // alone first, then with SHIFT, then with CONTROL. False if no key does.
 struct KeyStroke {

@@ -208,6 +208,9 @@ private:
     Settings dmp2000_;  // the DMP2000's settings, as its window left them
     QCheckBox* driveLed_ = nullptr;
     QCheckBox* showTrack_ = nullptr;
+    QCheckBox* keysOnScreen_ = nullptr;
+    QComboBox* keysCorner_ = nullptr;
+    QRadioButton* keysSize_[2] = {};  // small, large
     // Half size, both lines, hide mouse, hide panel, hide menus, no
     // right-click menu: for the window, then for full screen.
     QCheckBox* windowOptions_[2][6] = {};

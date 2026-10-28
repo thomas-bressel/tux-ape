@@ -564,8 +564,7 @@ void Emulator::startSessionRecording(bool fromColdReset)
         // The machine goes on from the snapshot as a playback will: what
         // the snapshot does not hold has no say in what follows.
         tuxape::beginSession(cpc, session);
-        std::memset(keyHolds_, 0, sizeof keyHolds_);
-        std::memset(pcDown_, 0, sizeof pcDown_);
+        forgetHeldKeys();
         sessionPlayer_.stop();
         winApePlayer_.stop();
         tuxape::endWinApeSession(cpc);
@@ -595,8 +594,7 @@ bool Emulator::playSession(const tuxape::Session& session, QString* error)
         if (sessionRecorder_.active())
             sessionRecorder_.finish();
         recordingSession_ = false;
-        std::memset(keyHolds_, 0, sizeof keyHolds_);
-        std::memset(pcDown_, 0, sizeof pcDown_);
+        forgetHeldKeys();
         autoType_.cancel();
         winApePlayer_.stop();
         tuxape::endWinApeSession(cpc);
@@ -622,8 +620,7 @@ bool Emulator::playWinApeSession(const tuxape::WinApeSession& session, QString* 
             sessionRecorder_.finish();
         recordingSession_ = false;
         sessionPlayer_.stop();
-        std::memset(keyHolds_, 0, sizeof keyHolds_);
-        std::memset(pcDown_, 0, sizeof pcDown_);
+        forgetHeldKeys();
         autoType_.cancel();
         winApePlayer_.start(session);
         playingSession_ = true;
@@ -1119,14 +1116,13 @@ void Emulator::pcKeyEvent(uint8_t pcKey, bool numLock, bool pressed)
     // While a session plays, the keys are its own.
     if (playingSession_)
         return;
-    withMachine([&](Cpc& cpc) {
+    withMachine([&](Cpc&) {
         if (pressed) {
             if (pcDown_[numLock][pcKey])
                 return;
             pcDown_[numLock][pcKey] = true;
             for (tuxape::CpcKey key : keyMap_.cpcKeys(pcKey, numLock))
-                if (keyHolds_[static_cast<int>(key)]++ == 0)
-                    cpc.keyboard().set(key, true);
+                holdKey(key, true);
             return;
         }
         // Release under whichever Num Lock state the key went down in, in
@@ -1136,17 +1132,61 @@ void Emulator::pcKeyEvent(uint8_t pcKey, bool numLock, bool pressed)
                 continue;
             pcDown_[state][pcKey] = false;
             for (tuxape::CpcKey key : keyMap_.cpcKeys(pcKey, state))
-                if (--keyHolds_[static_cast<int>(key)] == 0)
-                    cpc.keyboard().set(key, false);
+                holdKey(key, false);
         }
+    });
+}
+
+// Called with the machine locked: one more PC key or joystick line holds
+// that key down, or one fewer.
+void Emulator::holdKey(tuxape::CpcKey key, bool down)
+{
+    const int k = static_cast<int>(key);
+    const uint64_t bit = uint64_t{1} << (k & 63);
+    if (down) {
+        if (keyHolds_[k]++ == 0) {
+            cpc_.keyboard().set(key, true);
+            hostDown_[k >> 6] |= bit;
+            hostPressed_[k >> 6] |= bit;
+        }
+    } else if (keyHolds_[k] > 0 && --keyHolds_[k] == 0) {
+        cpc_.keyboard().set(key, false);
+        hostDown_[k >> 6] &= ~bit;
+    }
+}
+
+// Called with the machine locked: nothing holds any key down any more.
+void Emulator::forgetHeldKeys()
+{
+    std::memset(keyHolds_, 0, sizeof keyHolds_);
+    std::memset(pcDown_, 0, sizeof pcDown_);
+    hostDown_[0] = hostDown_[1] = 0;
+}
+
+Emulator::HostKeys Emulator::takeHostKeys()
+{
+    HostKeys keys;
+    for (int word = 0; word < 2; ++word) {
+        const uint64_t down = hostDown_[word], pressed = hostPressed_[word].exchange(0);
+        for (int bit = 0; bit < 64 && word * 64 + bit < tuxape::kCpcKeyCount; ++bit) {
+            keys.down[word * 64 + bit] = (down >> bit) & 1;
+            keys.pressed[word * 64 + bit] = (pressed >> bit) & 1;
+        }
+    }
+    return keys;
+}
+
+tuxape::KeyTables Emulator::keyTables()
+{
+    return withMachine([](Cpc& cpc) {
+        return tuxape::findKeyTables(cpc.memory().firmware()).value_or(tuxape::englishKeyTables());
     });
 }
 
 void Emulator::releaseAllKeys()
 {
     withMachine([this](Cpc& cpc) {
-        std::memset(pcDown_, 0, sizeof pcDown_);
-        std::memset(keyHolds_, 0, sizeof keyHolds_);
+        forgetHeldKeys();
         joystickBits_ = 0;
         cpc.keyboard().releaseAll();
     });
@@ -1209,13 +1249,7 @@ void Emulator::applyJoystick(unsigned bits)
     for (const auto& line : kLines) {
         if (!(changed & line.bit))
             continue;
-        int& holds = keyHolds_[static_cast<int>(line.key)];
-        if (bits & line.bit) {
-            if (holds++ == 0)
-                cpc_.keyboard().set(line.key, true);
-        } else if (--holds == 0) {
-            cpc_.keyboard().set(line.key, false);
-        }
+        holdKey(line.key, bits & line.bit);
     }
 }
 

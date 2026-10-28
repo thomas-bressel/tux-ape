@@ -3308,6 +3308,46 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Niveaux de gris</translation>
     </message>
     <message>
+        <source>Keys on Screen</source>
+        <translation>Touches à l&apos;écran</translation>
+    </message>
+    <message>
+        <source>Show the CPC Keys Pressed</source>
+        <translation>Montrer les touches du CPC appuyées</translation>
+    </message>
+    <message>
+        <source>The keys of the CPC being pressed, as its own keyboard has them printed, shown on the picture until a moment after they are let go: for a stream or a video of what is typed. Eight at most.</source>
+        <translation>Les touches du CPC appuyées, telles que son propre clavier les porte, montrées sur l&apos;image jusqu&apos;à un instant après leur relâchement : pour un stream ou une vidéo de ce qui est tapé. Huit au plus.</translation>
+    </message>
+    <message>
+        <source>Top Left</source>
+        <translation>En haut à gauche</translation>
+    </message>
+    <message>
+        <source>Top Right</source>
+        <translation>En haut à droite</translation>
+    </message>
+    <message>
+        <source>Bottom Left</source>
+        <translation>En bas à gauche</translation>
+    </message>
+    <message>
+        <source>Bottom Right</source>
+        <translation>En bas à droite</translation>
+    </message>
+    <message>
+        <source>Small</source>
+        <translation>Petites</translation>
+    </message>
+    <message>
+        <source>Large</source>
+        <translation>Grandes</translation>
+    </message>
+    <message>
+        <source>Corner:</source>
+        <translation>Coin :</translation>
+    </message>
+    <message>
         <source>V Hold</source>
         <translation>Réglage vertical</translation>
     </message>

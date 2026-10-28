@@ -1,14 +1,17 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QImage>
 #include <QList>
 #include <QPoint>
 #include <QWidget>
 
+#include "core/keytables.h"
 #include "core/monitor.h"
 #include "crtlook.h"
 
 class QPainter;
+class QTimer;
 
 class CrtView;
 class Emulator;
@@ -88,6 +91,19 @@ public:
     // a key the user pressed has done.
     void showNote(const QString& text);
     QString note() const { return note_; }
+    // TuxAPE's own, for a stream or a video: the CPC keys being pressed,
+    // shown in a corner of the picture (0 top left, 1 top right, 2 bottom
+    // left, 3 bottom right), with what is printed on them on the machine's
+    // own keyboard, eight at most in the order they went down. They go
+    // 0.8 s after the last one held is let go. Large: half as big again.
+    void setKeysShown(bool shown, int corner = 3, bool large = false);
+    bool keysShown() const { return keysTimer_ != nullptr; }
+    // The keys up, as what they have printed on them: a word, a letter, or
+    // the character with SHIFT, a line break and the one without.
+    QStringList keysOnScreen() const;
+    // How long they stay after the last is let go.
+    static constexpr int kKeysStay = 800;
+    static constexpr int kMostKeys = 8;
     bool interruptMarksShown() const { return interruptsShown_; }
     QList<QPoint> interruptMarks() const { return interrupts_; }
 
@@ -130,6 +146,21 @@ private:
     QString note_;
     int noteNumber_ = 0;  // which note is up, for the one gone to leave a later one alone
     void paintNote(QPainter& painter, const QRect& picture) const;
+    QRect noteRect(const QRect& picture) const;
+    struct ShownKey {
+        int key;
+        bool down;
+        QString word, top, bottom;
+    };
+    QList<ShownKey> keys_;
+    int keysCorner_ = 3;
+    bool keysLarge_ = false;
+    QTimer* keysTimer_ = nullptr;
+    QElapsedTimer keysLetGo_;  // since no key has been held
+    tuxape::KeyTables keyTables_;
+    void watchKeys();
+    void paintKeys(QPainter& painter, const QRect& picture) const;
+    void repaintOverlay();
     int beamLine_ = -1;
     int beamColumn_ = -1;
     CrtView* crt_ = nullptr;
