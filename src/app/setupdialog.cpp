@@ -1124,10 +1124,12 @@ void SetupDialog::drawKeyboard(tuxape::KeyboardModel model, const tuxape::KeyTab
             text = QString::fromUtf8(legend.word).section(' ', 1);  // the arrow
         else if (legend.word)
             text = QString::fromUtf8(legend.word);
-        else if (legend.bottom)
-            text = QString::fromUcs4(&legend.top, 1) + '\n' + QString::fromUcs4(&legend.bottom, 1);
         else
             text = QString::fromUcs4(&legend.top, 1);
+        if (legend.topAlso)
+            text += QString::fromUcs4(&legend.topAlso, 1);
+        if (!legend.word && legend.bottom)
+            text += '\n' + QString::fromUcs4(&legend.bottom, 1);
         // Two words that do not fit on a line take two, as CAPS LOCK does.
         if (metrics.horizontalAdvance(text) > width * kUnit - 6)
             text.replace(' ', '\n');
@@ -1175,7 +1177,7 @@ void SetupDialog::drawKeyboard(tuxape::KeyboardModel model, const tuxape::KeyTab
     const auto bottom = letters({CpcKey::Z, CpcKey::X, CpcKey::C, CpcKey::V, CpcKey::B, CpcKey::N, CpcKey::M,
                                  CpcKey::Comma, CpcKey::Period, CpcKey::Slash, CpcKey::Backslash});
     double joystickX = 0, joystickY = 0;
-    int rows = 6;
+    double rows = 6;
     if (model == KeyboardModel::Cpc6128) {
         // The 6128's, and the Plus's: COPY and CONTROL at the left of the
         // space bar, ENTER at its right, the cursor keys in the keypad.
@@ -1199,21 +1201,23 @@ void SetupDialog::drawKeyboard(tuxape::KeyboardModel model, const tuxape::KeyTab
                 addKey(pad[row][column], 15.3 + column, row, 1);
         joystickX = 18.8;
     } else {
-        // The 464's and the 664's: the main keys two rows down, CTRL
-        // beside the space bar, the cursor keys around COPY above the
-        // keypad, which is level with the lower four rows.
-        constexpr double y = 2;
+        // The 464's and the 664's, as photographs of them measure: the
+        // main keys further down, ENTER on the large key, CTRL beside the
+        // space bar under "\", the cursor keys around COPY above the
+        // keypad, which is level with the lower four rows. The 464's cross
+        // stands a third of a row higher than the 664's pad.
+        const double y = model == KeyboardModel::Cpc464 ? 2.35 : 2;
         addKey(CpcKey::Escape, 0, y, 1);
-        line(lineOf(1, y, digits), y, {{CpcKey::Clr, 1}, {CpcKey::Del, 1.25}});
-        addKey(CpcKey::Tab, 0, y + 1, 1.25);
-        lineOf(1.25, y + 1, top);
-        addKey(CpcKey::Return, 13.5, y + 1, 1.75, 2);
-        addKey(CpcKey::CapsLock, 0, y + 2, 1.5);
-        lineOf(1.5, y + 2, middle);
-        addKey(CpcKey::Shift, 0, y + 3, 2);
-        addKey(CpcKey::Shift, lineOf(2, y + 3, bottom), y + 3, 2.25, 1, "j21");
-        line(3.25, y + 4, {{CpcKey::Space, 8.75}, {CpcKey::Control, 1}});
-        constexpr double x = 16.25;
+        line(lineOf(1, y, digits), y, {{CpcKey::Clr, 1}, {CpcKey::Del, 1.5}});
+        addKey(CpcKey::Tab, 0, y + 1, 1.5);
+        lineOf(1.5, y + 1, top);
+        addKey(CpcKey::Return, 13.75, y + 1, 1.75, 2);
+        addKey(CpcKey::CapsLock, 0, y + 2, 1.75);
+        lineOf(1.75, y + 2, middle);
+        addKey(CpcKey::Shift, 0, y + 3, 2.25);
+        addKey(CpcKey::Shift, lineOf(2.25, y + 3, bottom), y + 3, 2.25, 1, "j21");
+        line(3.25, y + 4, {{CpcKey::Space, 9}, {CpcKey::Control, 1}});
+        constexpr double x = 16.5;
         if (model == KeyboardModel::Cpc464) {
             // Five keys in a cross.
             addKey(CpcKey::CursorUp, x + 1, 0, 1);
@@ -1235,9 +1239,9 @@ void SetupDialog::drawKeyboard(tuxape::KeyboardModel model, const tuxape::KeyTab
         for (int row = 0; row < 4; ++row)
             for (int column = 0; column < 3; ++column)
                 addKey(pad[row][column], x + column, y + 1 + row, 1);
-        joystickX = 19.75;
+        joystickX = 20;
         joystickY = 1;
-        rows = 7;
+        rows = y + 5;
     }
     // The joystick.
     auto* joystickLabel = new QLabel(tr("Joystick"), keyboard_);
@@ -1253,7 +1257,7 @@ void SetupDialog::drawKeyboard(tuxape::KeyboardModel model, const tuxape::KeyTab
     addKey(CpcKey::JoyFire2, jx - 0.2, jy + 4, 1.6);
     addKey(CpcKey::JoyFire1, jx + 1.4, jy + 4, 1.6);
     addKey(CpcKey::JoyFire3, jx + 0.6, jy + 5, 1.6);
-    keyboard_->setFixedSize(qRound((joystickX + 3.1) * kUnit), rows * kRow);
+    keyboard_->setFixedSize(qRound((joystickX + 3.1) * kUnit), qRound(std::max(rows, joystickY + 6) * kRow));
     selectCpcKey(selectedKey_);
 }
 

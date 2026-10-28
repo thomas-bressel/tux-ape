@@ -188,7 +188,20 @@ KeyLegend keyLegend(const KeyTables& tables, uint8_t key, KeyboardModel model)
         return legend;
     const KeyboardLanguage language = keyboardLanguage(tables);
     const char32_t alone = cpcCharacter(tables.normal[key], language);
-    const char32_t shifted = cpcCharacter(tables.shift[key], language);
+    char32_t shifted = cpcCharacter(tables.shift[key], language);
+    if (language == KeyboardLanguage::French) {
+        // The French keys have the accented letters where they are typed
+        // alone; with SHIFT, what the codes are in ASCII: "|" over "^",
+        // "@" over "$", which the screen shows as ù and à. The key that
+        // gives "\" with CONTROL has it beside.
+        if (tables.shift[key] >= 0x20 && tables.shift[key] < 0x7F)
+            shifted = tables.shift[key];
+        if (tables.control[key] == '\\')
+            legend.topAlso = U'\\';
+    }
+    // The 464's keys have no "{", "}" nor "`": the 6128's added them.
+    if (model == KeyboardModel::Cpc464 && (shifted == U'{' || shifted == U'}' || shifted == U'`'))
+        shifted = alone;
     // A letter shows its capital alone: the one SHIFT gives, when that is
     // another letter than the one the key gives.
     const auto upper = [](char32_t c) -> char32_t {

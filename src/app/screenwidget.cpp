@@ -338,6 +338,8 @@ void ScreenWidget::watchKeys()
         ShownKey shown{key, keys.down[static_cast<size_t>(key)], QString::fromUtf8(legend.word), {}, {}};
         if (legend.top)
             shown.top = QString::fromUcs4(&legend.top, 1);
+        if (legend.topAlso)
+            shown.top += QString::fromUcs4(&legend.topAlso, 1);
         if (legend.bottom)
             shown.bottom = QString::fromUcs4(&legend.bottom, 1);
         keys_.append(shown);

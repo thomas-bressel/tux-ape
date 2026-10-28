@@ -84,6 +84,12 @@ void checkLegends(const KeyTables& tables, KeyboardLanguage language)
         CHECK(key(CpcKey::Num2).top == U'2' && key(CpcKey::Num2).bottom == U'é');
         CHECK(key(CpcKey::Q).top == U'A');
         CHECK(key(CpcKey::Semicolon).top == U'%' && key(CpcKey::Semicolon).bottom == U'ù');
+        // With SHIFT, the codes as ASCII has them, as the French keys
+        // print them: "|" over "^", "@" and "\" over "$".
+        CHECK(key(CpcKey::At).top == U'|' && key(CpcKey::At).bottom == U'^');
+        CHECK(key(CpcKey::Backslash).top == U'@' && key(CpcKey::Backslash).topAlso == U'\\'
+              && key(CpcKey::Backslash).bottom == U'$');
+        CHECK(key(CpcKey::Num0).top == U'0' && key(CpcKey::Num0).bottom == U'à');
         break;
     case KeyboardLanguage::Spanish:
         CHECK(key(CpcKey::Colon).top == U'Ñ' && !key(CpcKey::Colon).bottom);
@@ -159,6 +165,12 @@ void testGermanTables()
     CHECK(on(KeyboardModel::Cpc664, CpcKey::Return) == "ENTER" && on(KeyboardModel::Cpc664, CpcKey::Control) == "CTRL");
     CHECK(on(KeyboardModel::Cpc664, CpcKey::F7) == "f7" && on(KeyboardModel::Cpc464, CpcKey::F7) == "7");
     CHECK(on(KeyboardModel::Cpc464, CpcKey::Enter) == "ENTER" && on(KeyboardModel::Cpc464, CpcKey::FDot) == ".");
+    // The 464's keys have "[", "]" and "\" alone; the 6128's "{" and "}"
+    // over them.
+    const KeyLegend bracket464 = keyLegend(englishKeyTables(), static_cast<uint8_t>(CpcKey::LeftBracket), KeyboardModel::Cpc464);
+    const KeyLegend bracket6128 = keyLegend(englishKeyTables(), static_cast<uint8_t>(CpcKey::LeftBracket));
+    CHECK(bracket464.top == U'[' && !bracket464.bottom);
+    CHECK(bracket6128.top == U'{' && bracket6128.bottom == U'[');
     CHECK(keyLegend(german, static_cast<uint8_t>(CpcKey::Y)).top == U'Z');
     CHECK(cpcCharacter(0x7B, KeyboardLanguage::German) == U'ä');
     CHECK(cpcCharacter(0x7B, KeyboardLanguage::English) == U'{');

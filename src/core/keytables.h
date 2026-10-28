@@ -54,10 +54,11 @@ enum class KeyboardModel : uint8_t { Cpc464, Cpc664, Cpc6128 };
 // arrow), English on every keyboard but the Spanish ("MAYS", "COPIA"); the
 // others their characters: one for a letter, its capital; otherwise the
 // one it gives with SHIFT over the one it gives alone ("2" over "é" on a
-// French CPC).
+// French CPC), as the keys have them printed.
 struct KeyLegend {
     const char* word = nullptr;  // UTF-8
     char32_t top = 0, bottom = 0;
+    char32_t topAlso = 0;  // beside the top one: the French "@" key has "\" too
 };
 KeyLegend keyLegend(const KeyTables& tables, uint8_t key, KeyboardModel model = KeyboardModel::Cpc6128);
 
