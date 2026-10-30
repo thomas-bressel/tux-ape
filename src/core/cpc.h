@@ -513,6 +513,7 @@ private:
     void ssmOpcode(uint8_t op);
     void updatePsgBus();
     void syncSound();
+    void syncSoundTo(uint64_t now);  // a microsecond
 };
 
 }  // namespace tuxape

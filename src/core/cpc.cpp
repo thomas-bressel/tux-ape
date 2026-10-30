@@ -7,7 +7,13 @@ Cpc::Cpc()
 {
     asic_.attach(&gateArray_, &crtc_);
     asic_.attachSound([this](uint16_t address) { return memory_.readRam(address); },
-                      [this](int number, uint8_t value) { psg_.setRegister(number, value); });
+                      [this](int number, uint8_t value) {
+                          // What the chip has put out so far is heard first, as with the Z80's
+                          // writes: a sample played through a volume register changes it on
+                          // every line. The moment is the Gate Array's, not the instruction's end.
+                          syncSoundTo(videoClk_ >> 2);
+                          psg_.setRegister(number, value);
+                      });
     gateArray_.attach(&asic_);
     memory_.setAsic(&asic_);
     reset();
@@ -439,9 +445,13 @@ void Cpc::ssmOpcode(uint8_t op)
 
 void Cpc::syncSound()
 {
+    syncSoundTo(microseconds());
+}
+
+void Cpc::syncSoundTo(uint64_t now)
+{
     // The sound chip is only brought up to date when something is about to
     // change it, and at the end of each run.
-    const uint64_t now = microseconds();
     if (!audio_.enabled()) {
         soundClk_ = now;
         return;

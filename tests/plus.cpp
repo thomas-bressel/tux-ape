@@ -1009,6 +1009,48 @@ void testSoundChannels()
     CHECK_EQ(cpc.psg().reg(2), 0x03);
 }
 
+// A sample played by a sound channel, as a volume register changed line
+// after line (Blinky's Scary School): it is heard as it plays, though the
+// machine runs a whole frame at a time and only then is the sound asked for.
+void testSoundChannelSample()
+{
+    PlusMachine m;
+    Cpc& cpc = m.cpc;
+    cpc.audio().setSampleRate(44100);
+    cpc.audio().setStereo(false);
+    cpc.audio().setVolume(15);
+    // The mixer lets no tone nor noise through: channel B is its volume.
+    cpc.psg().setRegister(7, 0x3F);
+    // Loud for ten lines, silent for ten, the loop's own line among the
+    // latter: 21 lines, 1344 microseconds.
+    uint16_t at = 0xA000;
+    for (const uint16_t instruction : {0x2FFF, 0x090F, 0x1009, 0x0900, 0x1009, 0x4001}) {
+        cpc.memory().baseRam()[at++] = static_cast<uint8_t>(instruction);
+        cpc.memory().baseRam()[at++] = static_cast<uint8_t>(instruction >> 8);
+    }
+    m.write(0x6C00, 0x00);
+    m.write(0x6C01, 0xA0);
+    m.write(0x6C02, 0x00);
+    m.write(0x6C0F, 0x01);
+    cpc.run(19968);
+    cpc.audio().samples().clear();
+    cpc.run(19968);
+    const std::vector<int16_t> sound = cpc.audio().samples();
+    int quietest = 32767, loudest = -32768;
+    for (const int16_t sample : sound) {
+        quietest = std::min<int>(quietest, sample);
+        loudest = std::max<int>(loudest, sample);
+    }
+    CHECK(loudest - quietest > 4000);
+    // Crossing the middle twice a period: 2 x 19968 / 1344, about thirty
+    // times in a frame.
+    const int middle = (quietest + loudest) / 2;
+    int crossings = 0;
+    for (size_t i = 1; i < sound.size(); ++i)
+        crossings += (sound[i - 1] < middle) != (sound[i] < middle);
+    CHECK(crossings >= 28 && crossings <= 32);
+}
+
 // The channels' round within the line. Where a channel's interrupt comes
 // is what Kevin Thacker's "dmatiming" marks on the screen, with what a real
 // machine shows for fourteen set-ups. The rules checked here give twelve of
@@ -1268,6 +1310,7 @@ int main()
     testFloatingBus();
     testRasterInterrupt();
     testSoundChannels();
+    testSoundChannelSample();
     testSoundChannelTiming();
     testSnapshot();
     return checkSummary("plus");
