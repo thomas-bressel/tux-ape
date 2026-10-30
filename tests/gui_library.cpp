@@ -696,6 +696,65 @@ int main(int argc, char* argv[])
     window.applySettings(zippedSettings);
     window.discs()->remove(0);
     emulator.withMachine([](tuxape::Cpc& cpc) { cpc.memory().write(0x8000, 0x00); });
+    // The window can be maximized, and comes back as it was left: its size,
+    // maximized or not, and how large the pictures were, the settings file
+    // knowing it at once.
+    {
+        const auto opened = [&](const std::function<void(LibraryDialog*)>& handle) {
+            Modals modals([&](QWidget* modal) {
+                auto* dialog = qobject_cast<LibraryDialog*>(modal);
+                if (!dialog)
+                    return modal->close(), void();
+                handle(dialog);
+                dialog->reject();
+            });
+            action->trigger();
+            CHECK_EQ(modals.seen(), 1);
+        };
+        const auto saved = [] {
+            Settings settings;
+            settings.load();
+            return settings;
+        };
+        opened([&](LibraryDialog* dialog) {
+            CHECK(dialog->windowType() == Qt::Window);
+            CHECK(dialog->windowFlags() & Qt::WindowMaximizeButtonHint);
+            CHECK(dialog->windowFlags() & Qt::WindowCloseButtonHint);
+            CHECK(!(dialog->windowFlags() & Qt::WindowMinimizeButtonHint));
+            dialog->resize(700, 500);
+            dialog->setThumbnailView(true);
+            dialog->setThumbnailSize(300);
+        });
+        CHECK(saved().windowPlaces.value("Library").size == QSize(700, 500));
+        CHECK(saved().libraryThumbnailView);
+        CHECK_EQ(saved().libraryThumbnailSize, 300);
+        opened([&](LibraryDialog* dialog) {
+            CHECK(dialog->size() == QSize(700, 500));
+            CHECK(dialog->thumbnailView());
+            CHECK_EQ(dialog->thumbnailSize(), 300);
+            CHECK_EQ(dialog->findChild<QSlider*>("slThumbnailSize")->value(), 300);
+            dialog->showMaximized();
+        });
+        // Maximized, it still knows the size it is to go back to.
+        CHECK(saved().windowPlaces.value("Library").maximized);
+        CHECK(saved().windowPlaces.value("Library").size == QSize(700, 500));
+        opened([&](LibraryDialog* dialog) {
+            CHECK(dialog->isMaximized());
+            CHECK_EQ(dialog->thumbnailSize(), 300);
+        });
+        CHECK(saved().windowPlaces.value("Library").maximized);
+        CHECK(saved().windowPlaces.value("Library").size == QSize(700, 500));
+        // No longer maximized, and as the rest of this test wants it.
+        opened([&](LibraryDialog* dialog) {
+            dialog->showNormal();
+            dialog->resize(700, 500);
+            dialog->setThumbnailView(false);
+            dialog->setThumbnailSize(360);
+        });
+        CHECK(!saved().windowPlaces.value("Library").maximized);
+        CHECK(!saved().libraryThumbnailView);
+        CHECK_EQ(saved().libraryThumbnailSize, 360);
+    }
     auto pick = [&](const QString& search, const QString& title, int drive) {
         Modals modals([&](QWidget* modal) {
             auto* dialog = qobject_cast<LibraryDialog*>(modal);

@@ -144,7 +144,7 @@ struct Settings {
         bool operator==(const WindowPlace&) const = default;
     };
     // By the window's name: "Main", "Debugger", "Registers", "Asic",
-    // "Graphics", "Assembler".
+    // "Graphics", "Assembler", "Library".
     QMap<QString, WindowPlace> windowPlaces;
     // Under Wayland, the system places the windows, and TuxAPE cannot put
     // them back where they were. Through XWayland it can: the program then

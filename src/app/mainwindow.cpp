@@ -2041,14 +2041,18 @@ void MainWindow::showLibrary()
     dialog.setSort(librarySortColumn_, librarySortOrder_);
     dialog.setThumbnailSize(settings_.libraryThumbnailSize);
     dialog.setThumbnailView(settings_.libraryThumbnailView);
+    // The size it was left at, maximized or not.
+    const Settings::WindowPlace place = settings_.windowPlaces.value("Library");
+    placeWindow(&dialog, "Library");
     const int closed = dialog.exec();
+    placeNames_.remove(&dialog);
     librarySearch_ = dialog.search();
     libraryFilters_ = dialog.filters();
     libraryCategory_ = dialog.category();
     librarySortColumn_ = dialog.sortColumn();
     librarySortOrder_ = dialog.sortOrder();
     if (dialog.folders() != folders || dialog.thumbnailView() != settings_.libraryThumbnailView ||
-        dialog.thumbnailSize() != settings_.libraryThumbnailSize) {
+        dialog.thumbnailSize() != settings_.libraryThumbnailSize || settings_.windowPlaces.value("Library") != place) {
         if (dialog.folders() != folders)
             settings_.libraryFolders = dialog.folders();
         settings_.libraryThumbnailView = dialog.thumbnailView();

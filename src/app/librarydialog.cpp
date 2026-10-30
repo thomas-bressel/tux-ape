@@ -645,7 +645,10 @@ QString libraryDisplayPath(const LibraryEntry& entry)
 }
 
 LibraryDialog::LibraryDialog(const QStringList& folders, QWidget* parent)
-    : QDialog(parent)
+    // A window of its own kind and not a dialog, which window managers will
+    // not maximize (GNOME's never does).
+    : QDialog(parent, Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowMaximizeButtonHint
+                          | Qt::WindowCloseButtonHint)
     , folders_(folders)
 {
     setWindowTitle(tr("Library"));
