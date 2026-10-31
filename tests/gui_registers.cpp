@@ -409,14 +409,19 @@ int main(int argc, char* argv[])
             const int apart = (marks[n].crtcLine - marks[n - 1].crtcLine + 312) % 312;
             CHECK(apart >= 51 && apart <= 53);
         }
-        // The Gate Array asked for each of them, and the Z80 took them.
+        // The Gate Array asked for each of them, and the Z80 took them: one
+        // number to a line, and what asked for it.
         {
-            const tuxape::Cpc::RowMarks rows = screen->rowMarks();
-            CHECK_EQ(rows.raised.size(), 6);
-            for (const tuxape::Cpc::RaisedMark& raised : rows.raised) {
-                CHECK(raised.source == tuxape::Cpc::InterruptSource::Counter);
-                CHECK(raised.taken);
+            const std::vector<tuxape::Cpc::RaisedMark> raised = screen->raisedMarks();
+            CHECK_EQ(raised.size(), 6);
+            for (const tuxape::Cpc::RaisedMark& mark : raised) {
+                CHECK(mark.source == tuxape::Cpc::InterruptSource::Counter);
+                CHECK(mark.taken);
             }
+            const QStringList tags = screen->interruptTags();
+            CHECK_EQ(tags.size(), 6);
+            for (const QString& tag : tags)
+                CHECK(tag.endsWith(" R52"));
         }
         // On the picture: a dashed light magenta line, at a mark's line.
         for (const auto& mark : marks) {

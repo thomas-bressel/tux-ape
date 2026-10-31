@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QImage>
 #include <QList>
+#include <QStringList>
 #include <QPoint>
 #include <QWidget>
 
@@ -108,10 +109,11 @@ public:
     bool interruptMarksShown() const { return interruptsShown_; }
     QList<tuxape::Cpc::InterruptMark> interruptMarks() const { return interrupts_; }
     // With them, the interrupts asked for (dotted lines, whether the Z80
-    // took them or not: the Plus's PRI and sound channels are the ASIC's)
-    // and the lines where a colour was written (ticks at the left), each
-    // with its number where there is room, and how many there are of each.
-    tuxape::Cpc::RowMarks rowMarks() const { return rows_; }
+    // took them or not: the Plus's PRI and sound channels are the ASIC's).
+    std::vector<tuxape::Cpc::RaisedMark> raisedMarks() const { return raised_; }
+    // The numbers beside those lines, from the top of the picture down, an
+    // arrow on one above or below what the picture shows.
+    QStringList interruptTags() const;
     // The Registers window's "HBL / VBL": where the sync pulses of the
     // picture shown fell, as bands; a tick along the picture's edge where
     // they are out of its sight.
@@ -155,7 +157,12 @@ private:
     void paintInterruptMarks(QPainter& painter, const QRect& picture) const;
     bool interruptsShown_ = false;
     QList<tuxape::Cpc::InterruptMark> interrupts_;
-    tuxape::Cpc::RowMarks rows_;
+    std::vector<tuxape::Cpc::RaisedMark> raised_;
+    struct InterruptTag {
+        int line;
+        QString text;
+    };
+    QList<InterruptTag> tagsOfInterrupts() const;
     void paintSyncMarks(QPainter& painter, const QRect& picture) const;
     bool syncsShown_ = false;
     tuxape::Cpc::SyncMarks syncs_;

@@ -422,8 +422,6 @@ void Asic::write(uint16_t address, uint8_t value)
         const uint16_t now = palette_[static_cast<size_t>(index)];
         setColour(index, (at & 1) ? static_cast<uint16_t>((now & 0x00FF) | (value & 0x0F) << 8)
                                   : static_cast<uint16_t>((now & 0x0F00) | value));
-        if (colourWatch_) [[unlikely]]
-            colourWatch_();
         return;
     }
     switch (at) {

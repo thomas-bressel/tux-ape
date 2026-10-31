@@ -1295,19 +1295,19 @@ void Emulator::setSyncMarksWanted(bool wanted)
     }
 }
 
-void Emulator::setRowMarksWanted(bool wanted)
+void Emulator::setRaisedMarksWanted(bool wanted)
 {
-    withMachine([wanted](Cpc& cpc) { cpc.setRowMarksWanted(wanted); });
+    withMachine([wanted](Cpc& cpc) { cpc.setRaisedMarksWanted(wanted); });
     if (!wanted) {
         std::lock_guard lock(frameMutex_);
-        frameRowMarks_ = {};
+        frameRaised_.clear();
     }
 }
 
-Cpc::RowMarks Emulator::rowMarks()
+std::vector<Cpc::RaisedMark> Emulator::raisedMarks()
 {
     std::lock_guard lock(frameMutex_);
-    return frameRowMarks_;
+    return frameRaised_;
 }
 
 Cpc::SyncMarks Emulator::syncMarks()
@@ -1359,10 +1359,10 @@ void Emulator::publishFrame()
         QList<Cpc::InterruptMark> marks;
         for (const Cpc::InterruptMark& mark : cpc_.interruptMarks(true))
             marks << mark;
-        const bool marksChanged = marks != frameMarks_ || cpc_.syncMarks() != frameSyncs_ || cpc_.rowMarks() != frameRowMarks_;
+        const bool marksChanged = marks != frameMarks_ || cpc_.syncMarks() != frameSyncs_ || cpc_.raisedMarks() != frameRaised_;
         frameMarks_ = std::move(marks);
         frameSyncs_ = cpc_.syncMarks();
-        frameRowMarks_ = cpc_.rowMarks();
+        frameRaised_ = cpc_.raisedMarks();
         const Monitor& monitor = cpc_.monitor();
         const size_t size = static_cast<size_t>(monitor.width()) * monitor.height() * sizeof(uint32_t);
         // The whole raster or the part WinAPE shows: the picture takes its size.

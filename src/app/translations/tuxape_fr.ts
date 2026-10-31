@@ -3062,8 +3062,8 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Marquer les lignes</translation>
     </message>
     <message>
-        <source>Shows on the picture every interrupt the Z80 took (dashed lines, a square where the beam was), every one asked for, taken or not (dotted lines: PRI and DMA are the ASIC&apos;s, R52 the Gate Array&apos;s), and at the left a tick for each line where a colour was written, by an interrupt or by a timed loop. Each has its line&apos;s number, where there is room: on a Plus, the one a program gives the ASIC to have its interrupt there. An arrow says it is above or below what the picture shows. Also shows where the beam is while the machine stands still.</source>
-        <translation>Montre sur l&apos;image chaque interruption prise par le Z80 (lignes pointillées, un carré à l&apos;endroit du faisceau), chaque interruption demandée, prise ou non (lignes en points : PRI et DMA sont celles de l&apos;ASIC, R52 celle du Gate Array), et à gauche un trait pour chaque ligne où une couleur a été écrite, par une interruption ou par une boucle chronométrée. Chacune a le numéro de sa ligne, là où il y a la place : sur un Plus, celui qu&apos;un programme donne à l&apos;ASIC pour avoir son interruption là. Une flèche indique qu&apos;elle est au-dessus ou au-dessous de la partie visible. Montre aussi où est le faisceau quand la machine est à l&apos;arrêt.</translation>
+        <source>Shows on the picture the lines of the interrupts: those the Z80 took (dashed, a square where the beam was) and those asked for, taken or not (dotted: PRI and DMA are the ASIC&apos;s, R52 the Gate Array&apos;s). Each has its line&apos;s number: on a Plus, the one a program gives the ASIC to have its interrupt there. An arrow says it is above or below what the picture shows. Also shows where the beam is while the machine stands still.</source>
+        <translation>Montre sur l&apos;image les lignes des interruptions : celles que le Z80 a prises (tirets, un carré à l&apos;endroit du faisceau) et celles qui ont été demandées, prises ou non (points : PRI et DMA sont celles de l&apos;ASIC, R52 celle du Gate Array). Chacune a le numéro de sa ligne : sur un Plus, celui qu&apos;un programme donne à l&apos;ASIC pour avoir son interruption là. Une flèche indique qu&apos;elle est au-dessus ou au-dessous de la partie visible. Montre aussi où est le faisceau quand la machine est à l&apos;arrêt.</translation>
     </message>
     <message>
         <source>HBL / VBL</source>
@@ -3081,12 +3081,8 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>%1, non prise</translation>
     </message>
     <message>
-        <source>Z80 interrupts: %1 - ASIC interrupts: %2 - colour lines: %3</source>
-        <translation>Interruptions Z80 : %1 - interruptions ASIC : %2 - lignes de couleurs : %3</translation>
-    </message>
-    <message>
-        <source>Z80 interrupts: %1 - colour lines: %2</source>
-        <translation>Interruptions Z80 : %1 - lignes de couleurs : %2</translation>
+        <source>%1, +%2 not taken</source>
+        <translation>%1, +%2 non prise</translation>
     </message>
     <message>
         <source>HBL C%1</source>

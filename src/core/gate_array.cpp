@@ -192,8 +192,6 @@ void GateArray::write(uint8_t value)
         }
         ink_[pen_] = value & 0x1F;
         rgb_[pen_] = colours_[value & 0x1F];
-        if (colourWatch_) [[unlikely]]
-            colourWatch_();
         break;
     case 2:  // screen mode, ROM enables, interrupt counter reset
         rmr_ = value & 0x1F;

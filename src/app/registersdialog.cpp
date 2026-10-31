@@ -69,13 +69,12 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     counters->addWidget(asicButton_, 1, 12, Qt::AlignRight);
     rowHighlight_ = new QCheckBox(tr("Row Highlight"));
     rowHighlight_->setObjectName("ckRowHighlight");
-    rowHighlight_->setToolTip(tr("Shows on the picture every interrupt the Z80 took (dashed lines, a square where the "
-                                 "beam was), every one asked for, taken or not (dotted lines: PRI and DMA are the "
-                                 "ASIC's, R52 the Gate Array's), and at the left a tick for each line where a colour "
-                                 "was written, by an interrupt or by a timed loop. Each has its line's number, where "
-                                 "there is room: on a Plus, the one a program gives the ASIC to have its interrupt "
-                                 "there. An arrow says it is above or below what the picture shows. Also shows where "
-                                 "the beam is while the machine stands still."));
+    rowHighlight_->setToolTip(tr("Shows on the picture the lines of the interrupts: those the Z80 took (dashed, a "
+                                 "square where the beam was) and those asked for, taken or not (dotted: PRI and DMA "
+                                 "are the ASIC's, R52 the Gate Array's). Each has its line's number: on a Plus, the "
+                                 "one a program gives the ASIC to have its interrupt there. An arrow says it is above "
+                                 "or below what the picture shows. Also shows where the beam is while the machine "
+                                 "stands still."));
     syncMarks_ = new QCheckBox(tr("HBL / VBL"));
     syncMarks_->setObjectName("ckSyncMarks");
     syncMarks_->setToolTip(tr("Shows on the picture where the CRTC's sync pulses fell in the last picture drawn: the "

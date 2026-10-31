@@ -1076,11 +1076,11 @@ void testRowMarks()
     // The raster interrupt asked for on line 100 goes by that number. The
     // machine sits in a loop with interrupts off (DI;JR is what PlusMachine
     // runs): the ASIC asks and nothing takes it, which is shown too.
-    cpc.setRowMarksWanted(true);
+    cpc.setRaisedMarksWanted(true);
     m.write(0x6800, 100);
     cpc.run(19968 * 2);
     const auto raisedOn = [&](Cpc::InterruptSource source) {
-        for (const Cpc::RaisedMark& mark : cpc.rowMarks().raised)
+        for (const Cpc::RaisedMark& mark : cpc.raisedMarks())
             if (mark.source == source)
                 return mark;
         return Cpc::RaisedMark{-1, -1, -1, source, false};
@@ -1098,7 +1098,7 @@ void testRowMarks()
         CHECK_EQ(marks.back().crtcLine, 100);
     cpc.run(19968);
     bool taken = false;
-    for (const Cpc::RaisedMark& mark : cpc.rowMarks().raised)
+    for (const Cpc::RaisedMark& mark : cpc.raisedMarks())
         taken = taken || mark.taken;
     CHECK(taken);
 
@@ -1119,42 +1119,8 @@ void testRowMarks()
     }
     CHECK(channel);
 
-    // A colour written, by the ASIC's page or through the Gate Array, marks
-    // its line, once however many are written there.
-    cpc.run(19968);
-    const auto writeColours = [&] {
-        m.write(0x6400, 0x12);
-        m.write(0x6401, 0x03);
-        cpc.out(0x7F00, 0x01);
-        cpc.out(0x7F00, 0x4B);
-    };
-    while (cpc.crtc().asicLine() != 120)
-        cpc.run(1);
-    writeColours();
-    cpc.run(64 * 3);
-    writeColours();
-    cpc.run(19968 * 2);
-    const auto colours = cpc.rowMarks().colours;
-    CHECK(colours.empty());  // none in the picture that came after
-    cpc.setRowMarksWanted(false);
-    CHECK(cpc.rowMarks().raised.empty() && cpc.rowMarks().colours.empty());
-    cpc.setRowMarksWanted(true);
-    cpc.run(19968);
-    while (cpc.crtc().asicLine() != 120)
-        cpc.run(1);
-    writeColours();
-    cpc.run(64 * 3);
-    writeColours();
-    // The picture under way ends, and these are its marks.
-    const uint64_t picture = cpc.monitor().frameNumber();
-    while (cpc.monitor().frameNumber() == picture)
-        cpc.run(64);
-    CHECK_EQ(cpc.rowMarks().colours.size(), 2);
-    if (cpc.rowMarks().colours.size() == 2) {
-        CHECK_EQ(cpc.rowMarks().colours[0].crtcLine, 120);
-        CHECK_EQ(cpc.rowMarks().colours[1].crtcLine, 123);
-    }
-    cpc.setRowMarksWanted(false);
+    cpc.setRaisedMarksWanted(false);
+    CHECK(cpc.raisedMarks().empty());
 }
 
 // The channels' round within the line. Where a channel's interrupt comes

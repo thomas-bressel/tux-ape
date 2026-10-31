@@ -163,12 +163,10 @@ public:
     void setSyncMarksWanted(bool wanted);
     const SyncMarks& syncMarks() const { return finishedSyncs_; }
 
-    // What else "Row Highlight" shows, only while asked for. The interrupts
-    // asked for, whether the Z80 took them or not: by the Gate Array's
+    // What else "Row Highlight" shows, only while asked for: the interrupts
+    // asked for, whether the Z80 took them or not, by the Gate Array's
     // counter of 52 lines, by the Plus's raster interrupt (PRI), by its
-    // sound channels; and the lines where a colour was written, by whatever
-    // means: most colours changed on the way down a picture have no
-    // interrupt of their own.
+    // sound channels.
     enum class InterruptSource : uint8_t { Counter, Raster, Channel0, Channel1, Channel2 };
     struct RaisedMark {
         int16_t line;
@@ -178,25 +176,15 @@ public:
         bool taken;
         bool operator==(const RaisedMark&) const = default;
     };
-    struct ColourMark {
-        int16_t line;
-        int16_t crtcLine;
-        bool operator==(const ColourMark&) const = default;
-    };
-    struct RowMarks {
-        std::vector<RaisedMark> raised;
-        std::vector<ColourMark> colours;
-        bool operator==(const RowMarks&) const = default;
-    };
-    void setRowMarksWanted(bool wanted);
+    void setRaisedMarksWanted(bool wanted);
     // Those of the last picture the monitor finished.
-    const RowMarks& rowMarks() const
+    const std::vector<RaisedMark>& raisedMarks() const
     {
-        static const RowMarks none;
+        static const std::vector<RaisedMark> none;
         const uint64_t frame = monitor_.frameNumber();
-        if (rowMarksFrame_ == frame)
-            return finishedRowMarks_;
-        return rowMarksFrame_ + 1 == frame ? rowMarks_ : none;
+        if (raisedFrame_ == frame)
+            return finishedRaised_;
+        return raisedFrame_ + 1 == frame ? raised_ : none;
     }
 
     Ppi& ppi() { return ppi_; }
@@ -449,7 +437,7 @@ public:
         runVideo(clk_ + 2);
         const bool raster = gateArray_.interruptRequested();
         markInterrupt();
-        if (rowMarksWanted_) [[unlikely]]
+        if (raisedWanted_) [[unlikely]]
             noteInterruptTaken(raster);
         gateArray_.acknowledgeInterrupt();
         advance(2);
@@ -594,15 +582,13 @@ private:
     VsyncMark vsyncUnderWay_ = {};
     void watchSyncs();
 
-    // What else "Row Highlight" shows, of the picture being drawn and of the
-    // one before.
-    bool rowMarksWanted_ = false;
-    uint64_t rowMarksFrame_ = 0;
-    RowMarks rowMarks_, finishedRowMarks_;
-    void turnRowMarks();
+    // The interrupts asked for, in the picture being drawn and the one before.
+    bool raisedWanted_ = false;
+    uint64_t raisedFrame_ = 0;
+    std::vector<RaisedMark> raised_, finishedRaised_;
+    void turnRaisedMarks();
     void noteInterruptRaised(InterruptSource source);
     void noteInterruptTaken(bool byGateArray);
-    void noteColourWritten();
 };
 
 }  // namespace tuxape

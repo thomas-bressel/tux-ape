@@ -24,10 +24,11 @@ namespace {
 
 // A CPC pixel line is shown as two screen lines.
 
-// A few words in small, light on a dark box, legible on any picture.
+// A few words in small, light on a box that lets the picture through. The
+// brightest picture makes it a grey of 85, on which white reads at 7.5 to 1.
 void paintTag(QPainter& painter, const QRect& box, const QString& text)
 {
-    painter.fillRect(box, QColor(0, 0, 0, 200));
+    painter.fillRect(box, QColor(0, 0, 0, 170));
     painter.setPen(inkOn(Qt::black));
     painter.drawText(box, Qt::AlignCenter, text);
 }
@@ -36,7 +37,7 @@ QFont tagFont(const QPainter& painter, const QRect& picture)
 {
     QFont font = painter.font();
     font.setBold(false);
-    font.setPixelSize(std::max(9, picture.height() / 54));
+    font.setPixelSize(std::max(8, picture.height() / 90));
     return font;
 }
 
@@ -168,7 +169,7 @@ void ScreenWidget::fetchFrame()
     if (interruptsShown_)
         interrupts_ = emulator_->interruptMarks();
     if (interruptsShown_)
-        rows_ = emulator_->rowMarks();
+        raised_ = emulator_->raisedMarks();
     if (syncsShown_)
         syncs_ = emulator_->syncMarks();
     if (crt_)
@@ -489,8 +490,8 @@ void ScreenWidget::setInterruptMarksShown(bool on)
         return;
     interruptsShown_ = on;
     interrupts_ = on ? emulator_->interruptMarks() : QList<tuxape::Cpc::InterruptMark>();
-    emulator_->setRowMarksWanted(on);
-    rows_ = {};
+    emulator_->setRaisedMarksWanted(on);
+    raised_.clear();
     update();
     if (crt_)
         crt_->update();
@@ -508,54 +509,81 @@ void ScreenWidget::setSyncMarksShown(bool on)
         crt_->update();
 }
 
-// What "Row Highlight" shows: at the left a tick for each line where a colour
-// was written, then the interrupts asked for (dotted) and those the Z80 took
-// (dashed, a square where the beam was), and over it all their numbers, and
-// how many there are of each.
+// The numbers of the lines of the interrupts, from the top down: what asked
+// for it and whether the Z80 took it. Those of one line and one kind go
+// together; of one taken with nothing known of it, the number alone.
+QList<ScreenWidget::InterruptTag> ScreenWidget::tagsOfInterrupts() const
+{
+    using tuxape::Cpc;
+    struct Kind {
+        int line, number;
+        Cpc::InterruptSource source;
+        int taken = 0, left = 0;
+    };
+    QList<Kind> kinds;
+    for (const Cpc::RaisedMark& mark : raised_) {
+        auto kind = std::find_if(kinds.begin(), kinds.end(), [&](const Kind& each) {
+            return each.number == mark.crtcLine && each.source == mark.source && std::abs(each.line - mark.line) <= 1;
+        });
+        if (kind == kinds.end())
+            kind = kinds.insert(kinds.end(), Kind{mark.line, mark.crtcLine, mark.source});
+        ++(mark.taken ? kind->taken : kind->left);
+    }
+    QList<InterruptTag> tags;
+    for (const Kind& kind : kinds) {
+        const QString name = kind.source == Cpc::InterruptSource::Counter  ? QStringLiteral("R52")
+                             : kind.source == Cpc::InterruptSource::Raster ? QStringLiteral("PRI")
+                                                                           : QStringLiteral("DMA%1").arg(static_cast<int>(kind.source) - static_cast<int>(Cpc::InterruptSource::Channel0));
+        const QString text = QString::number(kind.number) + ' ' + name;
+        tags.append({kind.line, !kind.left    ? text
+                                : !kind.taken ? tr("%1, not taken").arg(text)
+                                              : tr("%1, +%2 not taken").arg(text).arg(kind.left)});
+    }
+    for (const Cpc::InterruptMark& mark : interrupts_) {
+        // By the machine's number: asked for as a picture ends and taken
+        // as the next begins, it is not on the same line of either.
+        const bool known = std::any_of(raised_.begin(), raised_.end(),
+                                       [&](const Cpc::RaisedMark& raised) { return std::abs(raised.crtcLine - mark.crtcLine) <= 1; });
+        if (!known)
+            tags.append({mark.line, QString::number(mark.crtcLine)});
+    }
+    std::stable_sort(tags.begin(), tags.end(), [](const InterruptTag& a, const InterruptTag& b) { return a.line < b.line; });
+    // One out of sight, with an arrow saying which way.
+    for (InterruptTag& tag : tags)
+        if (tag.line < 0 || tag.line >= displayHeight() / 2)
+            tag.text.prepend(tag.line < 0 ? QStringLiteral("\u2191") : QStringLiteral("\u2193"));
+    return tags;
+}
+
+QStringList ScreenWidget::interruptTags() const
+{
+    QStringList texts;
+    for (const InterruptTag& tag : tagsOfInterrupts())
+        texts << tag.text;
+    return texts;
+}
+
+// What "Row Highlight" shows: the line of each interrupt asked for (dotted)
+// and of each the Z80 took (dashed, a square where the beam was), and over
+// them their numbers, at the left, in small.
 void ScreenWidget::paintInterruptMarks(QPainter& painter, const QRect& picture) const
 {
     if (!interruptsShown_)
         return;
     using tuxape::Cpc;
-    const QColor edge(0, 0, 0, 200);
+    const QColor edge(0, 0, 0, 120);
     const QColor taken = readable(QColor(255, 110, 255), Qt::black, kGraphicContrast);
     const QColor asked = readable(QColor(255, 190, 60), Qt::black, kGraphicContrast);
-    const QColor colour = inkOn(Qt::black);
     const int lines = displayHeight() / 2;
     const auto inSight = [&](int line) { return line >= 0 && line < lines; };
     const auto yOf = [&](int line) { return picture.top() + (line * 2 + 1) * picture.height() / displayHeight(); };
-    const QFont font = tagFont(painter, picture);
-    painter.setFont(font);
-    const QFontMetrics metrics(font);
-    const int high = metrics.height();
-
-    // The colours written, each line's tick and, where there is room, its
-    // number.
-    const int tick = std::max(4, picture.width() / 160);
-    const int rowHeight = std::max(1, 2 * picture.height() / displayHeight());
-    int lastBottom = picture.top() - 1;
-    for (const Cpc::ColourMark& mark : rows_.colours) {
-        if (!inSight(mark.line))
-            continue;
-        const int top = picture.top() + mark.line * 2 * picture.height() / displayHeight();
-        painter.fillRect(QRect(picture.left(), top, tick + 1, rowHeight), edge);
-        painter.fillRect(QRect(picture.left(), top, tick, std::max(1, rowHeight - 1)), colour);
-        const int labelTop = std::clamp(top - high / 2, picture.top(), picture.bottom() + 1 - high);
-        if (labelTop > lastBottom) {
-            const QString text = QString::number(mark.crtcLine);
-            paintTag(painter, QRect(picture.left() + tick + 2, labelTop, metrics.horizontalAdvance(text) + 4, high), text);
-            lastBottom = labelTop + high - 1;
-        }
-    }
-
-    // The lines of the interrupts.
     const auto across = [&](int y, const QColor& ink, Qt::PenStyle style) {
         painter.setPen(QPen(edge, 3));
         painter.drawLine(picture.left(), y, picture.right(), y);
         painter.setPen(QPen(ink, 1, style));
         painter.drawLine(picture.left(), y, picture.right(), y);
     };
-    for (const Cpc::RaisedMark& mark : rows_.raised)
+    for (const Cpc::RaisedMark& mark : raised_)
         if (inSight(mark.line))
             across(yOf(mark.line), asked, Qt::DotLine);
     for (const Cpc::InterruptMark& mark : interrupts_) {
@@ -564,60 +592,27 @@ void ScreenWidget::paintInterruptMarks(QPainter& painter, const QRect& picture) 
         const int y = yOf(mark.line);
         across(y, taken, Qt::DashLine);
         const int column = picture.left() + std::clamp<int>(mark.column, 0, displayWidth() - 1) * picture.width() / displayWidth();
-        const QRect square(column - 3, y - 3, 7, 7);
+        const QRect square(column - 2, y - 2, 5, 5);
         painter.fillRect(square, taken);
-        painter.setPen(QPen(edge, 1));
-        painter.drawRect(square);
     }
 
-    // Their numbers, from the top down, one beside the other where they
-    // would fall on one another: what asked for it and whether it was
-    // taken, and the number alone of one taken with nothing known of it.
-    struct Tag {
-        int line;
-        QString text;
-    };
-    QList<Tag> tags;
-    for (const Cpc::RaisedMark& mark : rows_.raised) {
-        const QString name = mark.source == Cpc::InterruptSource::Counter  ? QStringLiteral("R52")
-                             : mark.source == Cpc::InterruptSource::Raster ? QStringLiteral("PRI")
-                                                                           : QStringLiteral("DMA%1").arg(static_cast<int>(mark.source) - static_cast<int>(Cpc::InterruptSource::Channel0));
-        const QString text = QString::number(mark.crtcLine) + ' ' + name;
-        tags.append({mark.line, mark.taken ? text : tr("%1, not taken").arg(text)});
-    }
-    for (const Cpc::InterruptMark& mark : interrupts_) {
-        const bool known = std::any_of(rows_.raised.begin(), rows_.raised.end(),
-                                       [&](const Cpc::RaisedMark& raised) { return std::abs(raised.line - mark.line) <= 1; });
-        if (!known)
-            tags.append({mark.line, QString::number(mark.crtcLine)});
-    }
-    std::stable_sort(tags.begin(), tags.end(), [](const Tag& a, const Tag& b) { return a.line < b.line; });
-    lastBottom = picture.top() - 1;
-    int x = picture.left();
-    for (const Tag& tag : tags) {
-        const bool above = tag.line < 0, below = tag.line >= lines;
-        // One out of sight, at the edge it is beyond, with an arrow saying so.
-        const QString text = (above ? QStringLiteral("\u2191") : below ? QStringLiteral("\u2193") : QString()) + tag.text;
-        const int wide = metrics.horizontalAdvance(text) + 4;
-        const int top = above   ? picture.top()
-                        : below ? picture.bottom() + 1 - high
-                                : std::clamp(yOf(tag.line) - high / 2, picture.top(), picture.bottom() + 1 - high);
+    // The numbers, one beside the other where they would fall on one
+    // another; one out of sight at the edge it is beyond.
+    const QFont font = tagFont(painter, picture);
+    painter.setFont(font);
+    const QFontMetrics metrics(font);
+    const int high = metrics.height();
+    int lastBottom = picture.top() - 1, x = picture.left();
+    for (const InterruptTag& tag : tagsOfInterrupts()) {
+        const int wide = metrics.horizontalAdvance(tag.text) + 4;
+        const int top = tag.line < 0        ? picture.top()
+                        : tag.line >= lines ? picture.bottom() + 1 - high
+                                            : std::clamp(yOf(tag.line) - high, picture.top(), picture.bottom() + 1 - high);
         x = top <= lastBottom ? x : picture.left();
-        paintTag(painter, QRect(x, top, wide, high), text);
+        paintTag(painter, QRect(x, top, wide, high), tag.text);
         x += wide + 2;
         lastBottom = std::max(lastBottom, top + high - 1);
     }
-
-    // How many of each, which says at a glance what a picture is made of.
-    const qsizetype fromAsic = std::count_if(rows_.raised.begin(), rows_.raised.end(), [](const Cpc::RaisedMark& mark) {
-        return mark.source != Cpc::InterruptSource::Counter;
-    });
-    const tuxape::CpcModel model = emulator_->model();
-    const bool plus = model == tuxape::CpcModel::Plus464 || model == tuxape::CpcModel::Plus6128;
-    const QString counts = plus ? tr("Z80 interrupts: %1 - ASIC interrupts: %2 - colour lines: %3").arg(interrupts_.size()).arg(fromAsic).arg(rows_.colours.size())
-                                : tr("Z80 interrupts: %1 - colour lines: %2").arg(interrupts_.size()).arg(rows_.colours.size());
-    const int wide = metrics.horizontalAdvance(counts) + 4;
-    paintTag(painter, QRect(picture.left() + std::max(0, (picture.width() - wide) / 2), picture.top(), wide, high), counts);
 }
 
 // The bands of the sync pulses: the HSYNC of each line where it was, so that

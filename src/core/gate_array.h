@@ -80,12 +80,8 @@ public:
     // of them. Nothing is spent on it when no one does.
     void setSyncWatch(std::function<void()> watch) { syncWatch_ = std::move(watch); }
     // Told as it asks for an interrupt (true: a Plus's raster interrupt;
-    // false: its own, every 52 lines), and as a pen is given a colour.
-    void setRowWatches(std::function<void(bool)> interrupt, std::function<void()> colour)
-    {
-        interruptWatch_ = std::move(interrupt);
-        colourWatch_ = std::move(colour);
-    }
+    // false: its own, every 52 lines).
+    void setInterruptWatch(std::function<void(bool)> watch) { interruptWatch_ = std::move(watch); }
     void setPlusColour(int index, uint16_t grb);
     uint32_t spriteColour(int number) const { return spriteRgb_[number & 15]; }
     // The 12-bit colour the ASIC keeps for one of the CPC's.
@@ -183,7 +179,6 @@ private:
     // Last in the class: nothing here is used every microsecond.
     std::function<void()> syncWatch_;
     std::function<void(bool)> interruptWatch_;
-    std::function<void()> colourWatch_;
 };
 
 }  // namespace tuxape
