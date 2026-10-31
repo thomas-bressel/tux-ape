@@ -1074,9 +1074,20 @@ void testRowMarks()
     CHECK(cpc.syncMarks().hsyncs.empty() && cpc.syncMarks().vsyncs.empty());
 
     // The raster interrupt asked for on line 100 goes by that number. The
-    // machine sits in a loop with interrupts on: DI;JR is what PlusMachine
-    // runs, so the marks come from taking one by hand.
+    // machine sits in a loop with interrupts off (DI;JR is what PlusMachine
+    // runs): the ASIC asks and nothing takes it, which is shown too.
+    cpc.setRowMarksWanted(true);
     m.write(0x6800, 100);
+    cpc.run(19968 * 2);
+    const auto raisedOn = [&](Cpc::InterruptSource source) {
+        for (const Cpc::RaisedMark& mark : cpc.rowMarks().raised)
+            if (mark.source == source)
+                return mark;
+        return Cpc::RaisedMark{-1, -1, -1, source, false};
+    };
+    CHECK_EQ(raisedOn(Cpc::InterruptSource::Raster).crtcLine, 100);
+    CHECK(!raisedOn(Cpc::InterruptSource::Raster).taken);
+    // Taken by hand: the mark says so, and goes by the same number.
     while (cpc.crtc().asicLine() != 100 || !cpc.crtc().hsync())
         cpc.run(1);
     cpc.run(2);
@@ -1085,6 +1096,65 @@ void testRowMarks()
     CHECK(!marks.empty());
     if (!marks.empty())
         CHECK_EQ(marks.back().crtcLine, 100);
+    cpc.run(19968);
+    bool taken = false;
+    for (const Cpc::RaisedMark& mark : cpc.rowMarks().raised)
+        taken = taken || mark.taken;
+    CHECK(taken);
+
+    // A sound channel's interrupt is the ASIC's too.
+    m.write(0x6800, 0);
+    cpc.memory().baseRam()[0xA000] = 0x10;
+    cpc.memory().baseRam()[0xA001] = 0x40;
+    cpc.memory().baseRam()[0xA002] = 0x20;
+    cpc.memory().baseRam()[0xA003] = 0x40;
+    m.write(0x6C04, 0x00);
+    m.write(0x6C05, 0xA0);
+    m.write(0x6C06, 0x00);
+    m.write(0x6C0F, 0x02);
+    bool channel = false;
+    for (int frame = 0; frame < 3; ++frame) {
+        cpc.run(19968);
+        channel = channel || raisedOn(Cpc::InterruptSource::Channel1).line != -1;
+    }
+    CHECK(channel);
+
+    // A colour written, by the ASIC's page or through the Gate Array, marks
+    // its line, once however many are written there.
+    cpc.run(19968);
+    const auto writeColours = [&] {
+        m.write(0x6400, 0x12);
+        m.write(0x6401, 0x03);
+        cpc.out(0x7F00, 0x01);
+        cpc.out(0x7F00, 0x4B);
+    };
+    while (cpc.crtc().asicLine() != 120)
+        cpc.run(1);
+    writeColours();
+    cpc.run(64 * 3);
+    writeColours();
+    cpc.run(19968 * 2);
+    const auto colours = cpc.rowMarks().colours;
+    CHECK(colours.empty());  // none in the picture that came after
+    cpc.setRowMarksWanted(false);
+    CHECK(cpc.rowMarks().raised.empty() && cpc.rowMarks().colours.empty());
+    cpc.setRowMarksWanted(true);
+    cpc.run(19968);
+    while (cpc.crtc().asicLine() != 120)
+        cpc.run(1);
+    writeColours();
+    cpc.run(64 * 3);
+    writeColours();
+    // The picture under way ends, and these are its marks.
+    const uint64_t picture = cpc.monitor().frameNumber();
+    while (cpc.monitor().frameNumber() == picture)
+        cpc.run(64);
+    CHECK_EQ(cpc.rowMarks().colours.size(), 2);
+    if (cpc.rowMarks().colours.size() == 2) {
+        CHECK_EQ(cpc.rowMarks().colours[0].crtcLine, 120);
+        CHECK_EQ(cpc.rowMarks().colours[1].crtcLine, 123);
+    }
+    cpc.setRowMarksWanted(false);
 }
 
 // The channels' round within the line. Where a channel's interrupt comes

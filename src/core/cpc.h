@@ -163,6 +163,42 @@ public:
     void setSyncMarksWanted(bool wanted);
     const SyncMarks& syncMarks() const { return finishedSyncs_; }
 
+    // What else "Row Highlight" shows, only while asked for. The interrupts
+    // asked for, whether the Z80 took them or not: by the Gate Array's
+    // counter of 52 lines, by the Plus's raster interrupt (PRI), by its
+    // sound channels; and the lines where a colour was written, by whatever
+    // means: most colours changed on the way down a picture have no
+    // interrupt of their own.
+    enum class InterruptSource : uint8_t { Counter, Raster, Channel0, Channel1, Channel2 };
+    struct RaisedMark {
+        int16_t line;
+        int16_t column;
+        int16_t crtcLine;
+        InterruptSource source;
+        bool taken;
+        bool operator==(const RaisedMark&) const = default;
+    };
+    struct ColourMark {
+        int16_t line;
+        int16_t crtcLine;
+        bool operator==(const ColourMark&) const = default;
+    };
+    struct RowMarks {
+        std::vector<RaisedMark> raised;
+        std::vector<ColourMark> colours;
+        bool operator==(const RowMarks&) const = default;
+    };
+    void setRowMarksWanted(bool wanted);
+    // Those of the last picture the monitor finished.
+    const RowMarks& rowMarks() const
+    {
+        static const RowMarks none;
+        const uint64_t frame = monitor_.frameNumber();
+        if (rowMarksFrame_ == frame)
+            return finishedRowMarks_;
+        return rowMarksFrame_ + 1 == frame ? rowMarks_ : none;
+    }
+
     Ppi& ppi() { return ppi_; }
     Psg& psg() { return psg_; }
     Keyboard& keyboard() { return keyboard_; }
@@ -413,6 +449,8 @@ public:
         runVideo(clk_ + 2);
         const bool raster = gateArray_.interruptRequested();
         markInterrupt();
+        if (rowMarksWanted_) [[unlikely]]
+            noteInterruptTaken(raster);
         gateArray_.acknowledgeInterrupt();
         advance(2);
         // On a Plus the ASIC puts its vector on the bus; on a CPC nothing
@@ -443,14 +481,6 @@ private:
                           static_cast<int16_t>(crtcLineNumber())});
     }
     int crtcLineNumber() const { return plus_ ? crtc_.asicLine() : crtc_.frameLine(); }
-
-    // The sync pulses of the picture being drawn, and of the one before.
-    bool hsyncWatched_ = false, vsyncWatched_ = false;
-    uint64_t hsyncSince_ = 0;  // the microsecond it rose
-    uint64_t syncsFrame_ = 0;
-    SyncMarks syncs_, finishedSyncs_;
-    VsyncMark vsyncUnderWay_ = {};
-    void watchSyncs();
 
     Z80<Cpc> cpu_;
     Memory memory_;
@@ -555,6 +585,24 @@ private:
     void updatePsgBus();
     void syncSound();
     void syncSoundTo(uint64_t now);  // a microsecond
+
+    // The sync pulses of the picture being drawn, and of the one before.
+    bool hsyncWatched_ = false, vsyncWatched_ = false;
+    uint64_t hsyncSince_ = 0;  // the microsecond it rose
+    uint64_t syncsFrame_ = 0;
+    SyncMarks syncs_, finishedSyncs_;
+    VsyncMark vsyncUnderWay_ = {};
+    void watchSyncs();
+
+    // What else "Row Highlight" shows, of the picture being drawn and of the
+    // one before.
+    bool rowMarksWanted_ = false;
+    uint64_t rowMarksFrame_ = 0;
+    RowMarks rowMarks_, finishedRowMarks_;
+    void turnRowMarks();
+    void noteInterruptRaised(InterruptSource source);
+    void noteInterruptTaken(bool byGateArray);
+    void noteColourWritten();
 };
 
 }  // namespace tuxape

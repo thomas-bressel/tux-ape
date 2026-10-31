@@ -409,6 +409,15 @@ int main(int argc, char* argv[])
             const int apart = (marks[n].crtcLine - marks[n - 1].crtcLine + 312) % 312;
             CHECK(apart >= 51 && apart <= 53);
         }
+        // The Gate Array asked for each of them, and the Z80 took them.
+        {
+            const tuxape::Cpc::RowMarks rows = screen->rowMarks();
+            CHECK_EQ(rows.raised.size(), 6);
+            for (const tuxape::Cpc::RaisedMark& raised : rows.raised) {
+                CHECK(raised.source == tuxape::Cpc::InterruptSource::Counter);
+                CHECK(raised.taken);
+            }
+        }
         // On the picture: a dashed light magenta line, at a mark's line.
         for (const auto& mark : marks) {
             if (mark.line < 10 || mark.line >= 260)

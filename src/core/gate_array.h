@@ -79,6 +79,13 @@ public:
     // Told as each HSYNC and VSYNC starts and ends, for whoever keeps track
     // of them. Nothing is spent on it when no one does.
     void setSyncWatch(std::function<void()> watch) { syncWatch_ = std::move(watch); }
+    // Told as it asks for an interrupt (true: a Plus's raster interrupt;
+    // false: its own, every 52 lines), and as a pen is given a colour.
+    void setRowWatches(std::function<void(bool)> interrupt, std::function<void()> colour)
+    {
+        interruptWatch_ = std::move(interrupt);
+        colourWatch_ = std::move(colour);
+    }
     void setPlusColour(int index, uint16_t grb);
     uint32_t spriteColour(int number) const { return spriteRgb_[number & 15]; }
     // The 12-bit colour the ASIC keeps for one of the CPC's.
@@ -139,7 +146,6 @@ private:
     bool fetchedDisplay_[2] = {};  // display enable for each of the two bytes
 
     uint8_t r52_ = 0;
-    std::function<void()> syncWatch_;
     uint8_t hsyncAge_ = 0;      // microseconds since HSYNC rose
     uint8_t vsyncLines_ = 0;    // HSYNCs counted since VSYNC rose
     bool vsyncSequence_ = false;  // the Gate Array is timing a vertical sync
@@ -173,6 +179,11 @@ private:
     void drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo, int change);
     void countHsync(Monitor& monitor);
     void rasterInterrupt(const Crtc& crtc, bool hsync);
+
+    // Last in the class: nothing here is used every microsecond.
+    std::function<void()> syncWatch_;
+    std::function<void(bool)> interruptWatch_;
+    std::function<void()> colourWatch_;
 };
 
 }  // namespace tuxape

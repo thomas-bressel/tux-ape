@@ -486,6 +486,82 @@ void Cpc::watchSyncs()
     hsyncWatched_ = hsync;
 }
 
+void Cpc::setRowMarksWanted(bool wanted)
+{
+    rowMarksWanted_ = wanted;
+    if (wanted) {
+        const auto colour = [this] { noteColourWritten(); };
+        gateArray_.setRowWatches(
+            [this](bool raster) { noteInterruptRaised(raster ? InterruptSource::Raster : InterruptSource::Counter); }, colour);
+        asic_.setRowWatches(
+            [this](int channel) { noteInterruptRaised(static_cast<InterruptSource>(static_cast<int>(InterruptSource::Channel0) + channel)); },
+            colour);
+    } else {
+        gateArray_.setRowWatches(nullptr, nullptr);
+        asic_.setRowWatches(nullptr, nullptr);
+    }
+    rowMarks_ = {};
+    finishedRowMarks_ = {};
+}
+
+// A new picture: the marks of the one that has ended are put by.
+void Cpc::turnRowMarks()
+{
+    const uint64_t frame = monitor_.frameNumber();
+    if (frame == rowMarksFrame_)
+        return;
+    if (frame == rowMarksFrame_ + 1) {
+        finishedRowMarks_.raised.swap(rowMarks_.raised);
+        finishedRowMarks_.colours.swap(rowMarks_.colours);
+    } else {
+        finishedRowMarks_ = {};
+    }
+    rowMarks_.raised.clear();
+    rowMarks_.colours.clear();
+    rowMarksFrame_ = frame;
+}
+
+void Cpc::noteInterruptRaised(InterruptSource source)
+{
+    constexpr size_t kMost = 1024;
+    turnRowMarks();
+    if (rowMarks_.raised.size() < kMost)
+        rowMarks_.raised.push_back({static_cast<int16_t>(monitor_.rasterLine()), static_cast<int16_t>(monitor_.beamColumn()),
+                                    static_cast<int16_t>(crtcLineNumber()), source, false});
+}
+
+// The Z80 has taken an interrupt: the last one of that kind asked for and
+// not yet taken, of this picture or of the one before. The Gate Array's come
+// first, as they do for the Z80 (see Asic::acknowledgeInterrupt).
+void Cpc::noteInterruptTaken(bool byGateArray)
+{
+    turnRowMarks();
+    const uint8_t status = asic_.dcsr();
+    const auto isIt = [&](InterruptSource source) {
+        if (byGateArray)
+            return source == InterruptSource::Raster || source == InterruptSource::Counter;
+        const InterruptSource channel = status & 0x40   ? InterruptSource::Channel0
+                                        : status & 0x20 ? InterruptSource::Channel1
+                                                        : InterruptSource::Channel2;
+        return source == channel;
+    };
+    for (std::vector<RaisedMark>* marks : {&rowMarks_.raised, &finishedRowMarks_.raised})
+        for (auto mark = marks->rbegin(); mark != marks->rend(); ++mark)
+            if (!mark->taken && isIt(mark->source)) {
+                mark->taken = true;
+                return;
+            }
+}
+
+void Cpc::noteColourWritten()
+{
+    constexpr size_t kMost = 1024;
+    turnRowMarks();
+    const auto line = static_cast<int16_t>(monitor_.rasterLine());
+    if (rowMarks_.colours.size() < kMost && (rowMarks_.colours.empty() || rowMarks_.colours.back().line != line))
+        rowMarks_.colours.push_back({line, static_cast<int16_t>(crtcLineNumber())});
+}
+
 void Cpc::syncSound()
 {
     syncSoundTo(microseconds());

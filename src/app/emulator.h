@@ -235,6 +235,9 @@ public:
     // Where the sync pulses fell in that picture, while asked for.
     void setSyncMarksWanted(bool wanted);
     tuxape::Cpc::SyncMarks syncMarks();
+    // And the interrupts asked for and the colours written there.
+    void setRowMarksWanted(bool wanted);
+    tuxape::Cpc::RowMarks rowMarks();
     // The picture as it is at this instant: this frame as far as the beam
     // has drawn it, and the frame before under it. For a screenshot that
     // does not wait for the frame to end.
@@ -489,6 +492,7 @@ private:
     QImage frame_;
     QList<tuxape::Cpc::InterruptMark> frameMarks_;  // the interrupts of frame_
     tuxape::Cpc::SyncMarks frameSyncs_;             // and its sync pulses
+    tuxape::Cpc::RowMarks frameRowMarks_;           // and the rest of what it marks
     std::atomic<bool> framePending_{false};
     uint64_t lastFrameNumber_ = 0;
 

@@ -95,6 +95,13 @@ public:
         readRam_ = std::move(readRam);
         writeSound_ = std::move(writeSound);
     }
+    // Told as a channel asks for an interrupt, and as a colour register is
+    // written.
+    void setRowWatches(std::function<void(int)> channelInterrupt, std::function<void()> colour)
+    {
+        channelWatch_ = std::move(channelInterrupt);
+        colourWatch_ = std::move(colour);
+    }
     bool soundChannelsOn() const { return (dcsr_ & 0x07) != 0; }
     // Called as each line's HSYNC starts, and then every microsecond for
     // as long as the channels' round lasts. Both say whether it does.
@@ -155,6 +162,10 @@ private:
 
     void setColour(int index, uint16_t grb);
     void showDcsr();
+
+    // Last in the class: nothing here is used every microsecond.
+    std::function<void(int)> channelWatch_;
+    std::function<void()> colourWatch_;
 };
 
 }  // namespace tuxape

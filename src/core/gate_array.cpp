@@ -192,6 +192,8 @@ void GateArray::write(uint8_t value)
         }
         ink_[pen_] = value & 0x1F;
         rgb_[pen_] = colours_[value & 0x1F];
+        if (colourWatch_) [[unlikely]]
+            colourWatch_();
         break;
     case 2:  // screen mode, ROM enables, interrupt counter reset
         rmr_ = value & 0x1F;
@@ -251,6 +253,8 @@ void GateArray::rasterInterrupt(const Crtc& crtc, bool hsync)
         rasterDue_ = false;
         asic_->raiseRasterInterrupt();
         interrupt_ = true;
+        if (interruptWatch_) [[unlikely]]
+            interruptWatch_(true);
     }
     const uint8_t line = asic_->rasterInterruptLine();
     const bool match = (hsync || crtc.hsync()) && line != 0 && crtc.asicLine() == line;
@@ -402,8 +406,11 @@ void GateArray::countHsync(Monitor& monitor)
     const bool ownInterrupts = !(plus_ && asic_->rasterInterruptLine() != 0);
     if (++r52_ == 52) {
         r52_ = 0;
-        if (ownInterrupts)
+        if (ownInterrupts) {
             interrupt_ = true;
+            if (interruptWatch_) [[unlikely]]
+                interruptWatch_(false);
+        }
     }
     if (vsyncSequence_) {
         ++vsyncLines_;
@@ -412,8 +419,11 @@ void GateArray::countHsync(Monitor& monitor)
             // counter is brought into step with the frame, with an
             // interrupt if the previous one is far enough away.
             monitor.vsync();
-            if (r52_ >= 32 && ownInterrupts)
+            if (r52_ >= 32 && ownInterrupts) {
                 interrupt_ = true;
+                if (interruptWatch_) [[unlikely]]
+                    interruptWatch_(false);
+            }
             r52_ = 0;
         } else if (vsyncLines_ == 6) {
             monitor.vsyncEnded();
