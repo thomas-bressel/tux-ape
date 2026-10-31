@@ -231,7 +231,10 @@ public:
     QImage frame();
     // Where the Z80 took its interrupts in that picture: x the column, y
     // the line, as the picture has them.
-    QList<QPoint> interruptMarks();
+    QList<tuxape::Cpc::InterruptMark> interruptMarks();
+    // Where the sync pulses fell in that picture, while asked for.
+    void setSyncMarksWanted(bool wanted);
+    tuxape::Cpc::SyncMarks syncMarks();
     // The picture as it is at this instant: this frame as far as the beam
     // has drawn it, and the frame before under it. For a screenshot that
     // does not wait for the frame to end.
@@ -484,7 +487,8 @@ private:
 
     std::mutex frameMutex_;
     QImage frame_;
-    QList<QPoint> frameMarks_;  // the interrupts of frame_
+    QList<tuxape::Cpc::InterruptMark> frameMarks_;  // the interrupts of frame_
+    tuxape::Cpc::SyncMarks frameSyncs_;             // and its sync pulses
     std::atomic<bool> framePending_{false};
     uint64_t lastFrameNumber_ = 0;
 

@@ -117,10 +117,15 @@ public:
     Monitor& monitor() { return monitor_; }
 
     // Where on the picture the Z80 took its interrupts, for the Registers
-    // window's "Row Highlight": the line and the column the beam was at.
+    // window's "Row Highlight": the line and the column the beam was at,
+    // and the line's number as the machine counts it (on a Plus, what a
+    // program gives the ASIC to have its interrupt there; elsewhere from
+    // the start of the CRTC's frame).
     struct InterruptMark {
         int16_t line;
         int16_t column;
+        int16_t crtcLine;
+        bool operator==(const InterruptMark&) const = default;
     };
     // Those of the last picture the monitor finished, or of the one it is
     // drawing.
@@ -132,6 +137,32 @@ public:
             return finished ? finishedMarks_ : marks_;
         return finished && marksFrame_ + 1 == frame ? marks_ : none;
     }
+    // Where the CRTC's sync pulses fell, for the Registers window's "HBL /
+    // VBL" box, only while asked for: an HSYNC a line (on the picture's
+    // line, from its column, for so many microseconds, from that character)
+    // and each VSYNC (from that line, for so many lines, and its number as
+    // for an interrupt). Those of the last picture finished.
+    struct HsyncMark {
+        int16_t line;
+        int16_t column;
+        int16_t width;
+        uint8_t hcc;
+        bool operator==(const HsyncMark&) const = default;
+    };
+    struct VsyncMark {
+        int16_t line;
+        int16_t lines;
+        int16_t crtcLine;
+        bool operator==(const VsyncMark&) const = default;
+    };
+    struct SyncMarks {
+        std::vector<HsyncMark> hsyncs;
+        std::vector<VsyncMark> vsyncs;
+        bool operator==(const SyncMarks&) const = default;
+    };
+    void setSyncMarksWanted(bool wanted);
+    const SyncMarks& syncMarks() const { return finishedSyncs_; }
+
     Ppi& ppi() { return ppi_; }
     Psg& psg() { return psg_; }
     Keyboard& keyboard() { return keyboard_; }
@@ -408,8 +439,18 @@ private:
             marks_.clear();
             marksFrame_ = frame;
         }
-        marks_.push_back({static_cast<int16_t>(monitor_.rasterLine()), static_cast<int16_t>(monitor_.beamColumn())});
+        marks_.push_back({static_cast<int16_t>(monitor_.rasterLine()), static_cast<int16_t>(monitor_.beamColumn()),
+                          static_cast<int16_t>(crtcLineNumber())});
     }
+    int crtcLineNumber() const { return plus_ ? crtc_.asicLine() : crtc_.frameLine(); }
+
+    // The sync pulses of the picture being drawn, and of the one before.
+    bool hsyncWatched_ = false, vsyncWatched_ = false;
+    uint64_t hsyncSince_ = 0;  // the microsecond it rose
+    uint64_t syncsFrame_ = 0;
+    SyncMarks syncs_, finishedSyncs_;
+    VsyncMark vsyncUnderWay_ = {};
+    void watchSyncs();
 
     Z80<Cpc> cpu_;
     Memory memory_;

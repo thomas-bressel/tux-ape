@@ -1051,6 +1051,42 @@ void testSoundChannelSample()
     CHECK(crossings >= 28 && crossings <= 32);
 }
 
+// Where the sync pulses fell, and the number an interrupt's line goes by:
+// what R2, R3 and R7 say, and what the raster interrupt was asked for.
+void testRowMarks()
+{
+    PlusMachine m;
+    Cpc& cpc = m.cpc;
+    cpc.setSyncMarksWanted(true);
+    for (int frame = 0; frame < 3; ++frame)
+        cpc.run(19968);
+    const Cpc::SyncMarks& pulses = cpc.syncMarks();
+    CHECK(pulses.hsyncs.size() >= 310 && pulses.hsyncs.size() <= 314);
+    CHECK_EQ(pulses.hsyncs[20].hcc, 46);
+    CHECK_EQ(pulses.hsyncs[20].width, 14);
+    CHECK_EQ(pulses.hsyncs[21].line, pulses.hsyncs[20].line + 1);
+    CHECK_EQ(pulses.vsyncs.size(), 1);
+    CHECK_EQ(pulses.vsyncs[0].crtcLine, 30 * 8);
+    CHECK_EQ(pulses.vsyncs[0].lines, 8);
+    // Not asked for any more: nothing kept.
+    cpc.setSyncMarksWanted(false);
+    cpc.run(19968);
+    CHECK(cpc.syncMarks().hsyncs.empty() && cpc.syncMarks().vsyncs.empty());
+
+    // The raster interrupt asked for on line 100 goes by that number. The
+    // machine sits in a loop with interrupts on: DI;JR is what PlusMachine
+    // runs, so the marks come from taking one by hand.
+    m.write(0x6800, 100);
+    while (cpc.crtc().asicLine() != 100 || !cpc.crtc().hsync())
+        cpc.run(1);
+    cpc.run(2);
+    cpc.irqAck();
+    const auto& marks = cpc.interruptMarks(false);
+    CHECK(!marks.empty());
+    if (!marks.empty())
+        CHECK_EQ(marks.back().crtcLine, 100);
+}
+
 // The channels' round within the line. Where a channel's interrupt comes
 // is what Kevin Thacker's "dmatiming" marks on the screen, with what a real
 // machine shows for fourteen set-ups. The rules checked here give twelve of
@@ -1311,6 +1347,7 @@ int main()
     testRasterInterrupt();
     testSoundChannels();
     testSoundChannelSample();
+    testRowMarks();
     testSoundChannelTiming();
     testSnapshot();
     return checkSummary("plus");

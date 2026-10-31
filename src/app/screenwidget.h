@@ -6,6 +6,7 @@
 #include <QPoint>
 #include <QWidget>
 
+#include "core/cpc.h"
 #include "core/keytables.h"
 #include "core/monitor.h"
 #include "crtlook.h"
@@ -105,7 +106,13 @@ public:
     static constexpr int kKeysStay = 800;
     static constexpr int kMostKeys = 8;
     bool interruptMarksShown() const { return interruptsShown_; }
-    QList<QPoint> interruptMarks() const { return interrupts_; }
+    QList<tuxape::Cpc::InterruptMark> interruptMarks() const { return interrupts_; }
+    // The Registers window's "HBL / VBL": where the sync pulses of the
+    // picture shown fell, as bands; a tick along the picture's edge where
+    // they are out of its sight.
+    void setSyncMarksShown(bool on);
+    bool syncMarksShown() const { return syncsShown_; }
+    tuxape::Cpc::SyncMarks syncMarks() const { return syncs_; }
 
 signals:
     // The picture has another size: the whole raster, or the part WinAPE
@@ -142,7 +149,10 @@ private:
     void paintBeamMarker(QPainter& painter, const QRect& picture) const;
     void paintInterruptMarks(QPainter& painter, const QRect& picture) const;
     bool interruptsShown_ = false;
-    QList<QPoint> interrupts_;
+    QList<tuxape::Cpc::InterruptMark> interrupts_;
+    void paintSyncMarks(QPainter& painter, const QRect& picture) const;
+    bool syncsShown_ = false;
+    tuxape::Cpc::SyncMarks syncs_;
     QString note_;
     int noteNumber_ = 0;  // which note is up, for the one gone to leave a later one alone
     void paintNote(QPainter& painter, const QRect& picture) const;

@@ -24,6 +24,22 @@ namespace {
 
 // A CPC pixel line is shown as two screen lines.
 
+// A few words in small, light on a dark box, legible on any picture.
+void paintTag(QPainter& painter, const QRect& box, const QString& text)
+{
+    painter.fillRect(box, QColor(0, 0, 0, 200));
+    painter.setPen(inkOn(Qt::black));
+    painter.drawText(box, Qt::AlignCenter, text);
+}
+
+QFont tagFont(const QPainter& painter, const QRect& picture)
+{
+    QFont font = painter.font();
+    font.setBold(false);
+    font.setPixelSize(std::max(9, picture.height() / 54));
+    return font;
+}
+
 }  // namespace
 
 ScreenWidget::ScreenWidget(Emulator* emulator, QWidget* parent)
@@ -151,6 +167,8 @@ void ScreenWidget::fetchFrame()
     }
     if (interruptsShown_)
         interrupts_ = emulator_->interruptMarks();
+    if (syncsShown_)
+        syncs_ = emulator_->syncMarks();
     if (crt_)
         crt_->setFrame(image_);
     else
@@ -168,6 +186,7 @@ void ScreenWidget::setCrtShader(bool on, bool colourTube, const CrtLook& look)
         crt_->overlay = [this](QPainter& painter) {
             paintDriveLight(painter, driveLightRect().translated(-crt_->pos()));
             paintInterruptMarks(painter, crt_->rect());
+            paintSyncMarks(painter, crt_->rect());
             paintNote(painter, crt_->rect());
             paintKeys(painter, crt_->rect());
             paintBeamMarker(painter, crt_->rect());
@@ -467,7 +486,19 @@ void ScreenWidget::setInterruptMarksShown(bool on)
     if (on == interruptsShown_)
         return;
     interruptsShown_ = on;
-    interrupts_ = on ? emulator_->interruptMarks() : QList<QPoint>();
+    interrupts_ = on ? emulator_->interruptMarks() : QList<tuxape::Cpc::InterruptMark>();
+    update();
+    if (crt_)
+        crt_->update();
+}
+
+void ScreenWidget::setSyncMarksShown(bool on)
+{
+    if (on == syncsShown_)
+        return;
+    syncsShown_ = on;
+    emulator_->setSyncMarksWanted(on);
+    syncs_ = {};
     update();
     if (crt_)
         crt_->update();
@@ -482,19 +513,108 @@ void ScreenWidget::paintInterruptMarks(QPainter& painter, const QRect& picture) 
         return;
     const QColor edge(0, 0, 0, 200);
     const QColor mark = readable(QColor(255, 110, 255), Qt::black, kGraphicContrast);
-    for (const QPoint& at : interrupts_) {
-        if (at.y() < 0 || at.y() >= displayHeight() / 2)
+    const int lines = displayHeight() / 2;
+    // From the top down, for the numbers not to fall on one another.
+    QList<tuxape::Cpc::InterruptMark> marks = interrupts_;
+    std::stable_sort(marks.begin(), marks.end(), [](const auto& a, const auto& b) { return a.line < b.line; });
+    const QFont font = tagFont(painter, picture);
+    painter.setFont(font);
+    const QFontMetrics metrics(font);
+    const int high = metrics.height();
+    const auto yOf = [&](int line) { return picture.top() + (line * 2 + 1) * picture.height() / displayHeight(); };
+    for (const tuxape::Cpc::InterruptMark& at : marks) {
+        if (at.line < 0 || at.line >= lines)
             continue;
-        const int y = picture.top() + (at.y() * 2 + 1) * picture.height() / displayHeight();
-        const int x = picture.left() + std::clamp(at.x(), 0, displayWidth() - 1) * picture.width() / displayWidth();
+        const int y = yOf(at.line);
+        const int column = picture.left() + std::clamp<int>(at.column, 0, displayWidth() - 1) * picture.width() / displayWidth();
         painter.setPen(QPen(edge, 3));
         painter.drawLine(picture.left(), y, picture.right(), y);
         painter.setPen(QPen(mark, 1, Qt::DashLine));
         painter.drawLine(picture.left(), y, picture.right(), y);
-        const QRect square(x - 3, y - 3, 7, 7);
+        const QRect square(column - 3, y - 3, 7, 7);
         painter.fillRect(square, mark);
         painter.setPen(QPen(edge, 1));
         painter.drawRect(square);
+    }
+    int lastBottom = picture.top() - 1, x = picture.left();
+    for (const tuxape::Cpc::InterruptMark& at : marks) {
+        const bool above = at.line < 0, below = at.line >= lines;
+        const int y = yOf(at.line);
+        // Its number at the left; one out of sight, at the edge it is
+        // beyond, with an arrow saying so.
+        const QString text = (above ? QStringLiteral("\u2191") : below ? QStringLiteral("\u2193") : QString()) + QString::number(at.crtcLine);
+        const int wide = metrics.horizontalAdvance(text) + 4;
+        const int top = above ? picture.top() : below ? picture.bottom() + 1 - high : std::clamp(y - high / 2, picture.top(), picture.bottom() + 1 - high);
+        // Beside the one before where it would fall on it.
+        x = top <= lastBottom ? x : picture.left();
+        const QRect box(x, top, wide, high);
+        paintTag(painter, box, text);
+        x += wide + 2;
+        lastBottom = std::max(lastBottom, box.bottom());
+    }
+}
+
+// The bands of the sync pulses: the HSYNC of each line where it was, so that
+// one moved by a program shows, and the VSYNC across the picture. What falls
+// out of the picture's sight leaves a tick along the edge it is beyond.
+void ScreenWidget::paintSyncMarks(QPainter& painter, const QRect& picture) const
+{
+    if (!syncsShown_)
+        return;
+    QColor hbl = readable(QColor(80, 200, 255), Qt::black, kGraphicContrast);
+    QColor vbl = readable(QColor(120, 255, 120), Qt::black, kGraphicContrast);
+    const QColor hblEdge = hbl, vblEdge = vbl;
+    hbl.setAlpha(110);
+    vbl.setAlpha(110);
+    const int lines = displayHeight() / 2;
+    const auto yOf = [&](int line) { return picture.top() + line * 2 * picture.height() / displayHeight(); };
+    const auto xOf = [&](int column) { return picture.left() + column * picture.width() / displayWidth(); };
+    const int tick = std::max(2, picture.width() / 256);
+    int firstHcc = 256, lastHcc = -1, widest = 0, hblColumn = 0;
+    for (const tuxape::Cpc::HsyncMark& pulse : syncs_.hsyncs) {
+        firstHcc = std::min<int>(firstHcc, pulse.hcc);
+        lastHcc = std::max<int>(lastHcc, pulse.hcc);
+        widest = std::max<int>(widest, pulse.width);
+        hblColumn = pulse.column;
+        if (pulse.line < 0 || pulse.line >= lines)
+            continue;
+        const int top = yOf(pulse.line), bottom = yOf(pulse.line + 1);
+        const int end = pulse.column + pulse.width * tuxape::Monitor::kCellWidth;
+        if (pulse.column >= displayWidth())
+            painter.fillRect(QRect(picture.right() + 1 - tick, top, tick, bottom - top), hblEdge);
+        else if (end <= 0)
+            painter.fillRect(QRect(picture.left(), top, tick, bottom - top), hblEdge);
+        else
+            painter.fillRect(QRect(QPoint(xOf(std::max<int>(0, pulse.column)), top), QPoint(xOf(std::min(displayWidth(), end)) - 1, bottom - 1)), hbl);
+    }
+    int vblLine = 0;
+    for (const tuxape::Cpc::VsyncMark& pulse : syncs_.vsyncs) {
+        vblLine = pulse.line;
+        const int first = std::max<int>(pulse.line, 0), last = std::min<int>(pulse.line + std::max<int>(pulse.lines, 1), lines);
+        if (first < last)
+            painter.fillRect(QRect(QPoint(picture.left(), yOf(first)), QPoint(picture.right(), yOf(last) - 1)), vbl);
+        else
+            painter.fillRect(pulse.line < 0 ? QRect(picture.left(), picture.top(), picture.width(), tick)
+                                            : QRect(picture.left(), picture.bottom() + 1 - tick, picture.width(), tick),
+                             vblEdge);
+    }
+    // What they are in the CRTC's terms: its character, its line.
+    const QFont font = tagFont(painter, picture);
+    painter.setFont(font);
+    const QFontMetrics metrics(font);
+    const int high = metrics.height();
+    if (lastHcc >= 0) {
+        const QString text = (firstHcc == lastHcc ? tr("HBL C%1").arg(firstHcc) : tr("HBL C%1-%2").arg(firstHcc).arg(lastHcc)) + QStringLiteral(" +%1").arg(widest);
+        const int wide = metrics.horizontalAdvance(text) + 4;
+        const int x = std::clamp(xOf(hblColumn), picture.left(), std::max(picture.left(), picture.right() + 1 - wide));
+        paintTag(painter, QRect(x, picture.top(), wide, high), text);
+    }
+    if (!syncs_.vsyncs.empty()) {
+        const tuxape::Cpc::VsyncMark& pulse = syncs_.vsyncs.back();
+        const QString text = tr("VBL L%1 +%2").arg(pulse.crtcLine).arg(pulse.lines);
+        const int wide = metrics.horizontalAdvance(text) + 4;
+        const int y = std::clamp(yOf(vblLine), picture.top() + high, std::max(picture.top(), picture.bottom() + 1 - high));
+        paintTag(painter, QRect(picture.right() + 1 - wide, y, wide, high), text);
     }
 }
 
@@ -601,6 +721,7 @@ void ScreenWidget::paintEvent(QPaintEvent*)
     }
     paintDriveLight(painter, driveLightRect());
     paintInterruptMarks(painter, target);
+    paintSyncMarks(painter, target);
     paintBeamMarker(painter, target);
     paintNote(painter, target);
     paintKeys(painter, target);

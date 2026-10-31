@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <utility>
 
 namespace tuxape {
 
@@ -74,6 +76,9 @@ public:
     bool plus() const { return plus_; }
     // The ASIC, for its sprites, its scrolling and its raster interrupt.
     void attach(Asic* asic) { asic_ = asic; }
+    // Told as each HSYNC and VSYNC starts and ends, for whoever keeps track
+    // of them. Nothing is spent on it when no one does.
+    void setSyncWatch(std::function<void()> watch) { syncWatch_ = std::move(watch); }
     void setPlusColour(int index, uint16_t grb);
     uint32_t spriteColour(int number) const { return spriteRgb_[number & 15]; }
     // The 12-bit colour the ASIC keeps for one of the CPC's.
@@ -134,6 +139,7 @@ private:
     bool fetchedDisplay_[2] = {};  // display enable for each of the two bytes
 
     uint8_t r52_ = 0;
+    std::function<void()> syncWatch_;
     uint8_t hsyncAge_ = 0;      // microseconds since HSYNC rose
     uint8_t vsyncLines_ = 0;    // HSYNCs counted since VSYNC rose
     bool vsyncSequence_ = false;  // the Gate Array is timing a vertical sync

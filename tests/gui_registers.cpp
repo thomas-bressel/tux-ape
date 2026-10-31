@@ -398,17 +398,23 @@ int main(int argc, char* argv[])
         emulator.setPaused(false);
         emulator.start();
         QTest::qWait(300);
-        QList<QPoint> marks = screen->interruptMarks();
+        QList<tuxape::Cpc::InterruptMark> marks = screen->interruptMarks();
         CHECK_EQ(marks.size(), 6);
-        std::sort(marks.begin(), marks.end(), [](const QPoint& a, const QPoint& b) { return a.y() < b.y(); });
-        for (int n = 1; n < marks.size(); ++n)
-            CHECK_EQ(marks[n].y() - marks[n - 1].y(), 52);
+        std::sort(marks.begin(), marks.end(), [](const auto& a, const auto& b) { return a.line < b.line; });
+        for (int n = 1; n < marks.size(); ++n) {
+            CHECK_EQ(marks[n].line - marks[n - 1].line, 52);
+            // The machine's own numbers go the same way, starting again
+            // with its frame; one taken just after a line has ended counts
+            // as the next.
+            const int apart = (marks[n].crtcLine - marks[n - 1].crtcLine + 312) % 312;
+            CHECK(apart >= 51 && apart <= 53);
+        }
         // On the picture: a dashed light magenta line, at a mark's line.
-        for (const QPoint& mark : marks) {
-            if (mark.y() < 10 || mark.y() >= 260)
+        for (const auto& mark : marks) {
+            if (mark.line < 10 || mark.line >= 260)
                 continue;
             const QImage shown = screen->grab().toImage();
-            const int y = (mark.y() * 2 + 1) * screen->height() / 540;
+            const int y = (mark.line * 2 + 1) * screen->height() / 540;
             int magenta = 0;
             for (int x = 0; x < shown.width(); ++x) {
                 const QColor colour = shown.pixelColor(x, std::min(y, shown.height() - 1));
@@ -419,6 +425,38 @@ int main(int argc, char* argv[])
         }
         if (!prefix.isEmpty())
             screen->grab().save(prefix + "interrupts.png");
+        // Where the sync pulses fall: asked for by its own box, only with
+        // the window up. A line's HSYNC is where R2 says, as long as R3 says,
+        // and the VSYNC at R7's row.
+        auto* sync = registers->findChild<QCheckBox*>("ckSyncMarks");
+        CHECK(sync && !sync->isChecked() && !screen->syncMarksShown());
+        const QImage plain = screen->grab().toImage();
+        sync->setChecked(true);
+        CHECK(screen->syncMarksShown());
+        CHECK(QTest::qWaitFor([&] { return !screen->syncMarks().vsyncs.empty() && !screen->syncMarks().hsyncs.empty(); }, 2000));
+        {
+            const tuxape::Cpc::SyncMarks pulses = screen->syncMarks();
+            const auto registerOf = [&](int r) {
+                return emulator.withMachine([r](tuxape::Cpc& cpc) { return static_cast<int>(cpc.crtc().reg(r)); });
+            };
+            CHECK(pulses.hsyncs.size() > 300 && pulses.hsyncs.size() < 320);
+            CHECK_EQ(pulses.hsyncs[10].hcc, registerOf(2));
+            CHECK_EQ(pulses.hsyncs[10].width, registerOf(3) & 15);
+            CHECK_EQ(pulses.vsyncs.back().crtcLine, registerOf(7) * (registerOf(9) + 1));
+            CHECK(pulses.vsyncs.back().lines > 0);
+        }
+        QTest::qWait(60);
+        CHECK(screen->grab().toImage() != plain);
+        if (!prefix.isEmpty())
+            screen->grab().save(prefix + "syncs.png");
+        sync->setChecked(false);
+        CHECK(!screen->syncMarksShown());
+        sync->setChecked(true);
+        registers->hide();
+        CHECK(!screen->syncMarksShown());
+        registers->show();
+        CHECK(screen->syncMarksShown());
+        sync->setChecked(false);
         registers->setRowHighlight(false);
         CHECK(!screen->interruptMarksShown());
         registers->setRowHighlight(true);
@@ -474,6 +512,20 @@ int main(int argc, char* argv[])
         }
         CHECK(read.loadProfile(folder.filePath("plain.wpf")));
         CHECK(read.windowPlaces.value("Graphics").offset == QPoint(150, 120) && read.windowPlaces.value("Assembler").open);
+    }
+    // Closed with one of its fields being edited: the field loses the focus
+    // as the window goes, and that must not reach a window half gone.
+    {
+        auto* last = new RegistersDialog(&emulator);
+        last->show();
+        QTest::qWait(30);
+        last->activateWindow();
+        const auto fields = last->findChildren<QLineEdit*>();
+        CHECK(!fields.isEmpty());
+        if (!fields.isEmpty())
+            fields.first()->setFocus();
+        QTest::qWait(30);
+        delete last;
     }
     return checkSummary("gui_registers");
 }

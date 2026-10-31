@@ -20,6 +20,7 @@ class RegistersDialog : public QDialog {
 
 public:
     explicit RegistersDialog(Emulator* emulator, QWidget* parent = nullptr);
+    ~RegistersDialog() override;
 
     void refresh();
     // WinAPE's "Row Highlight": while the box is ticked and the machine
@@ -36,6 +37,8 @@ signals:
     // the window is up with "Row Highlight" ticked, the machine running or
     // not.
     void interruptMarksShown(bool on);
+    // The same for where the sync pulses fall, with its own box.
+    void syncMarksShown(bool on);
     // The ASIC button was pressed.
     void asicRequested();
 
@@ -63,4 +66,5 @@ private:
     QHash<QString, QLineEdit*> fields_;
     QToolButton* asicButton_;
     QCheckBox* rowHighlight_;
+    QCheckBox* syncMarks_;
 };

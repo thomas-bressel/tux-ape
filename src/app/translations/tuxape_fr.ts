@@ -3062,8 +3062,31 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Marquer les lignes</translation>
     </message>
     <message>
-        <source>Shows on the picture where the Z80 took its interrupts (dashed lines, a square where the beam was), and where the beam is while the machine stands still</source>
-        <translation>Montre sur l&apos;image où le Z80 a pris ses interruptions (des pointillés, un carré là où était le faisceau), et où est le faisceau quand la machine est arrêtée</translation>
+        <source>Shows on the picture every interrupt the Z80 took (dashed lines, a square where the beam was), each with its line&apos;s number: on a Plus, the one a program gives the ASIC to have its interrupt there. An arrow says it is above or below what the picture shows. Colours changed by a timed loop with interrupts off are not interrupts, and have no line here. Also shows where the beam is while the machine stands still.</source>
+        <translation>Montre sur l&apos;image chaque interruption prise par le Z80 (lignes pointillées, un carré à l&apos;endroit du faisceau), avec le numéro de sa ligne : sur un Plus, celui qu&apos;un programme donne à l&apos;ASIC pour avoir son interruption là. Une flèche indique qu&apos;elle est au-dessus ou au-dessous de la partie visible. Des couleurs changées par une boucle chronométrée, interruptions coupées, ne sont pas des interruptions et n&apos;ont pas de ligne ici. Montre aussi où est le faisceau quand la machine est à l&apos;arrêt.</translation>
+    </message>
+    <message>
+        <source>HBL / VBL</source>
+        <translation>HBL / VBL</translation>
+    </message>
+    <message>
+        <source>Shows on the picture where the CRTC&apos;s sync pulses fell in the last picture drawn: the HBL as a band, line by line, the VBL across it. Out of the picture&apos;s sight they leave a tick along its edge. C is the character they start at, L the line, + how long they last. Needs the machine to run for a picture.</source>
+        <translation>Montre sur l&apos;image où sont tombées les impulsions de synchronisation du CRTC dans la dernière image dessinée : la HBL en bande, ligne par ligne, la VBL en travers. Hors de la partie visible, elles laissent un trait le long du bord. C est le caractère où elles commencent, L la ligne, + leur durée. Il faut que la machine tourne le temps d&apos;une image.</translation>
+    </message>
+</context>
+<context>
+    <name>ScreenWidget</name>
+    <message>
+        <source>HBL C%1</source>
+        <translation>HBL C%1</translation>
+    </message>
+    <message>
+        <source>HBL C%1-%2</source>
+        <translation>HBL C%1-%2</translation>
+    </message>
+    <message>
+        <source>VBL L%1 +%2</source>
+        <translation>VBL L%1 +%2</translation>
     </message>
 </context>
 <context>

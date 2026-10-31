@@ -443,6 +443,49 @@ void Cpc::ssmOpcode(uint8_t op)
     ssmNextPc_ = cpu_.pc;
 }
 
+void Cpc::setSyncMarksWanted(bool wanted)
+{
+    gateArray_.setSyncWatch(wanted ? std::function<void()>([this] { watchSyncs(); }) : std::function<void()>());
+    hsyncWatched_ = vsyncWatched_ = false;
+    syncs_ = {};
+    finishedSyncs_ = {};
+}
+
+// A sync pulse has started or ended, as the Gate Array sees it.
+void Cpc::watchSyncs()
+{
+    // No more of them than a frame of the shortest lines can hold.
+    constexpr size_t kMostHsyncs = 2048;
+    if (const uint64_t frame = monitor_.frameNumber(); frame != syncsFrame_) {
+        syncsFrame_ = frame;
+        finishedSyncs_.hsyncs.swap(syncs_.hsyncs);
+        finishedSyncs_.vsyncs.swap(syncs_.vsyncs);
+        syncs_.hsyncs.clear();
+        syncs_.vsyncs.clear();
+    }
+    const bool hsync = crtc_.hsync(), vsync = crtc_.vsync();
+    if (vsync && !vsyncWatched_)
+        vsyncUnderWay_ = {static_cast<int16_t>(monitor_.rasterLine()), 0, static_cast<int16_t>(crtcLineNumber())};
+    if (!vsync && vsyncWatched_)
+        syncs_.vsyncs.push_back(vsyncUnderWay_);
+    vsyncWatched_ = vsync;
+    const uint64_t now = videoClk_ >> 2;
+    if (hsync && !hsyncWatched_) {
+        if (vsync)
+            ++vsyncUnderWay_.lines;
+        hsyncSince_ = now;
+        // The ASICs see it a microsecond late: the CRTC has gone on a
+        // character since it rose.
+        const bool late = crtc_.type() == CrtcType::AsicPlus || crtc_.type() == CrtcType::PreAsic;
+        if (syncs_.hsyncs.size() < kMostHsyncs)
+            syncs_.hsyncs.push_back({static_cast<int16_t>(monitor_.rasterLine()), static_cast<int16_t>(monitor_.beamColumn()), 0,
+                                     static_cast<uint8_t>(crtc_.hcc() - (late ? 1 : 0))});
+    }
+    if (!hsync && hsyncWatched_ && !syncs_.hsyncs.empty())
+        syncs_.hsyncs.back().width = static_cast<int16_t>(now - hsyncSince_);
+    hsyncWatched_ = hsync;
+}
+
 void Cpc::syncSound()
 {
     syncSoundTo(microseconds());

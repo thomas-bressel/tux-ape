@@ -272,6 +272,8 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
     const bool hsync = asic ? delayedHsync_ : crtc.hsync();
     delayedHsync_ = crtc.hsync();
     const bool vsync = crtc.vsync();
+    if ((hsync != prevHsync_ || vsync != prevVsync_) && syncWatch_) [[unlikely]]
+        syncWatch_();
 
     // What a delay has kept back, when its time has come.
     if (vsyncDue_ & 1) {

@@ -69,13 +69,26 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     counters->addWidget(asicButton_, 1, 12, Qt::AlignRight);
     rowHighlight_ = new QCheckBox(tr("Row Highlight"));
     rowHighlight_->setObjectName("ckRowHighlight");
-    rowHighlight_->setToolTip(tr("Shows on the picture where the Z80 took its interrupts (dashed lines, a square where "
-                                 "the beam was), and where the beam is while the machine stands still"));
-    counters->addWidget(rowHighlight_, 0, 12, Qt::AlignRight);
+    rowHighlight_->setToolTip(tr("Shows on the picture every interrupt the Z80 took (dashed lines, a square where the "
+                                 "beam was), each with its line's number: on a Plus, the one a program gives the ASIC "
+                                 "to have its interrupt there. An arrow says it is above or below what the picture "
+                                 "shows. Colours changed by a timed loop with interrupts off are not interrupts, and "
+                                 "have no line here. Also shows where the beam is while the machine stands still."));
+    syncMarks_ = new QCheckBox(tr("HBL / VBL"));
+    syncMarks_->setObjectName("ckSyncMarks");
+    syncMarks_->setToolTip(tr("Shows on the picture where the CRTC's sync pulses fell in the last picture drawn: the "
+                              "HBL as a band, line by line, the VBL across it. Out of the picture's sight they leave a "
+                              "tick along its edge. C is the character they start at, L the line, + how long they "
+                              "last. Needs the machine to run for a picture."));
+    auto* marks = new QHBoxLayout;
+    marks->addWidget(rowHighlight_);
+    marks->addWidget(syncMarks_);
+    counters->addLayout(marks, 0, 12, Qt::AlignRight);
     connect(rowHighlight_, &QCheckBox::toggled, this, [this](bool on) {
         emit interruptMarksShown(on && isVisible());
         refresh();
     });
+    connect(syncMarks_, &QCheckBox::toggled, this, [this](bool on) { emit syncMarksShown(on && isVisible()); });
     counters->setColumnStretch(12, 1);
     layout->addLayout(counters);
 
@@ -176,10 +189,18 @@ bool RegistersDialog::setValue(const QString& name, const QString& hexText)
     return true;
 }
 
+// While all of it is still there: a field that has the keyboard answers as
+// it loses it, which going away makes it do.
+RegistersDialog::~RegistersDialog()
+{
+    hide();
+}
+
 void RegistersDialog::showEvent(QShowEvent* event)
 {
     QDialog::showEvent(event);
     emit interruptMarksShown(rowHighlight_->isChecked());
+    emit syncMarksShown(syncMarks_->isChecked());
     refresh();
 }
 
@@ -198,6 +219,7 @@ void RegistersDialog::hideEvent(QHideEvent* event)
     QDialog::hideEvent(event);
     emit beamChanged(-1, -1);
     emit interruptMarksShown(false);
+    emit syncMarksShown(false);
 }
 
 void RegistersDialog::refresh()

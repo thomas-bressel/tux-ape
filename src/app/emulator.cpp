@@ -1280,10 +1280,25 @@ QImage Emulator::frame()
     return frame_.copy();
 }
 
-QList<QPoint> Emulator::interruptMarks()
+QList<Cpc::InterruptMark> Emulator::interruptMarks()
 {
     std::lock_guard lock(frameMutex_);
     return frameMarks_;
+}
+
+void Emulator::setSyncMarksWanted(bool wanted)
+{
+    withMachine([wanted](Cpc& cpc) { cpc.setSyncMarksWanted(wanted); });
+    if (!wanted) {
+        std::lock_guard lock(frameMutex_);
+        frameSyncs_ = {};
+    }
+}
+
+Cpc::SyncMarks Emulator::syncMarks()
+{
+    std::lock_guard lock(frameMutex_);
+    return frameSyncs_;
 }
 
 QImage Emulator::frameInProgress()
@@ -1326,11 +1341,12 @@ void Emulator::publishFrame()
         emit driveLightChanged();
     {
         std::lock_guard lock(frameMutex_);
-        QList<QPoint> marks;
+        QList<Cpc::InterruptMark> marks;
         for (const Cpc::InterruptMark& mark : cpc_.interruptMarks(true))
-            marks << QPoint(mark.column, mark.line);
-        const bool marksChanged = marks != frameMarks_;
+            marks << mark;
+        const bool marksChanged = marks != frameMarks_ || cpc_.syncMarks() != frameSyncs_;
         frameMarks_ = std::move(marks);
+        frameSyncs_ = cpc_.syncMarks();
         const Monitor& monitor = cpc_.monitor();
         const size_t size = static_cast<size_t>(monitor.width()) * monitor.height() * sizeof(uint32_t);
         // The whole raster or the part WinAPE shows: the picture takes its size.

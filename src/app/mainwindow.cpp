@@ -1030,6 +1030,7 @@ void MainWindow::showRegisters()
         // "Row Highlight": where the beam is, on the picture.
         connect(registers_, &RegistersDialog::beamChanged, screen_, &ScreenWidget::setBeamMarker);
         connect(registers_, &RegistersDialog::interruptMarksShown, screen_, &ScreenWidget::setInterruptMarksShown);
+        connect(registers_, &RegistersDialog::syncMarksShown, screen_, &ScreenWidget::setSyncMarksShown);
         connect(registers_, &RegistersDialog::asicRequested, this, &MainWindow::showAsicRegisters);
     }
     registers_->show();
