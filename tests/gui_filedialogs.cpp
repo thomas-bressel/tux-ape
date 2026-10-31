@@ -5,15 +5,23 @@
 // with a configuration folder of its own: what Qt's file windows keep goes
 // there, not to the user's.
 
+#include <functional>
+#include <memory>
+
 #include <QApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QLineEdit>
+#include <QPointer>
 #include <QTemporaryDir>
 #include <QTimer>
 
 #include "check.h"
+#include "core/inifile.h"
 #include "filedialogs.h"
+#include "settings.h"
 
 int main(int argc, char* argv[])
 {
@@ -31,6 +39,8 @@ int main(int argc, char* argv[])
         bookmarks.write("sftp://example.org/home Away\n");
     }
     QApplication app(argc, argv);
+    // Never the user's own settings.
+    Settings::setFile(home.filePath("settings/TuxAPE.ini"));
     const QUrl games = QUrl::fromLocalFile(home.filePath("games"));
     const QUrl airwolf = QUrl::fromLocalFile(home.filePath("games/airwolf reloaded"));
 
@@ -73,5 +83,104 @@ int main(int argc, char* argv[])
     });
     const QString path = QFileDialog::getOpenFileName(nullptr, "YM Song", home.path(), "YM songs (*.ym *.YM);;All files (*)");
     CHECK(path.isEmpty() && seen);
+
+    // Each window opens where its kind of file was last taken from or put.
+    const QString first = home.filePath("first"), second = home.filePath("second"), gone = home.filePath("gone later");
+    for (const QString& folder : {first, second, gone})
+        CHECK(QDir().mkpath(folder));
+    const auto touch = [](const QString& file) {
+        QFile out(file);
+        return out.open(QIODevice::WriteOnly);
+    };
+    CHECK(touch(first + "/game.cpr") && touch(second + "/other.cpr") && touch(gone + "/old.cpr") && touch(second + "/disc.dsk"));
+    // What a window does, and where it was as it came up.
+    const auto when = [](const std::function<void(QFileDialog*)>& act) {
+        auto where = std::make_shared<QString>();
+        QTimer::singleShot(100, [=] {
+            auto* dialog = qobject_cast<QFileDialog*>(QApplication::activeModalWidget());
+            CHECK(dialog != nullptr);
+            if (dialog) {
+                *where = dialog->directory().absolutePath();
+                act(dialog);
+            }
+            // One that will not go is a failure, not a test that never ends.
+            QTimer::singleShot(300, [left = QPointer<QFileDialog>(dialog)] {
+                if (left) {
+                    std::printf("still up: %s, in %s, selected %s\n", qPrintable(left->windowTitle()),
+                                qPrintable(left->directory().absolutePath()), qPrintable(left->selectedFiles().join(' ')));
+                    CHECK(false);
+                    left->reject();
+                }
+            });
+        });
+        return where;
+    };
+    // Typed in, as someone does: with the keyboard on that field Qt takes
+    // no notice of selectFile().
+    const auto type = [](QFileDialog* dialog, const QString& file) {
+        auto* name = dialog->findChild<QLineEdit*>("fileNameEdit");
+        CHECK(name != nullptr);
+        if (name)
+            name->setText(file);
+        static_cast<QDialog*>(dialog)->accept();
+    };
+    const auto choose = [&type](const QString& file) { return [&type, file](QFileDialog* dialog) { type(dialog, file); }; };
+    const auto cancel = [](QFileDialog* dialog) { dialog->reject(); };
+    const QString cartridges = "Cartridges (*.cpr);;All files (*)";
+
+    // Nothing kept yet: where it was told to open. Then, whatever it is told,
+    // where the last file was: another window of the kind too, in another
+    // language.
+    auto where = when(choose(first + "/game.cpr"));
+    CHECK(QFileDialog::getOpenFileName(nullptr, "Load Cartridge", second, cartridges) == first + "/game.cpr");
+    CHECK(*where == second);
+    where = when(cancel);
+    CHECK(QFileDialog::getOpenFileName(nullptr, "Cartouche", second, "Cartouches (*.CPR);;Tous les fichiers (*)").isEmpty());
+    CHECK(*where == first);
+    // Another kind has its own.
+    where = when(cancel);
+    CHECK(QFileDialog::getOpenFileName(nullptr, "Insert Disc", second, "Discs (*.dsk *.hfe)").isEmpty());
+    CHECK(*where == second);
+    // Going elsewhere and giving up changes nothing.
+    where = when([&](QFileDialog* dialog) {
+        dialog->setDirectory(second);
+        dialog->reject();
+    });
+    CHECK(QFileDialog::getOpenFileName(nullptr, "Load Cartridge", QString(), cartridges).isEmpty());
+    where = when(cancel);
+    CHECK(QFileDialog::getOpenFileName(nullptr, "Load Cartridge", QString(), cartridges).isEmpty());
+    CHECK(*where == first);
+    // Saving counts, and a name given for the file stays.
+    where = when([](QFileDialog* dialog) { static_cast<QDialog*>(dialog)->accept(); });
+    CHECK(QFileDialog::getSaveFileName(nullptr, "Save", second + "/print.pdf", "PDF (*.pdf)") == second + "/print.pdf");
+    where = when([](QFileDialog* dialog) { static_cast<QDialog*>(dialog)->accept(); });
+    CHECK(QFileDialog::getSaveFileName(nullptr, "Save", first + "/new.pdf", "PDF (*.pdf)") == second + "/new.pdf");
+    CHECK(*where == second);
+    // A window with no kind of file goes by its title; a folder chosen is
+    // that folder.
+    where = when(choose(second));
+    CHECK(QFileDialog::getExistingDirectory(nullptr, "Extract To", first) == second);
+    where = when(cancel);
+    CHECK(QFileDialog::getExistingDirectory(nullptr, "Extract To", first).isEmpty());
+    CHECK(*where == second);
+    // A window made by hand, as the plugins may.
+    {
+        QFileDialog dialog(nullptr, "By Hand", second, cartridges);
+        dialog.show();
+        CHECK(dialog.directory().absolutePath() == first);
+        dialog.reject();
+    }
+    // A folder that has gone: where it was told.
+    where = when(choose(gone + "/old.cpr"));
+    CHECK(QFileDialog::getOpenFileName(nullptr, "Load Cartridge", second, cartridges) == gone + "/old.cpr");
+    CHECK(QFile::remove(gone + "/old.cpr") && QDir().rmdir(gone));
+    where = when(cancel);
+    CHECK(QFileDialog::getOpenFileName(nullptr, "Load Cartridge", second, cartridges).isEmpty());
+    CHECK(*where == second);
+    // Kept for the next run, beside the settings.
+    tuxape::IniFile kept;
+    CHECK(kept.load((QFileInfo(Settings::file()).absolutePath() + "/FileFolders.ini").toStdString()));
+    CHECK(kept.get("Folders", "*.pdf") == second.toStdString());
+    CHECK(kept.get("Folders", "Extract To") == second.toStdString());
     return checkSummary("gui_filedialogs");
 }

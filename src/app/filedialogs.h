@@ -10,7 +10,11 @@
 //
 // Called once the application is made, before any window. Each file window
 // then has on its side, after Qt's places, the user's folders (Desktop,
-// Documents, Music...) and the bookmarks they keep in GNOME's Files.
+// Documents, Music...) and the bookmarks they keep in GNOME's Files. And it
+// opens where a file of that kind was last taken from or put, from one run
+// of TuxAPE to the next, whichever window it was: the cartridge of the
+// Memory page and that of the File menu are one kind. The kinds and their
+// folders are kept in FileFolders.ini, beside the settings.
 void useOwnFileDialogs();
 
 // The places useOwnFileDialogs() adds: the user's folders that exist, then
