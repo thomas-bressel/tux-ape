@@ -320,7 +320,7 @@ int main(int argc, char* argv[])
     // "Row Highlight": while its box is ticked and the machine stands
     // still, the screen shows where the beam is: the line of the picture
     // and the place along it. Not while the machine runs, nor once the
-    // box is cleared or the window gone.
+    // box is cleared. The window closed, what is ticked stays.
     {
         auto* row = registers->findChild<QCheckBox*>("ckRowHighlight");
         ScreenWidget* screen = window.screen();
@@ -367,9 +367,18 @@ int main(int argc, char* argv[])
         registers->setRowHighlight(true);
         CHECK(screen->beamMarkerLine() != -1);
         registers->hide();
+        CHECK(screen->beamMarkerLine() != -1);
+        CHECK(screen->interruptMarksShown());
+        // Still following the machine, the window closed.
+        {
+            const int before = screen->beamMarkerLine();
+            emulator.withMachine([](tuxape::Cpc& cpc) { cpc.run(640); });
+            QTest::qWait(300);
+            CHECK(screen->beamMarkerLine() != before);
+        }
+        registers->setRowHighlight(false);
         CHECK_EQ(screen->beamMarkerLine(), -1);
         CHECK(!screen->interruptMarksShown());
-        registers->setRowHighlight(false);
         emulator.setPaused(false);
 
         // And, the machine running, where the Z80 took its interrupts in
@@ -467,16 +476,18 @@ int main(int argc, char* argv[])
         CHECK(!screen->syncMarksShown());
         sync->setChecked(true);
         registers->hide();
-        CHECK(!screen->syncMarksShown());
+        CHECK(screen->syncMarksShown());
         registers->show();
         CHECK(screen->syncMarksShown());
         sync->setChecked(false);
+        CHECK(!screen->syncMarksShown());
         registers->setRowHighlight(false);
         CHECK(!screen->interruptMarksShown());
         registers->setRowHighlight(true);
         registers->hide();
-        CHECK(!screen->interruptMarksShown());
+        CHECK(screen->interruptMarksShown());
         registers->setRowHighlight(false);
+        CHECK(!screen->interruptMarksShown());
         emulator.stop();
     }
 

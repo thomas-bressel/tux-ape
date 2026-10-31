@@ -14,6 +14,8 @@
 #include <QPixmap>
 #include <QScrollBar>
 #include <QTimer>
+
+#include <utility>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -86,20 +88,23 @@ RegistersDialog::RegistersDialog(Emulator* emulator, QWidget* parent)
     marks->addWidget(syncMarks_);
     counters->addLayout(marks, 0, 12, Qt::AlignRight);
     connect(rowHighlight_, &QCheckBox::toggled, this, [this](bool on) {
-        emit interruptMarksShown(on && isVisible());
+        emit interruptMarksShown(on);
         refresh();
     });
-    connect(syncMarks_, &QCheckBox::toggled, this, [this](bool on) { emit syncMarksShown(on && isVisible()); });
+    connect(syncMarks_, &QCheckBox::toggled, this, [this](bool on) { emit syncMarksShown(on); });
     counters->setColumnStretch(12, 1);
     layout->addLayout(counters);
 
     // The ASIC's registers have a window of their own: the button opens it.
     connect(asicButton_, &QToolButton::clicked, this, &RegistersDialog::asicRequested);
-    // The machine goes on while the window is up.
+    // The machine goes on while the window is up; the beam's lines go with
+    // it whether the window is up or not.
     auto* timer = new QTimer(this);
     connect(timer, &QTimer::timeout, this, [this] {
         if (isVisible() && !emulator_->isPaused())
             refresh();
+        else if (rowHighlight_->isChecked() && emulator_->isPaused())
+            showBeam();
     });
     timer->start(200);
     refresh();
@@ -200,8 +205,6 @@ RegistersDialog::~RegistersDialog()
 void RegistersDialog::showEvent(QShowEvent* event)
 {
     QDialog::showEvent(event);
-    emit interruptMarksShown(rowHighlight_->isChecked());
-    emit syncMarksShown(syncMarks_->isChecked());
     refresh();
 }
 
@@ -215,12 +218,17 @@ void RegistersDialog::setRowHighlight(bool on)
     rowHighlight_->setChecked(on);
 }
 
-void RegistersDialog::hideEvent(QHideEvent* event)
+// "Row Highlight": the screen shows where the beam is, while the machine
+// stands still.
+void RegistersDialog::showBeam()
 {
-    QDialog::hideEvent(event);
-    emit beamChanged(-1, -1);
-    emit interruptMarksShown(false);
-    emit syncMarksShown(false);
+    if (rowHighlight_->isChecked() && emulator_->isPaused()) {
+        const auto [line, column] = emulator_->withMachine(
+            [](tuxape::Cpc& cpc) { return std::pair(cpc.monitor().rasterLine(), cpc.monitor().beamColumn()); });
+        emit beamChanged(line, column);
+    } else {
+        emit beamChanged(-1, -1);
+    }
 }
 
 void RegistersDialog::refresh()
@@ -228,7 +236,7 @@ void RegistersDialog::refresh()
     struct State {
         uint8_t ink[17], pen, psg[16], psgSelected, crtc[16], crtcSelected;
         uint8_t vcc, vlc, r52, vsc, hcc, hsc, vtac, mode, icsr;
-        int hdc, vdur, beamColumn;
+        int hdc, vdur;
         uint16_t vma;
         bool hsync, vsync, adjust, plus;
     };
@@ -258,7 +266,6 @@ void RegistersDialog::refresh()
         out.mode = ga.mode();
         out.hdc = cpc.monitor().beamX();
         out.vdur = cpc.monitor().rasterLine();
-        out.beamColumn = cpc.monitor().beamColumn();
         // Where in memory the byte being shown comes from.
         const unsigned ma = crtc.ma();
         out.vma = static_cast<uint16_t>((ma & 0x3000) << 2 | (crtc.ra() & 7) << 11 | (ma & 0x3FF) << 1);
@@ -268,12 +275,7 @@ void RegistersDialog::refresh()
             out.icsr = static_cast<uint8_t>(out.icsr | (cpc.asic().dcsr() & 0x70));
         return out;
     });
-    // "Row Highlight": the screen shows where the beam is, while the
-    // machine stands still.
-    if (rowHighlight_->isChecked() && isVisible() && emulator_->isPaused())
-        emit beamChanged(s.vdur, s.beamColumn);
-    else
-        emit beamChanged(-1, -1);
+    showBeam();
 
     for (int pen = 0; pen < 17; ++pen)
         put(QString("Palette%1").arg(pen), s.ink[pen], pen == s.pen);

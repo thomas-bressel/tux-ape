@@ -25,7 +25,8 @@ public:
     void refresh();
     // WinAPE's "Row Highlight": while the box is ticked and the machine
     // stands still, the screen shows where the beam is; while it is ticked,
-    // where the interrupts were taken in the picture.
+    // where the interrupts were taken in the picture. The window closed, what
+    // is ticked stays on the picture.
     bool rowHighlight() const;
     void setRowHighlight(bool on);
 
@@ -34,8 +35,8 @@ signals:
     // the screen to show; -1 and -1 when it is not to show any.
     void beamChanged(int line, int column);
     // Whether the screen shows where the Z80 took its interrupts: while
-    // the window is up with "Row Highlight" ticked, the machine running or
-    // not.
+    // "Row Highlight" is ticked, the window up or not, the machine running
+    // or not.
     void interruptMarksShown(bool on);
     // The same for where the sync pulses fall, with its own box.
     void syncMarksShown(bool on);
@@ -56,7 +57,6 @@ protected:
     void showEvent(QShowEvent* event) override;
 
 protected:
-    void hideEvent(QHideEvent* event) override;
 
 private:
     QLineEdit* field(const QString& name, int digits, bool editable = false);
@@ -65,6 +65,7 @@ private:
     Emulator* emulator_;
     QHash<QString, QLineEdit*> fields_;
     QToolButton* asicButton_;
+    void showBeam();
     QCheckBox* rowHighlight_;
     QCheckBox* syncMarks_;
 };
