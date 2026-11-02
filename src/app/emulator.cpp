@@ -380,7 +380,10 @@ void Emulator::playSound()
     audioSilenced_ = false;
 
     // The drives are heard beside the machine, not through it: their
-    // sounds are in what is played, not in what is recorded.
+    // sounds are in what is played, not in what is recorded. So are the
+    // printer and the keyboard. All of them have a volume of their own.
+    noises_.assign(samples.size(), 0);
+    bool noisy = false;
     if (discSounds_) {
         int steps = 0;
         for (int drive = 0; drive < 4; ++drive) {
@@ -388,12 +391,23 @@ void Emulator::playSound()
             steps += std::abs(at - headAt_[drive]);
             headAt_[drive] = at;
         }
-        driveSound_.mix(samples, audio_->sampleRate(), cpc_.fdc().motor(), steps);
+        driveSound_.mix(noises_, audio_->sampleRate(), cpc_.fdc().motor(), steps);
+        noisy = true;
     }
-    // So is the printer.
     if (dmp2000_ && printerSounds_) {
         drainDmp2000();
-        printerSound_.mix(samples, audio_->sampleRate(), cpc_.microseconds());
+        printerSound_.mix(noises_, audio_->sampleRate(), cpc_.microseconds());
+        noisy = true;
+    }
+    if (keyboardSounds_) {
+        keyboardSound_.mix(noises_, audio_->sampleRate(), cpc_.microseconds());
+        noisy = true;
+    }
+    if (noisy) {
+        const int volume = noiseVolume_;
+        for (size_t i = 0; i < samples.size(); ++i)
+            if (noises_[i] != 0)
+                samples[i] = static_cast<int16_t>(std::clamp(samples[i] + noises_[i] * volume / 10, -32768, 32767));
     }
 
     // "8 bit": 256 levels instead of 65536, as a sound card of the time
@@ -1148,10 +1162,14 @@ void Emulator::holdKey(tuxape::CpcKey key, bool down)
             cpc_.keyboard().set(key, true);
             hostDown_[k >> 6] |= bit;
             hostPressed_[k >> 6] |= bit;
+            if (keyboardSounds_)
+                keyboardSound_.add(static_cast<uint8_t>(k), true, cpc_.microseconds());
         }
     } else if (keyHolds_[k] > 0 && --keyHolds_[k] == 0) {
         cpc_.keyboard().set(key, false);
         hostDown_[k >> 6] &= ~bit;
+        if (keyboardSounds_)
+            keyboardSound_.add(static_cast<uint8_t>(k), false, cpc_.microseconds());
     }
 }
 
@@ -1333,6 +1351,21 @@ QImage Emulator::frameInProgress()
         }
     });
     return picture;
+}
+
+void Emulator::setKeyboardSounds(bool on)
+{
+    withMachine([&](Cpc&) {
+        if (keyboardSounds_ == on)
+            return;
+        keyboardSounds_ = on;
+        keyboardSound_.reset();
+    });
+}
+
+void Emulator::setNoiseVolume(int volume)
+{
+    noiseVolume_ = std::clamp(volume, 0, 15);
 }
 
 void Emulator::setDiscSounds(bool on)

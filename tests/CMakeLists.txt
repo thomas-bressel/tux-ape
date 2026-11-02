@@ -199,6 +199,10 @@ endif()
 
 if(TUXAPE_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Test Widgets)
+    # The keyboard heard (no window).
+    add_executable(keyboard_sound keyboard_sound.cpp)
+    target_link_libraries(keyboard_sound PRIVATE tuxape_app)
+    add_test(NAME keyboard_sound COMMAND keyboard_sound)
     foreach(test gui_smoke gui_discs gui_sound gui_snapshot gui_setup gui_tools gui_library gui_tape gui_plus gui_debugger gui_session gui_disceditor gui_assembler gui_registers gui_breakpoints gui_memtools gui_graphics gui_crt gui_multiface gui_theme gui_plugins gui_language gui_filedialogs gui_printer gui_keys)
         add_executable(${test} ${test}.cpp)
         target_link_libraries(${test} PRIVATE tuxape_app Qt6::Test)

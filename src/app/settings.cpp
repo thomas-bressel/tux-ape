@@ -178,6 +178,8 @@ void Settings::read(const tuxape::IniFile& ini)
     sound16Bit = ini.getInt(kConfiguration, "Sound Bits", sound16Bit ? 16 : 8) > 8;
     soundStereo = ini.getBool(kConfiguration, "Sound Stereo", soundStereo);
     soundVolume = std::clamp(ini.getInt(kConfiguration, "Sound Volume", soundVolume), 0, 15);
+    noiseVolume = std::clamp(ini.getInt(kConfiguration, "Noise Volume", noiseVolume), 0, 15);
+    keyboardSounds = ini.getBool(kConfiguration, "Keyboard Sound", keyboardSounds);
     tapeSounds = ini.getBool(kConfiguration, "Tape Sound", tapeSounds);
     discSounds = ini.getBool(kConfiguration, "Disc Sound", discSounds);
     // Kept with the DMP2000 at first, then with the other sounds.
@@ -340,6 +342,8 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.setInt(kConfiguration, "Sound Bits", sound16Bit ? 16 : 8);
         ini.setBool(kConfiguration, "Sound Stereo", soundStereo);
         ini.setInt(kConfiguration, "Sound Volume", soundVolume);
+        ini.setInt(kConfiguration, "Noise Volume", noiseVolume);
+        ini.setBool(kConfiguration, "Keyboard Sound", keyboardSounds);
         ini.setBool(kConfiguration, "Tape Sound", tapeSounds);
         ini.setBool(kConfiguration, "Disc Sound", discSounds);
         ini.setBool(kConfiguration, "Printer Sound", printerSounds);

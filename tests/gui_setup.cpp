@@ -872,6 +872,30 @@ void testSoundPage(const QString& picture)
             QFile::remove(Settings::file());
         }
     }
+    // The keyboard is not heard unless asked for; the noises have a volume
+    // of their own, beside the CPC's, which means nothing without the card.
+    {
+        auto* keyboardSound = dialog.findChild<QCheckBox*>("ckKeyboardSound");
+        auto* noises = dialog.findChild<QSlider*>("slNoiseVolume");
+        auto* noisesLabel = dialog.findChild<QLabel*>("lNoiseVolume");
+        CHECK(keyboardSound && noises && noisesLabel);
+        if (keyboardSound && noises && noisesLabel) {
+            CHECK(keyboardSound->isEnabled() && !keyboardSound->isChecked());
+            CHECK_EQ(noises->value(), 10);
+            CHECK(noisesLabel->text() == "10");
+            CHECK_EQ(noises->isEnabled(), card->isChecked());
+            keyboardSound->setChecked(true);
+            noises->setValue(4);
+            CHECK(noisesLabel->text() == "4");
+            CHECK(dialog.settings().save());
+            Settings read;
+            read.load();
+            CHECK(read.keyboardSounds && read.noiseVolume == 4);
+            keyboardSound->setChecked(false);
+            noises->setValue(10);
+            QFile::remove(Settings::file());
+        }
+    }
 
     if (!picture.isEmpty()) {
         SetupDialog fresh((Settings()));

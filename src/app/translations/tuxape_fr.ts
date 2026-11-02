@@ -3619,6 +3619,14 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Les aiguilles, le chariot, le papier et le bip de la DMP2000, entendus à côté de la machine</translation>
     </message>
     <message>
+        <source>Keyboard Sounds</source>
+        <translation>Bruits du clavier</translation>
+    </message>
+    <message>
+        <source>The CPC&apos;s keys heard as they are typed on: plungers on a membrane in a hollow case, in a small office</source>
+        <translation>Les touches du CPC entendues quand on tape : des poussoirs sur une membrane dans un boîtier creux, dans un petit bureau</translation>
+    </message>
+    <message>
         <source>AmDrum</source>
         <translation>AmDrum</translation>
     </message>
@@ -3629,6 +3637,14 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
     <message>
         <source>Volume</source>
         <translation>Volume</translation>
+    </message>
+    <message>
+        <source>The noises of the disc drives, the printer and the keyboard, beside the CPC&apos;s sound</source>
+        <translation>Les bruits des lecteurs de disquette, de l&apos;imprimante et du clavier, à côté du son du CPC</translation>
+    </message>
+    <message>
+        <source>Noises</source>
+        <translation>Bruits</translation>
     </message>
     <message>
         <source>Joystick</source>

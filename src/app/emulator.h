@@ -24,6 +24,7 @@
 
 #include "core/assembler.h"
 #include "drivesound.h"
+#include "keyboardsound.h"
 #include "printersound.h"
 #include "avirecorder.h"
 #include "hostjoystick.h"
@@ -160,6 +161,12 @@ public:
     // Its needles, motors and beeper heard, beside the machine as the
     // drives are.
     void setPrinterSounds(bool on);
+    // TuxAPE's own: the CPC's keys heard as they are typed on (see
+    // KeyboardSound), the keys the host presses, not Auto Type's.
+    void setKeyboardSounds(bool on);
+    // How loud the machines' own noises are beside the CPC's sound (the
+    // drives, the printer, the keyboard), 0 to 15, 10 as they are made.
+    void setNoiseVolume(int volume);
 
     // The monitor: its kind (0 colour, 1 green, 2 greyscale), WinAPE's
     // "linear palette", the brightness knob (-100 to 100) and the vertical
@@ -456,6 +463,10 @@ private:
     int dmp2000Number_ = 0;  // counts the printers made
     std::atomic<bool> printerSounds_{true};
     PrinterSound printerSound_;
+    std::atomic<bool> keyboardSounds_{false};
+    KeyboardSound keyboardSound_;
+    std::atomic<int> noiseVolume_{10};
+    std::vector<int16_t> noises_;  // the noises of a stretch, before their volume
     void drainDmp2000();  // its events to the window's list, and heard; the lock held
     void dropDmp2000();   // no DMP2000 any more, nor what it did; the lock held
     std::mutex printerMutex_;

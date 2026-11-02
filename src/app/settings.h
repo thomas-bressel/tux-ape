@@ -70,6 +70,8 @@ struct Settings {
     bool tapeSounds = false;    // the tape is heard while it loads
     bool discSounds = false;    // the drives are heard: motor and head
     bool printerSounds = true;  // the DMP2000 is heard: needles, motors, beeper
+    bool keyboardSounds = false;  // the CPC's keys heard as they are typed on
+    int noiseVolume = 10;       // the drives', printer's and keyboard's noises: 0 to 15, 10 as made
     bool amDrum = false;        // the AmDrum sound converter, on ports &FFxx
 
     // The Other page: what is on the printer's port.

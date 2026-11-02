@@ -200,6 +200,9 @@ private:
     QCheckBox* tapeSounds_ = nullptr;
     QCheckBox* discSounds_ = nullptr;
     QCheckBox* printerSounds_ = nullptr;
+    QCheckBox* keyboardSounds_ = nullptr;
+    QSlider* noiseVolume_ = nullptr;
+    QLabel* noiseVolumeLabel_ = nullptr;
     QCheckBox* flyback_ = nullptr;
     QCheckBox* amDrum_ = nullptr;
     QCheckBox* fourDrives_ = nullptr;

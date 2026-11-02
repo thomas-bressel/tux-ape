@@ -773,6 +773,10 @@ QWidget* SetupDialog::createSoundPage()
     printerSounds_ = new QCheckBox(tr("Printer Sounds"));
     printerSounds_->setObjectName("ckPrinterSound");
     printerSounds_->setToolTip(tr("The DMP2000's needles, carriage, paper and beeper, heard beside the machine"));
+    keyboardSounds_ = new QCheckBox(tr("Keyboard Sounds"));
+    keyboardSounds_->setObjectName("ckKeyboardSound");
+    keyboardSounds_->setToolTip(tr("The CPC's keys heard as they are typed on: plungers on a membrane in a hollow case, "
+                                   "in a small office"));
     amDrum_ = new QCheckBox(tr("AmDrum"));
     amDrum_->setObjectName("ckAmDrum");
     amDrum_->setToolTip(tr("A sound converter on ports #FF00 to #FFFF"));
@@ -781,6 +785,7 @@ QWidget* SetupDialog::createSoundPage()
     otherLayout->addWidget(discSounds);
     otherLayout->addWidget(tapeSounds_);
     otherLayout->addWidget(printerSounds_);
+    otherLayout->addWidget(keyboardSounds_);
     otherLayout->addWidget(amDrum);
 
     // ---- Volume ----
@@ -794,9 +799,26 @@ QWidget* SetupDialog::createSoundPage()
     soundVolumeLabel_->setMinimumWidth(fontMetrics().horizontalAdvance("15"));
     connect(soundVolume_, &QSlider::valueChanged, this,
             [this](int value) { soundVolumeLabel_->setText(QString::number(value)); });
-    auto* volumeLayout = new QHBoxLayout(volumeBox);
-    volumeLayout->addWidget(soundVolume_);
-    volumeLayout->addWidget(soundVolumeLabel_);
+    // TuxAPE's own: the drives', printer's and keyboard's noises have a
+    // volume of their own beside the CPC's.
+    noiseVolume_ = new QSlider(Qt::Vertical);
+    noiseVolume_->setObjectName("slNoiseVolume");
+    noiseVolume_->setRange(0, 15);
+    noiseVolume_->setPageStep(1);
+    noiseVolume_->setToolTip(tr("The noises of the disc drives, the printer and the keyboard, beside the CPC's sound"));
+    noiseVolumeLabel_ = new QLabel;
+    noiseVolumeLabel_->setObjectName("lNoiseVolume");
+    noiseVolumeLabel_->setMinimumWidth(fontMetrics().horizontalAdvance("15"));
+    connect(noiseVolume_, &QSlider::valueChanged, this,
+            [this](int value) { noiseVolumeLabel_->setText(QString::number(value)); });
+    auto* volumeLayout = new QGridLayout(volumeBox);
+    volumeLayout->addWidget(new QLabel(tr("CPC")), 0, 0, 1, 2, Qt::AlignHCenter);
+    volumeLayout->addWidget(new QLabel(tr("Noises")), 0, 2, 1, 2, Qt::AlignHCenter);
+    volumeLayout->addWidget(soundVolume_, 1, 0);
+    volumeLayout->addWidget(soundVolumeLabel_, 1, 1);
+    volumeLayout->addWidget(noiseVolume_, 1, 2);
+    volumeLayout->addWidget(noiseVolumeLabel_, 1, 3);
+    volumeLayout->setRowStretch(1, 1);
 
     auto* left = new QVBoxLayout;
     left->addWidget(outputBox);
@@ -821,6 +843,7 @@ void SetupDialog::updateSoundOptions()
     for (QRadioButton* button : soundChannels_)
         button->setEnabled(on);
     soundVolume_->setEnabled(on);
+    noiseVolume_->setEnabled(on);
     soundBufferSync_->setEnabled(on);
 }
 
@@ -1724,6 +1747,9 @@ void SetupDialog::setSettings(const Settings& settings)
     tapeSounds_->setChecked(settings.tapeSounds);
     discSounds_->setChecked(settings.discSounds);
     printerSounds_->setChecked(settings.printerSounds);
+    keyboardSounds_->setChecked(settings.keyboardSounds);
+    noiseVolume_->setValue(settings.noiseVolume);
+    noiseVolumeLabel_->setText(QString::number(settings.noiseVolume));
     flyback_->setChecked(settings.screenshotOnFlyback);
     amDrum_->setChecked(settings.amDrum);
     printer_[std::clamp(settings.printerMode, 0, 4)]->setChecked(true);
@@ -2091,6 +2117,8 @@ Settings SetupDialog::settings() const
     settings.tapeSounds = tapeSounds_->isChecked();
     settings.discSounds = discSounds_->isChecked();
     settings.printerSounds = printerSounds_->isChecked();
+    settings.keyboardSounds = keyboardSounds_->isChecked();
+    settings.noiseVolume = noiseVolume_->value();
     settings.screenshotOnFlyback = flyback_->isChecked();
     settings.amDrum = amDrum_->isChecked();
     for (int mode = 0; mode < 5; ++mode)
