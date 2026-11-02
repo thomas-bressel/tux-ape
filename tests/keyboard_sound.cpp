@@ -1,6 +1,7 @@
-// The CPC's keyboard heard: a key going down louder than coming up, heard
-// from where it is, the room's tail dying away; the space bar lower than a
-// letter; the joystick and strokes too old for the stretch not heard.
+// The CPC's keyboard heard: the 464's recorded strokes found, a key going
+// down louder than coming up, heard from where it is, the room's tail dying
+// away; the space bar duller than a letter; the joystick and strokes too
+// old for the stretch not heard.
 //
 //   keyboard_sound [file.wav]   also writes a line typed, to be listened to
 
@@ -94,7 +95,8 @@ int main(int argc, char** argv)
     const double down = peak(a, 0, 20, 60), up = peak(a, 0, 120, 160);
     std::printf("A: down %.0f, up %.0f; left %.0f right %.0f\n", down, up, peak(a, 0, 20, 60), peak(a, 1, 20, 60));
     CHECK(down > 2000 && down < 20000);
-    CHECK(up > 0.3 * down && up < 0.8 * down);
+    // On the 464 recorded, a key coming up is some four times softer.
+    CHECK(up > 0.05 * down && up < 0.6 * down);
     CHECK(peak(a, 0, 20, 60) > peak(a, 1, 20, 60));
     CHECK_EQ(peak(a, 0, 0, 19), 0);
     // The room: still heard a quarter of a second later, quiet, then gone.

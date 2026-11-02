@@ -2,13 +2,14 @@
 
 #include <algorithm>
 #include <cmath>
-#include <span>
+#include <cstring>
+
+#include <QFile>
 
 #include "core/keyboard.h"
 
 namespace {
 
-constexpr float kPi = 3.14159265f;
 // Older than this, a stroke is not heard any more: the machine was held.
 constexpr uint64_t kStale = 200000;
 
@@ -27,6 +28,41 @@ constexpr float kAcross[tuxape::kCpcKeyCount] = {
     1.5f,  2.5f,  0.5f,  2.0f,  0.8f,  2.3f,  0.9f,  2.8f,   // 1 2 ESC Q TAB A CAPS Z
     9.2f,  9.2f,  9.2f,  9.2f,  9.2f,  9.2f,  9.2f,  14.5f,  // joystick, DEL
 };
+
+// The recorded takes, as tools/keyboard-samples.py cut them: a kind (0 a
+// letter, 2 the space bar), down or up, and 16-bit samples at 44.1 kHz.
+struct Recorded {
+    int kind;
+    bool down;
+    std::vector<int16_t> samples;
+};
+constexpr int kRecordedRate = 44100;
+
+const std::vector<Recorded>& recorded()
+{
+    static const std::vector<Recorded> takes = [] {
+        std::vector<Recorded> read;
+        QFile file(QStringLiteral(":/sounds/keyboard.raw"));
+        if (!file.open(QIODevice::ReadOnly))
+            return read;
+        const QByteArray all = file.readAll();
+        for (qsizetype at = 0; at + 8 <= all.size();) {
+            const auto* head = reinterpret_cast<const uint8_t*>(all.constData() + at);
+            const uint32_t count = head[4] | head[5] << 8 | head[6] << 16 | static_cast<uint32_t>(head[7]) << 24;
+            at += 8;
+            if (at + static_cast<qsizetype>(count) * 2 > all.size())
+                break;
+            Recorded take{head[0], head[1] != 0, std::vector<int16_t>(count)};
+            for (uint32_t i = 0; i < count; ++i)
+                take.samples[i] = static_cast<int16_t>(static_cast<uint8_t>(all[at + 2 * i])
+                                                       | static_cast<uint8_t>(all[at + 2 * i + 1]) << 8);
+            at += static_cast<qsizetype>(count) * 2;
+            read.push_back(std::move(take));
+        }
+        return read;
+    }();
+    return takes;
+}
 
 }  // namespace
 
@@ -85,65 +121,26 @@ void KeyboardSound::prepare(int rate)
 {
     rate_ = rate;
     const float fs = static_cast<float>(rate);
-    // A part of the key or of the case, struck: it rings at its pitch for
-    // a while, from `start` seconds into the stroke.
-    const auto ring = [&](std::vector<float>& out, float start, float hertz, float lasts, float loud) {
-        const float phase = random() * kPi;
-        for (size_t i = static_cast<size_t>(start * fs); i < out.size(); ++i) {
-            const float t = static_cast<float>(i) / fs - start;
-            out[i] += loud * std::exp(-t / lasts) * std::sin(2.0f * kPi * hertz * t + phase);
-        }
-    };
-    // A click: noise that dies at once, its lows taken off.
-    const auto click = [&](std::vector<float>& out, float start, float lasts, float loud) {
-        float last = 0.0f;
-        for (size_t i = static_cast<size_t>(start * fs); i < out.size(); ++i) {
-            const float t = static_cast<float>(i) / fs - start;
-            const float n = random();
-            out[i] += loud * std::exp(-t / lasts) * (n - last);
-            last = n;
-        }
-    };
-    struct Mode {
-        float hertz, lasts, loud;
-    };
-    // The case and the plunger's ringing, struck at the bottom of the
-    // travel; the cap's, higher, at the top.
-    static constexpr Mode kBottom[] = {{185, 0.022f, 0.35f}, {510, 0.013f, 0.5f}, {1320, 0.006f, 0.55f},
-                                       {2550, 0.0032f, 0.45f}, {4100, 0.0018f, 0.3f}};
-    static constexpr Mode kTop[] = {{720, 0.006f, 0.25f}, {1900, 0.0035f, 0.6f}, {3300, 0.002f, 0.5f}, {5200, 0.0012f, 0.3f}};
-    for (int kind = 0; kind < kKinds; ++kind)
-        for (int down = 0; down < 2; ++down)
-            for (int take = 0; take < kTakes; ++take) {
-                // Lower for a wide key, lower still for the bar.
-                const float pitch = (kind == Space ? 0.72f : kind == Wide ? 0.86f : 1.0f) * (1.0f + 0.05f * random());
-                std::vector<float> sound(static_cast<size_t>((kind == Space ? 0.10f : 0.07f) * fs));
-                float hit = 0.0f;
-                if (down) {
-                    // The finger on the cap, then the bottom of the travel
-                    // some milliseconds later.
-                    click(sound, 0.0f, 0.0006f, 0.22f);
-                    hit = 0.004f + 0.0015f * static_cast<float>(take) + 0.001f * random();
-                }
-                click(sound, hit, down ? 0.0009f : 0.0006f, down ? 1.0f : 0.8f);
-                for (const Mode& mode : down ? std::span<const Mode>(kBottom) : std::span<const Mode>(kTop))
-                    ring(sound, hit, mode.hertz * pitch * (1.0f + 0.04f * random()), mode.lasts * (kind == Space ? 1.5f : 1.0f),
-                         mode.loud * (1.0f + 0.15f * random()));
-                // The bar's wire, rattling in its clips a few times.
-                if (kind == Space)
-                    for (int bounce = 1; bounce <= 3; ++bounce)
-                        click(sound, hit + 0.0035f * static_cast<float>(bounce), 0.0005f, 0.5f / static_cast<float>(bounce));
-                else if (kind == Wide)
-                    click(sound, hit + 0.003f, 0.0004f, 0.25f);
-                // As loud as its kind is, whatever the take.
-                float peak = 0.0f;
-                for (const float s : sound)
-                    peak = std::max(peak, std::fabs(s));
-                const float loudness = (down ? 1.0f : 0.55f) * (kind == Space ? 1.25f : kind == Wide ? 1.1f : 1.0f);
-                for (float& s : sound)
-                    s *= loudness / std::max(peak, 1e-6f);
-                takes_[static_cast<size_t>(kind)][static_cast<size_t>(down)][static_cast<size_t>(take)] = std::move(sound);
+    voices_.clear();  // they play takes made again here
+    for (auto& kind : takes_)
+        for (auto& way : kind)
+            way.clear();
+    for (const Recorded& take : recorded())
+        for (const Kind kind : {Letter, Wide, Space}) {
+            if ((take.kind == Space) != (kind == Space) || take.samples.size() < 2)
+                continue;
+            // A wide key is a letter's stroke, a little lower and slower:
+            // played at nine tenths of its speed.
+            const double speed = static_cast<double>(kRecordedRate) / fs * (kind == Wide ? 0.9 : 1.0);
+            std::vector<float> sound(static_cast<size_t>(static_cast<double>(take.samples.size() - 1) / speed));
+            for (size_t i = 0; i < sound.size(); ++i) {
+                const double at = static_cast<double>(i) * speed;
+                const auto whole = static_cast<size_t>(at);
+                const auto part = static_cast<float>(at - static_cast<double>(whole));
+                sound[i] = (take.samples[whole] * (1.0f - part) + take.samples[whole + 1] * part) / 32768.0f;
             }
+            takes_[static_cast<size_t>(kind)][take.down ? 1u : 0u].push_back(std::move(sound));
+        }
 
     // The room: a small office, its walls a couple of metres away, a desk,
     // a few shelves. A tail of some 0.4 s, its highs taken by what is soft.
@@ -193,7 +190,7 @@ void KeyboardSound::mix(std::vector<int16_t>& stereo, int rate, uint64_t now)
         float after, gain, left;
     } kReflections[] = {{0.0031f, 0.42f, 0.8f}, {0.0047f, 0.36f, 0.2f}, {0.0072f, 0.28f, 0.65f},
                         {0.0098f, 0.24f, 0.35f}, {0.0135f, 0.18f, 0.55f}, {0.0181f, 0.14f, 0.45f}};
-    constexpr float kDry = 1.0f, kEarly = 0.55f, kTailIn = 0.045f, kTailOut = 1.0f, kLoud = 7000.0f;
+    constexpr float kDry = 1.0f, kEarly = 0.55f, kTailIn = 0.045f, kTailOut = 1.0f, kLoud = 20000.0f;
     const double step = static_cast<double>(now - from) / static_cast<double>(frames);
     double t = static_cast<double>(from);
     for (size_t i = 0; i < frames; ++i) {
@@ -208,13 +205,15 @@ void KeyboardSound::mix(std::vector<int16_t>& stereo, int rate, uint64_t now)
                                       || key == tuxape::CpcKey::Tab || key == tuxape::CpcKey::Copy
                                   ? Wide
                                   : Letter;
-            const int take = static_cast<int>((random() * 0.5f + 0.5f) * kTakes) % kTakes;
+            const auto& takes = takes_[static_cast<size_t>(kind)][stroke.down ? 1u : 0u];
+            if (takes.empty())
+                continue;
+            const size_t take = static_cast<size_t>((random() * 0.5f + 0.5f) * static_cast<float>(takes.size())) % takes.size();
             // Struck a little harder or softer; heard from where it is,
             // the listener before the middle of the keyboard.
-            const float force = 0.85f + 0.15f * random();
+            const float force = 0.92f + 0.08f * random();
             const float pan = std::clamp((kAcross[stroke.key] - 9.15f) / 9.15f * 0.35f, -0.35f, 0.35f);
-            voices_.push_back({&takes_[static_cast<size_t>(kind)][stroke.down ? 1u : 0u][static_cast<size_t>(take)], 0,
-                               force * std::sqrt(0.5f - pan), force * std::sqrt(0.5f + pan)});
+            voices_.push_back({&takes[take], 0, force * std::sqrt(0.5f - pan), force * std::sqrt(0.5f + pan)});
         }
         float left = 0.0f, right = 0.0f, mono = 0.0f;
         for (auto voice = voices_.begin(); voice != voices_.end();) {

@@ -8,15 +8,15 @@
 // The CPC's keyboard heard as it is typed on. Its keys are plungers on
 // springs over a membrane, in a hollow plastic case: going down, the finger
 // meets the cap, then the plunger strikes the bottom of its travel and the
-// case rings with it; coming up, the cap knocks against its top stop, more
-// lightly and higher. The space bar is longer, lower, with the rattle of
-// the wire that keeps it level; the wide keys (SHIFT, RETURN, CONTROL...)
-// are between the two. Each key is heard where it is on the keyboard, from
-// left to right, in a small office, not much furnished: a few reflections
-// off the walls and the desk, and a short tail.
+// case rings with it; coming up, the cap knocks against its top stop, much
+// more lightly. The space bar is louder and rings longer; the wide keys
+// (SHIFT, RETURN, CONTROL...) a little lower than the letters. Each key is
+// heard where it is on the keyboard, from left to right, in a small office,
+// not much furnished: a few reflections off the walls and the desk, and a
+// short tail.
 //
-// Made here, not taken from a recording: each stroke is one of a few takes
-// of its kind, slightly different, struck a little harder or softer.
+// The strokes are a CPC 464's, recorded: a few takes of each, one picked
+// at a time, struck a little harder or softer.
 class KeyboardSound {
 public:
     // A key of the CPC (by CpcKey's number) went down or came up, at that
@@ -27,8 +27,6 @@ public:
     void mix(std::vector<int16_t>& stereo, int rate, uint64_t now);
     // Silence at once.
     void reset();
-
-    static constexpr int kTakes = 4;
 
 private:
     enum Kind { Letter, Wide, Space, kKinds };
@@ -58,7 +56,8 @@ private:
 
     std::deque<Stroke> strokes_;
     std::vector<Voice> voices_;
-    std::array<std::array<std::array<std::vector<float>, kTakes>, 2>, kKinds> takes_;
+    // Each kind's takes, coming up and going down, at the rate played.
+    std::array<std::array<std::vector<std::vector<float>>, 2>, kKinds> takes_;
     int rate_ = 0;
     uint64_t heard_ = 0;  // the machine's time at the end of the last stretch
     uint32_t noise_ = 0x9E3779B9;

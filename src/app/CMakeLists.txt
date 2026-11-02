@@ -133,6 +133,11 @@ qt_add_resources(tuxape_app tuxape_translations
     PREFIX /i18n
     BASE ${CMAKE_CURRENT_BINARY_DIR}
     FILES ${TUXAPE_QM_FILES})
+# The CPC 464's keyboard, recorded (see tools/keyboard-samples.py).
+qt_add_resources(tuxape_app tuxape_sounds
+    PREFIX /sounds
+    BASE resources
+    FILES resources/keyboard.raw)
 
 # A window program on Windows (no console), an application on a Mac.
 add_executable(tuxape WIN32 MACOSX_BUNDLE main.cpp)
