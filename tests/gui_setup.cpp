@@ -1973,6 +1973,24 @@ int main(int argc, char* argv[])
                        && now.pixel(300, 286) == border;
             },
             2000));
+        // However large the window, the picture is 1, 1.5, 2... times its
+        // size: every line of the CPC as many rows of the screen as the
+        // others. At 1.535 times (a maximized window on a 1920 x 1080
+        // screen) some took four rows, the others three.
+        {
+            ScreenWidget* screen = window.screen();
+            const QSize before = screen->size();
+            screen->resize(1853, 958);
+            CHECK(screen->pictureRect() == QRect(158, 11, 1536, 936));
+            screen->resize(1920, 1080);
+            CHECK(screen->pictureRect() == QRect(192, 72, 1536, 936));
+            screen->resize(2100, 1290);
+            CHECK(screen->pictureRect() == QRect(26, 21, 2048, 1248));
+            // Smaller than half: whatever fits.
+            screen->resize(400, 300);
+            CHECK(screen->pictureRect().width() == 400 && std::abs(screen->pictureRect().height() - 244) <= 1);
+            screen->resize(before);
+        }
         settings.wholeRaster = false;
         window.applySettings(settings);
         CHECK(QTest::qWaitFor([&] { return window.screen()->sizeHint() == QSize(768, 540); }, 2000));

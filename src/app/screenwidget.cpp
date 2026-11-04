@@ -701,11 +701,21 @@ void ScreenWidget::resizeEvent(QResizeEvent* event)
         crt_->setGeometry(pictureRect());
 }
 
-// Largest picture of the right proportions that fits, centred.
+// Largest picture of the right proportions that fits, centred. Without
+// the shader its size goes by halves (1, 1.5, 2...): each line of the CPC
+// then takes as many rows of the screen as the others, and each pixel of
+// mode 1 as many columns; at any other size some take one more than their
+// neighbours, and letters come out uneven. The shader draws a tube, at any
+// size.
 QRect ScreenWidget::pictureRect() const
 {
     QSize size(displayWidth(), displayHeight());
-    size.scale(this->size(), Qt::KeepAspectRatio);
+    const double fit = std::min(static_cast<double>(width()) / size.width(), static_cast<double>(height()) / size.height());
+    const double step = std::floor(fit * 2) / 2;
+    if (!crt_ && step >= 0.5)
+        size = QSize(qRound(size.width() * step), qRound(size.height() * step));
+    else
+        size.scale(this->size(), Qt::KeepAspectRatio);
     return QRect(QPoint((width() - size.width()) / 2, (height() - size.height()) / 2), size);
 }
 

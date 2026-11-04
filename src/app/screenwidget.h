@@ -83,6 +83,8 @@ public:
     // for the whole raster.
     int displayWidth() const { return image_.isNull() ? tuxape::Monitor::kWidth : image_.width(); }
     int displayHeight() const { return (image_.isNull() ? tuxape::Monitor::kHeight : image_.height()) * 2; }
+    // Where on the widget the picture is drawn.
+    QRect pictureRect() const;
     int beamMarkerLine() const { return beamLine_; }
     int beamMarkerColumn() const { return beamColumn_; }
     // "Row Highlight" too: where the Z80 took its interrupts in the
@@ -151,7 +153,6 @@ private:
     bool driveLightShown_ = false;
     bool driveCylinderShown_ = false;
     int driveLight_ = -1;
-    QRect pictureRect() const;
     void paintDriveLight(QPainter& painter, const QRect& light) const;
     void paintBeamMarker(QPainter& painter, const QRect& picture) const;
     void paintInterruptMarks(QPainter& painter, const QRect& picture) const;
