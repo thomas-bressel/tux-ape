@@ -68,6 +68,67 @@ Cartridge numbered(int pages)
     return cartridge;
 }
 
+// TuxAPE's own, as ACE-DL has it: a cartridge of more than 512K is in
+// slots of 32 pages, and reading the last bytes of the slot's page 0
+// chooses one (&3FFF the first, &3FFE the second...). The program here was
+// run on ACE-DL (its APIZEN build of September 2026) with the same
+// cartridge of 96 pages: from RAM, for each of four slots it reads
+// &3FFF - slot, then puts each ROM number from &80 to &9F in &DFxx and
+// notes the page it sees at &C000 (each page starts with its number, page 0
+// with DI). ACE-DL saw pages 0 to 31, 32 to 63, 64 to 95, and 64 to 95
+// again for a fourth slot it does not have.
+void testLargeCartridge()
+{
+    const Bytes boot = {0xF3, 0x31, 0x00, 0xC0, 0x21, 0x14, 0x00, 0x11, 0x00, 0x80, 0x01, 0x40, 0x00, 0xED, 0xB0, 0xC3, 0x00, 0x80};
+    const Bytes probe = {0x01, 0x00, 0x7F, 0x3E, 0x80, 0xED, 0x79, 0x21, 0x00, 0x40, 0x1E, 0x00,          // ROMs on, &4000, slot 0
+                         0xE5, 0x7B, 0x2F, 0x6F, 0x26, 0x3F, 0x7E, 0xE1, 0x16, 0x80,                     // LD A,(&3FFF - slot)
+                         0x06, 0xDF, 0xED, 0x51, 0x3A, 0x00, 0xC0, 0x77, 0x23, 0x3A, 0x02, 0xC0, 0x77,  // OUT &DFxx, note &C000
+                         0x23, 0x14, 0x7A, 0xFE, 0xA0, 0x20, 0xEC,                                       // up to &9F
+                         0x1C, 0x7B, 0xFE, 0x04, 0x20, 0xDC, 0x18, 0xFE};                                // four slots
+    Bytes file = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'A', 'M', 'S', '!'};
+    for (int page = 0; page < 96; ++page) {
+        Bytes data(Cartridge::kPageSize, 0);
+        if (page == 0) {
+            std::copy(boot.begin(), boot.end(), data.begin());
+            std::copy(probe.begin(), probe.end(), data.begin() + 0x14);
+        } else {
+            data[0] = static_cast<uint8_t>(page);
+            data[1] = 0x5A;
+        }
+        const std::string id = "cb" + std::string(page < 10 ? "0" : "") + std::to_string(page);
+        chunk(file, id.c_str(), data);
+    }
+    const auto cartridge = Cartridge::parseCpr(file);
+    CHECK(cartridge && cartridge->pages() == 96);
+    if (!cartridge)
+        return;
+    for (const bool large : {true, false}) {
+        Cpc cpc;
+        cpc.setCartridge(&*cartridge, true, large);
+        cpc.reset();
+        CHECK_EQ(cpc.memory().cartridgeSlots(), large ? 3 : 1);
+        cpc.run(40000);
+        for (int slot = 0; slot < 4; ++slot)
+            for (int number = 0; number < 32; ++number) {
+                const uint8_t seen = cpc.memory().readRam(static_cast<uint16_t>(0x4000 + slot * 64 + number * 2));
+                const int page = seen == 0xF3 ? 0 : seen;
+                // Without large cartridges, the first 512K and nothing else.
+                CHECK_EQ(page, large ? std::min(slot, 2) * 32 + number : number);
+            }
+        CHECK_EQ(cpc.memory().cartridgeSlot(), large ? 2 : 0);
+        // A reset brings the first slot back.
+        cpc.reset();
+        CHECK_EQ(cpc.memory().cartridgeSlot(), 0);
+    }
+    // A CPR file names a hundred pages at the most.
+    const auto hundred = Cartridge::parseCpr([] {
+        Bytes all = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'A', 'M', 'S', '!'};
+        chunk(all, "cb99", Bytes(Cartridge::kPageSize, 0x99));
+        return all;
+    }());
+    CHECK(hundred && hundred->pages() == Cartridge::kMaxLargePages);
+}
+
 void sendSequence(Cpc& cpc, uint8_t last, uint8_t after)
 {
     for (const uint8_t byte : {0xFF, 0x00, 0xFF, 0x77, 0xB3, 0x51, 0xA8, 0xD4, 0x62, 0x39, 0x9C, 0x46, 0x2B, 0x15, 0x8A})
@@ -1373,6 +1434,7 @@ int main()
 {
     testCprFiles();
     testCartridgePages();
+    testLargeCartridge();
     testAsic();
     testPpi();
     testSprites();

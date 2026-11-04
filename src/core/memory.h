@@ -66,7 +66,14 @@ public:
     // its stack, and finds its way back from &FFFD; Epyx World of Sports
     // and Eerie Forest choose a page and read it without ever having
     // touched that bit.
-    void setCartridge(std::span<const uint8_t> pages, bool discRom);
+    //
+    // TuxAPE's own, as ACE-DL has it: a cartridge of more than 32 pages
+    // (512K), when `large` allows it, is in slots of 32 pages, one shown at
+    // a time, in which RMR2 and the ROM numbers choose. Reading one of the
+    // last bytes of the slot's page 0, wherever it shows, chooses another:
+    // &3FFF the first, &3FFE the second, and so on. Without `large` such a
+    // cartridge is its first 32 pages, as on an Amstrad.
+    void setCartridge(std::span<const uint8_t> pages, bool discRom, bool large = false);
     bool hasCartridge() const { return !cartridge_.empty(); }
     // The firmware: the lower ROM, or a Plus's cartridge's page 0.
     std::span<const uint8_t> firmware() const
@@ -76,6 +83,11 @@ public:
         return lowerRom_;
     }
     void setRmr2(uint8_t value);
+    // A cartridge in slots: the Z80 has read at `addr` (see setCartridge).
+    bool slotsWatched() const { return slots_ > 1; }
+    void watchSlot(uint16_t addr);
+    int cartridgeSlots() const { return slots_; }
+    int cartridgeSlot() const { return slot_; }
     // The ASIC, whose page of registers RMR2 can show at &4000-&7FFF.
     void setAsic(Asic* asic) { asic_ = asic; }
 
@@ -149,8 +161,12 @@ public:
         uint8_t ramConfig = 0xC0, ramPage = 0;
         uint8_t rmr2 = 0;
         bool upperChosen = true;  // a cartridge's upper ROM, once one has been chosen
+        uint8_t slot = 0;         // a large cartridge's slot
     };
-    Mapping mapping() const { return {lowerEnabled_, upperEnabled_, upperSelected_, ramConfig_, ramPage_, rmr2_, upperChosen_}; }
+    Mapping mapping() const
+    {
+        return {lowerEnabled_, upperEnabled_, upperSelected_, ramConfig_, ramPage_, rmr2_, upperChosen_, static_cast<uint8_t>(slot_)};
+    }
     void setMapping(const Mapping& mapping);
 
 private:
@@ -184,6 +200,11 @@ private:
 
     std::vector<uint8_t> multiface_;  // its ROM, then its RAM: 16K, or none
     bool multifacePaged_ = false;
+
+    // A large cartridge: its slots of 32 pages, and the one shown.
+    static constexpr int kSlotPages = 32;
+    int slots_ = 1;
+    int slot_ = 0;
 
     void remap();
     void remapMachine();

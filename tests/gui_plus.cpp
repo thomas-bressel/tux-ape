@@ -131,11 +131,24 @@ int main(int argc, char* argv[])
         CHECK(cartridge && cartridge->isEnabled() && !cartridge->isChecked());
         CHECK(file && file->text().isEmpty());
         CHECK(browse && browse->isEnabled());
+        // Cartridges over 512K, TuxAPE's own: not unless asked for.
+        auto* large = dialog.findChild<QCheckBox*>("ckLargeCart");
+        CHECK(large && large->isEnabled() && !large->isChecked());
         settings.machine = tuxape::stockMachine(CpcModel::Plus6128);
         dialog.setSettings(settings);
         CHECK(plus->isChecked() && cartridge->isChecked());
         CHECK(file->text() == "CPC_PLUS.CPR");
         CHECK(dialog.settings().machine == settings.machine);
+        if (large) {
+            large->setChecked(true);
+            CHECK(dialog.settings().machine.largeCartridges);
+            CHECK(dialog.settings().save());
+            Settings read;
+            read.load();
+            CHECK(read.machine.largeCartridges);
+            large->setChecked(false);
+            QFile::remove(Settings::file());
+        }
         plus->setChecked(false);
         CHECK(!dialog.settings().machine.isPlus());
         CHECK(dialog.settings().machine.cartridge == "CPC_PLUS.CPR");

@@ -114,6 +114,7 @@ void Settings::read(const tuxape::IniFile& ini)
     if (ini.has(kRoms, "Cartridge"))
         machine.cartridge = ini.get(kRoms, "Cartridge");
     machine.cartridgeEnabled = ini.getBool(kRoms, "Cartridge Enabled", machine.cartridgeEnabled);
+    machine.largeCartridges = ini.getBool(kRoms, "Large Cartridges", machine.largeCartridges);
     if (ini.has(kRoms, "Multiface"))
         machine.multifaceRom = ini.get(kRoms, "Multiface");
     machine.multifaceEnabled = ini.getBool(kRoms, "Multiface Enabled", machine.multifaceEnabled);
@@ -294,6 +295,7 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
             ini.set(kRoms, upperKey(slot), machine.upperRoms[static_cast<size_t>(slot)]);
         ini.set(kRoms, "Cartridge", machine.cartridge);
         ini.setBool(kRoms, "Cartridge Enabled", machine.cartridgeEnabled);
+        ini.setBool(kRoms, "Large Cartridges", machine.largeCartridges);
         ini.set(kRoms, "Multiface", machine.multifaceRom);
         ini.setBool(kRoms, "Multiface Enabled", machine.multifaceEnabled);
         ini.setBool(kConfiguration, "Enable Plus", machine.plus);

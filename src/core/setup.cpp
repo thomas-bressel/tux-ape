@@ -263,7 +263,7 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
         if (!cartridge)
             missing += (missing.empty() ? "" : ", ") + (file.empty() ? config.cartridge : file.string());
     }
-    cpc.setCartridge(cartridge ? &*cartridge : nullptr, config.ram != RamExpansion::None);
+    cpc.setCartridge(cartridge ? &*cartridge : nullptr, config.ram != RamExpansion::None, config.largeCartridges);
 
     if (missing.empty())
         return true;

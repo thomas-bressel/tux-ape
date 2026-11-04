@@ -2589,6 +2589,10 @@ qui est introuvable. La session est rejouée sans, et peut se dérouler autremen
         <translation>%1 n&apos;est pas une image de cartouche.</translation>
     </message>
     <message>
+        <source>This cartridge is of %1K: only its first 512K are used. &quot;Cartridges over 512K&quot;, on the Memory page of the settings, gives the rest.</source>
+        <translation>Cette cartouche fait %1 Ko : seuls ses 512 premiers Ko sont utilisés. « Cartouches de plus de 512 Ko », dans la page Mémoire des réglages, donne le reste.</translation>
+    </message>
+    <message>
         <source>Load Cartridge</source>
         <translation>Charger une cartouche</translation>
     </message>
@@ -3893,6 +3897,14 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
     <message>
         <source>File:</source>
         <translation>Fichier :</translation>
+    </message>
+    <message>
+        <source>Cartridges over 512K</source>
+        <translation>Cartouches de plus de 512 Ko</translation>
+    </message>
+    <message>
+        <source>Up to 100 pages (1.5M) in slots of 512K, as ACE-DL has them: reading the last bytes of page 0 chooses the slot (&amp;3FFF the first, &amp;3FFE the second...). Without it, the first 512K</source>
+        <translation>Jusqu&apos;à 100 pages (1,5 Mo) en slots de 512 Ko, comme dans ACE-DL : lire les derniers octets de la page 0 choisit le slot (&amp;3FFF le premier, &amp;3FFE le deuxième...). Sans cela, les 512 premiers Ko</translation>
     </message>
     <message>
         <source>Multiface</source>

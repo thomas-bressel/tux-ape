@@ -115,18 +115,38 @@ void Memory::setUpperRom(int slot, std::span<const uint8_t> image)
     remap();
 }
 
-void Memory::setCartridge(std::span<const uint8_t> pages, bool discRom)
+void Memory::setCartridge(std::span<const uint8_t> pages, bool discRom, bool large)
 {
+    constexpr size_t kSlotSize = static_cast<size_t>(kSlotPages) * kBankSize;
+    if (!large && pages.size() > kSlotSize)
+        pages = pages.first(kSlotSize);
     // Address lines a cartridge does not use bring its pages round again:
-    // it is filled out to a power of two, with FF where it has nothing.
+    // it is filled out to a power of two, with FF where it has nothing. A
+    // large one is filled out to whole slots.
+    slots_ = static_cast<int>(std::max<size_t>(1, (pages.size() + kSlotSize - 1) / kSlotSize));
+    slot_ = 0;
     size_t count = 0;
-    if (!pages.empty())
+    if (slots_ > 1)
+        count = static_cast<size_t>(slots_) * kSlotPages;
+    else if (!pages.empty())
         for (count = 1; count * kBankSize < pages.size();)
             count *= 2;
     cartridge_.assign(count * kBankSize, 0xFF);
     std::copy_n(pages.begin(), std::min(pages.size(), cartridge_.size()), cartridge_.begin());
     discRom_ = discRom;
     rmr2_ = 0;
+    remap();
+}
+
+void Memory::watchSlot(uint16_t addr)
+{
+    constexpr size_t kSlotSize = static_cast<size_t>(kSlotPages) * kBankSize;
+    if (readMap_[addr >> 14] != &cartridge_[static_cast<size_t>(slot_) * kSlotSize])
+        return;
+    const int slot = 0x3FFF - (addr & 0x3FFF);
+    if (slot >= slots_ || slot == slot_)
+        return;
+    slot_ = slot;
     remap();
 }
 
@@ -184,6 +204,7 @@ void Memory::reset()
     rmr2_ = 0;
     ramConfig_ = 0xC0;
     ramPage_ = 0;
+    slot_ = 0;
     remap();
 }
 
@@ -242,6 +263,7 @@ void Memory::setMapping(const Mapping& mapping)
     ramConfig_ = mapping.ramConfig;
     ramPage_ = mapping.ramPage < pageOffset_.size() ? mapping.ramPage : 0;
     rmr2_ = mapping.rmr2 & 0x1F;
+    slot_ = mapping.slot < slots_ ? mapping.slot : 0;
     remap();
 }
 
@@ -266,8 +288,10 @@ void Memory::remapMachine()
     }
     registersMapped_ = false;
     if (!cartridge_.empty()) {
-        const size_t pages = cartridge_.size() / kBankSize;
-        auto page = [&](unsigned number) { return &cartridge_[(number & (pages - 1)) * kBankSize]; };
+        // A large cartridge's pages are those of its slot.
+        const size_t pages = slots_ > 1 ? kSlotPages : cartridge_.size() / kBankSize;
+        const size_t first = static_cast<size_t>(slot_) * kSlotPages;
+        auto page = [&](unsigned number) { return &cartridge_[(first + (number & (pages - 1))) * kBankSize]; };
         const int where = rmr2_ >> 3;
         if (lowerEnabled_)
             readMap_[where == 3 ? 0 : where] = page(rmr2_ & 7);

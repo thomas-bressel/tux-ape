@@ -1850,7 +1850,8 @@ void MainWindow::toggleYmRecording()
 bool MainWindow::insertCartridgeFile(const QString& path)
 {
     const auto data = tuxape::readFile(path.toStdString());
-    if (!data || !tuxape::Cartridge::parseCpr(*data)) {
+    const auto cartridge = data ? tuxape::Cartridge::parseCpr(*data) : std::nullopt;
+    if (!cartridge) {
         report(tr("%1 is not a cartridge image.").arg(QDir::toNativeSeparators(path)));
         return false;
     }
@@ -1873,6 +1874,10 @@ bool MainWindow::insertCartridgeFile(const QString& path)
     lastProgram_ = path;
     if (!error.isEmpty())
         report(tr("%1.").arg(error.left(1).toUpper() + error.mid(1)));
+    else if (cartridge->pages() > tuxape::Cartridge::kMaxPages && !settings_.machine.largeCartridges)
+        report(tr("This cartridge is of %1K: only its first 512K are used. \"Cartridges over 512K\", on the Memory "
+                  "page of the settings, gives the rest.")
+                   .arg(cartridge->pages() * 16));
     if (!settings_.save())
         report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
     return error.isEmpty();

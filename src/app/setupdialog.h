@@ -253,6 +253,7 @@ private:
     QRadioButton* ram_[4] = {};
     QCheckBox* siliconDisc_ = nullptr;
     QCheckBox* enableCartridge_ = nullptr;
+    QCheckBox* largeCartridges_ = nullptr;
     QLabel* cartridgeFile_ = nullptr;
     QString cartridge_;  // a file of the ROM folder by its name, or a path
     void setCartridge(const QString& cartridge);

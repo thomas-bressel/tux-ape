@@ -50,6 +50,9 @@ struct MachineConfig {
     std::string cartridge;
     bool cartridgeEnabled = false;
     bool plus = false;
+    // TuxAPE's own, as ACE-DL: a cartridge of more than 512K, in slots
+    // (see Memory::setCartridge); without it, its first 512K.
+    bool largeCartridges = false;
     bool isPlus() const { return plus && cartridgeEnabled && !cartridge.empty(); }
     // WinAPE's "Enable Multiface" and its ROM, looked for like the others;
     // with none named, "multiface2" is.

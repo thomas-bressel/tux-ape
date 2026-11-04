@@ -18,7 +18,7 @@ std::optional<Cartridge> Cartridge::parseCpr(std::span<const uint8_t> file)
         const bool page = chunk[0] == 'c' && chunk[1] == 'b' && chunk[2] >= '0' && chunk[2] <= '9' && chunk[3] >= '0'
                           && chunk[3] <= '9';
         const int number = (chunk[2] - '0') * 10 + (chunk[3] - '0');
-        if (page && number < kMaxPages) {
+        if (page && number < kMaxLargePages) {
             const size_t start = static_cast<size_t>(number) * kPageSize;
             if (cartridge.data.size() < start + kPageSize)
                 cartridge.data.resize(start + kPageSize, 0xFF);

@@ -19,10 +19,10 @@ Cpc::Cpc()
     reset();
 }
 
-void Cpc::setCartridge(const Cartridge* cartridge, bool discRom)
+void Cpc::setCartridge(const Cartridge* cartridge, bool discRom, bool large)
 {
     plus_ = cartridge != nullptr && cartridge->pages() > 0;
-    memory_.setCartridge(plus_ ? std::span<const uint8_t>(cartridge->data) : std::span<const uint8_t>(), discRom);
+    memory_.setCartridge(plus_ ? std::span<const uint8_t>(cartridge->data) : std::span<const uint8_t>(), discRom, large);
     gateArray_.setPlus(plus_);
     ppi_.setPlus(plus_ || plusPpi_);
     asic_.reset();

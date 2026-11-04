@@ -197,7 +197,9 @@ public:
     // what it adds. `discRom` is for a machine with a disc drive, where ROM
     // 7 is the cartridge's AMSDOS. Without a cartridge the machine is a CPC
     // again. Neither resets the machine.
-    void setCartridge(const Cartridge* cartridge, bool discRom = true);
+    // `large`: a cartridge of more than 512K is in slots (see
+    // Memory::setCartridge), not cut to its first 32 pages.
+    void setCartridge(const Cartridge* cartridge, bool discRom = true, bool large = false);
     // Romantic Robot's Multiface II, on the expansion port: its ROM (8K;
     // empty for none). OUT &FEE8 pages its ROM and RAM in, OUT &FEEA out,
     // and it keeps in its RAM what the machine writes to the ports that
@@ -304,6 +306,8 @@ public:
         waitForGateArray();
         advance(1);
         uint8_t v = memory_.read(addr);
+        if (memory_.slotsWatched()) [[unlikely]]
+            memory_.watchSlot(addr);
         // Nothing answers in the unused parts of the ASIC's page of
         // registers: what is read there is what the bus last carried, the
         // last byte of the instruction that does the reading (Kevin

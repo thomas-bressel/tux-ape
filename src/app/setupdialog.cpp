@@ -1505,10 +1505,17 @@ QWidget* SetupDialog::createMemoryPage()
     cartridgeRow->addWidget(new QLabel(tr("File:")));
     cartridgeRow->addWidget(cartridgeFile_, 1);
     cartridgeRow->addWidget(browseCartridge);
+    // TuxAPE's own, as ACE-DL.
+    largeCartridges_ = new QCheckBox(tr("Cartridges over 512K"));
+    largeCartridges_->setObjectName("ckLargeCart");
+    largeCartridges_->setToolTip(tr("Up to 100 pages (1.5M) in slots of 512K, as ACE-DL has them: reading the last bytes "
+                                    "of page 0 chooses the slot (&3FFF the first, &3FFE the second...). Without it, the "
+                                    "first 512K"));
     auto* cartridgeLayout = new QVBoxLayout(cartridgeBox);
     cartridgeLayout->setSpacing(3);
     cartridgeLayout->addWidget(enableCartridge_);
     cartridgeLayout->addLayout(cartridgeRow);
+    cartridgeLayout->addWidget(largeCartridges_);
 
     auto* multifaceBox = new QGroupBox(tr("Multiface"));
     enableMultiface_ = new QCheckBox(tr("Enable Multiface"));
@@ -1768,6 +1775,7 @@ void SetupDialog::setSettings(const Settings& settings)
     crtcType_->setCurrentIndex(settings.crtcType);
     enablePlus_->setChecked(settings.machine.plus);
     enableCartridge_->setChecked(settings.machine.cartridgeEnabled);
+    largeCartridges_->setChecked(settings.machine.largeCartridges);
     enableMultiface_->setChecked(settings.machine.multifaceEnabled);
     setMultifaceRom(QString::fromStdString(settings.machine.multifaceRom));
     setCartridge(QString::fromStdString(settings.machine.cartridge));
@@ -2068,6 +2076,7 @@ Settings SetupDialog::settings() const
     machine.siliconDisc = siliconDisc_->isChecked();
     machine.plus = enablePlus_->isChecked();
     machine.cartridgeEnabled = enableCartridge_->isChecked();
+    machine.largeCartridges = largeCartridges_->isChecked();
     machine.multifaceEnabled = enableMultiface_->isChecked();
     machine.multifaceRom = multifaceRom_.toStdString();
     machine.cartridge = cartridge_.toStdString();
