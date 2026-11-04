@@ -325,10 +325,11 @@ void testNoPulseInVerticalSync()
 
 }  // namespace
 
-// TuxAPE's own: the whole raster, the 64 microseconds of each line from
-// its start and 312 lines from the vertical retrace. The part WinAPE shows
-// is in it as it is alone; switched one way or the other, what was drawn
-// stays where it goes.
+// TuxAPE's own: the whole raster, the 64 microseconds of each line and its
+// 312 lines. The part WinAPE shows is in it as it is alone, in its middle:
+// 8 microseconds on either side, 21 lines above and under; what comes
+// before is at the other end, the raster going round. Switched one way or
+// the other, what was drawn stays where it goes.
 void testWholeRaster()
 {
     Tube part, whole;
@@ -350,13 +351,19 @@ void testWholeRaster()
         for (int x = 0; x < Monitor::kWidth; ++x)
             same = same && inside[y * Monitor::kFullWidth + x] == alone[y * Monitor::kWidth + x];
     CHECK(same);
-    CHECK(inside == whole.monitor.frame() + 35 * Monitor::kFullWidth + 13 * Monitor::kCellWidth);
+    CHECK(inside == whole.monitor.frame() + 21 * Monitor::kFullWidth + 8 * Monitor::kCellWidth);
+    CHECK_EQ(Monitor::kFullWidth - Monitor::kWidth - 8 * Monitor::kCellWidth, 8 * Monitor::kCellWidth);
+    CHECK_EQ(Monitor::kFullHeight - Monitor::kHeight - 21, 21);
     // Around it, what the case hides: the mark's microsecond on the lines
-    // above the part WinAPE shows, and those under it.
+    // above the part WinAPE shows, and those under it; the first
+    // microseconds of a line at its right end, the first lines of the
+    // frame at the bottom.
     const uint32_t* full = whole.monitor.frame();
-    CHECK_EQ(full[20 * Monitor::kFullWidth + kHome + 13 * Monitor::kCellWidth], kMark);
-    CHECK_EQ(full[300 * Monitor::kFullWidth + kHome + 13 * Monitor::kCellWidth], kMark);
-    CHECK_EQ(full[20 * Monitor::kFullWidth + 5], kGround);
+    const int mark = kHome + 8 * Monitor::kCellWidth;
+    CHECK_EQ(full[6 * Monitor::kFullWidth + mark], kMark);
+    CHECK_EQ(full[286 * Monitor::kFullWidth + mark], kMark);
+    CHECK_EQ(full[6 * Monitor::kFullWidth + Monitor::kFullWidth - 5 * Monitor::kCellWidth + 5], kGround);
+    CHECK_EQ(full[305 * Monitor::kFullWidth + mark], kMark);
     // Back to the part WinAPE shows: what was drawn there is still there.
     whole.monitor.setFullRaster(false);
     CHECK(whole.monitor.width() == Monitor::kWidth && whole.monitor.windowFrame() == whole.monitor.frame());

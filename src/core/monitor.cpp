@@ -39,7 +39,7 @@ void Monitor::hsync(bool late)
     // so that the frame is centred all the same (Compendium 15.1): the
     // visible area starts a character sooner after the pulse.
     late_ = late;
-    firstPixel_ = full_ ? 0 : windowLeft();
+    placePicture();
     if (beam_ <= kWindow && awaited_) {
         // The line has just begun and waits for its pulse: this is it, on
         // time or late.
@@ -256,6 +256,19 @@ uint32_t* Monitor::edgeCell(int row, int px)
     return edge_ + 1;
 }
 
+uint32_t* Monitor::roundCell(int row, int px)
+{
+    if (px <= -kCellWidth)
+        px += kFullWidth;
+    if (row < 0)
+        row += kFullHeight;
+    if (px <= -kCellWidth || px >= width_ || row < 0 || row >= height_)
+        return nullptr;
+    if (px < 0 || px > width_ - kCellWidth)
+        return edgeCell(row, px);
+    return back_ + row * width_ + px;
+}
+
 void Monitor::placeEdge()
 {
     uint32_t* line = back_ + edgeRow_ * width_;
@@ -278,8 +291,7 @@ void Monitor::newFrame()
 void Monitor::setVerticalHold(int lines)
 {
     hold_ = lines;
-    if (!full_)
-        firstLine_ = kFirstLine + lines;
+    placePicture();
 }
 
 void Monitor::setFullRaster(bool on)
@@ -289,7 +301,7 @@ void Monitor::setFullRaster(bool on)
     if (edgeRow_ >= 0)
         placeEdge();
     // The part WinAPE shows, from one picture into the other.
-    const int left = windowLeft(), top = windowTop();
+    const int left = kSideColumns, top = kSideLines;
     for (std::vector<uint32_t>* buffer : {&bufferA_, &bufferB_}) {
         std::vector<uint32_t> before(*buffer);
         std::fill(buffer->begin(), buffer->end(), kBlack);
@@ -302,8 +314,7 @@ void Monitor::setFullRaster(bool on)
     full_ = on;
     width_ = on ? kFullWidth : kWidth;
     height_ = on ? kFullHeight : kHeight;
-    firstPixel_ = on ? 0 : windowLeft();
-    firstLine_ = on ? 0 : kFirstLine + hold_;
+    placePicture();
 }
 
 }  // namespace tuxape

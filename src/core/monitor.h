@@ -44,7 +44,7 @@ public:
         const int row = y_ - firstLine_;
         const int px = ((beam_ + kUnit - 1) >> kUnitShift) - firstPixel_;
         if (px <= -kCellWidth || px >= width_ || row < 0 || row >= height_)
-            return nullptr;
+            return full_ ? roundCell(row, px) : nullptr;
         if (px < 0 || px > width_ - kCellWidth) [[unlikely]]
             return edgeCell(row, px);
         return back_ + row * width_ + px;
@@ -96,11 +96,21 @@ public:
     // Microseconds since the line began.
     int beamX() const { return beam_ >> (kUnitShift + 4); }
     int beamY() const { return y_; }
-    // The line of the picture being drawn: 0 for its first, less above it.
-    int rasterLine() const { return y_ - firstLine_; }
+    // The line of the picture being drawn: 0 for its first, less above it
+    // (in the whole raster, at the bottom, where it goes round).
+    int rasterLine() const
+    {
+        const int row = y_ - firstLine_;
+        return full_ && row < 0 ? row + kFullHeight : row;
+    }
     // And the pixel of that line the beam is at: 0 for its first, less
-    // before it, kWidth or more after its last.
-    int beamColumn() const { return ((beam_ + kUnit - 1) >> kUnitShift) - firstPixel_; }
+    // before it, kWidth or more after its last (in the whole raster, at
+    // the right, where it goes round).
+    int beamColumn() const
+    {
+        const int px = ((beam_ + kUnit - 1) >> kUnitShift) - firstPixel_;
+        return full_ && px <= -kCellWidth ? px + kFullWidth : px;
+    }
 
 private:
     // Position of the visible area relative to the sync pulses, chosen so
@@ -151,10 +161,22 @@ private:
     int height_ = kHeight;
     int hold_ = 0;        // the V Hold knob's lines
     bool late_ = false;   // the monitor of a machine whose pulse comes a microsecond later
-    // Where the part WinAPE shows starts, in the whole raster.
+    // Where the part WinAPE shows starts, from the line's start and from
+    // the vertical retrace.
     int windowLeft() const { return (late_ ? kFirstColumn - 1 : kFirstColumn) * kCellWidth; }
-    int windowTop() const { return std::clamp(kFirstLine + hold_, 0, kFullHeight - kHeight); }
-    int windowOffset() const { return full_ ? windowTop() * width_ + windowLeft() : 0; }
+    int windowTop() const { return kFirstLine + hold_; }
+    // The whole raster is shown with the part WinAPE shows in its middle:
+    // as much of the line hidden by the case on its left as on its right,
+    // and of the frame above it as under it.
+    static constexpr int kSideColumns = (kFullWidth - kWidth) / 2;
+    static constexpr int kSideLines = (kFullHeight - kHeight) / 2;
+    int windowOffset() const { return full_ ? kSideLines * width_ + kSideColumns : 0; }
+    // The beam's place at the picture's top left corner.
+    void placePicture()
+    {
+        firstPixel_ = full_ ? windowLeft() - kSideColumns : windowLeft();
+        firstLine_ = full_ ? windowTop() - kSideLines : windowTop();
+    }
     bool locked_ = false;      // the line in progress has had its pulse
     bool coasting_ = false;    // the line in progress has had no pulse: the oscillator keeps its pace
     bool vertical_ = false;    // the vertical sync pulse is on
@@ -182,6 +204,9 @@ private:
     void lineEvent();
     void countLine();
     uint32_t* edgeCell(int row, int px);
+    // The whole raster goes round: what comes before its left or top edge
+    // is at its right or bottom.
+    uint32_t* roundCell(int row, int px);
     void placeEdge();
     void newLine();
     void newFrame();

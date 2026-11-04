@@ -1950,8 +1950,9 @@ int main(int argc, char* argv[])
     CHECK(window.screen()->sizeHint() == QSize(768, 540));
 
     // Without the shader, the whole raster the tube draws, what the case
-    // hides too: 1024 x 312, the part WinAPE shows in it where it was. Not
-    // with the shader, nor when it is not wanted.
+    // hides too: 1024 x 312, the part WinAPE shows in its middle (8
+    // microseconds on either side, 21 lines above and under). Not with the
+    // shader, nor when it is not wanted.
     {
         const QImage part = emulator.frame();
         settings.crtShader = false;
@@ -1960,16 +1961,16 @@ int main(int argc, char* argv[])
         CHECK(QTest::qWaitFor([&] { return window.screen()->sizeHint() == QSize(1024, 624); }, 2000));
         const QImage whole = emulator.frame();
         CHECK(whole.size() == QSize(1024, 312));
-        CHECK(whole.copy(13 * 16, 35, 768, 270) == part.convertToFormat(whole.format()));
+        CHECK(whole.copy(8 * 16, 21, 768, 270) == part.convertToFormat(whole.format()));
         // The machine running, the case's part is drawn: the border's
         // colour above the picture (the lines after the vertical sync's
         // black) and to its right (until the next line's sync).
         CHECK(QTest::qWaitFor(
             [&] {
                 const QImage now = emulator.frame();
-                const QRgb border = now.pixel(13 * 16 + 2, 35 + 2);
-                return qBlue(border) > 0x40 && now.pixel(300, 30) == border && now.pixel(990, 100) == border
-                       && now.pixel(300, 300) == border;
+                const QRgb border = now.pixel(8 * 16 + 2, 21 + 2);
+                return qBlue(border) > 0x40 && now.pixel(300, 16) == border && now.pixel(910, 86) == border
+                       && now.pixel(300, 286) == border;
             },
             2000));
         settings.wholeRaster = false;
