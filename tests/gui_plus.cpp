@@ -239,6 +239,9 @@ int main(int argc, char* argv[])
         CHECK(roms.value(16) == "80 - Cartridge Bank 0" && roms.value(47) == "9F - Cartridge Bank 31");
         auto* secondaryBox = debugger->findChild<QGroupBox*>("grpSecondaryROM");
         CHECK(secondaryBox && !secondaryBox->isEnabled());
+        // No slots on a cartridge of 512K or less.
+        auto* slotBox = debugger->findChild<QComboBox*>("cbSlot");
+        CHECK(slotBox && !slotBox->isVisibleTo(debugger));
 
         const QByteArray cartridge = [&] {
             QFile file(systemCartridge);
@@ -459,6 +462,64 @@ int main(int argc, char* argv[])
     CHECK(emulator.machine().isPlus());
     CHECK(QDir::fromNativeSeparators(QString::fromStdString(emulator.machine().cartridge)) == copy);
     CHECK(shows("f2 Burnin' Rubber"));
+
+    // A cartridge over 512K, with "Cartridges over 512K": the debugger
+    // offers its slots, and names the banks of each by their number in the
+    // whole cartridge.
+    {
+        const QString large = folder.filePath("large.cpr");
+        QByteArray file("RIFF\0\0\0\0AMS!", 12);
+        for (int page = 0; page < 64; ++page) {
+            QByteArray data(0x4000, 0);
+            if (page == 0) {
+                data[0] = char(0xF3);  // DI: JR $
+                data[1] = 0x18;
+                data[2] = char(0xFE);
+            } else {
+                data[0] = char(page);
+                data[1] = 0x5A;
+            }
+            file += QString("cb%1").arg(page, 2, 10, QLatin1Char('0')).toLatin1();
+            file += QByteArray("\0\x40\0\0", 4);
+            file += data;
+        }
+        QFile out(large);
+        CHECK(out.open(QIODevice::WriteOnly) && out.write(file) == file.size());
+        out.close();
+        Settings big = window.settings();
+        big.machine.largeCartridges = true;
+        window.applySettings(big);
+        CHECK(window.insertCartridgeFile(large));
+        CHECK_EQ(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().cartridgeSlots(); }), 2);
+        DebuggerDialog* debugger = window.debugger();
+        CHECK(debugger != nullptr);
+        if (debugger) {
+            debugger->refresh();
+            auto* slotBox = debugger->findChild<QComboBox*>("cbSlot");
+            CHECK(slotBox && slotBox->isVisibleTo(debugger) && slotBox->count() == 2 && slotBox->currentIndex() == 0);
+            const auto shown = [&](unsigned address) {
+                MemoryDumpView* dump = debugger->memoryDump();
+                dump->setCursor(static_cast<uint16_t>(address));
+                const QString wanted = QString("%1").arg(address, 4, 16, QLatin1Char('0')).toUpper();
+                for (int row = 0; row <= dump->visibleLines(); ++row)
+                    if (dump->lineText(row).startsWith(wanted))
+                        return dump->lineText(row).mid(5, 47).remove(' ').toLatin1();
+                return QByteArray("not shown");
+            };
+            debugger->setAnyView(true, true, 0x81, 0xC0);
+            debugger->setCartridgeSlot(1);
+            CHECK(debugger->upperRomChoices().contains("81 - Cartridge Bank 33"));
+            CHECK(shown(0xC000).startsWith("215A"));
+            debugger->setSecondaryMapping(2, 5);
+            CHECK(shown(0x8000).startsWith("255A"));
+            debugger->setCartridgeSlot(0);
+            CHECK(shown(0xC000).startsWith("015A"));
+            CHECK(debugger->upperRomChoices().contains("81 - Cartridge Bank 1"));
+            // Looking does not change the machine's own slot.
+            CHECK_EQ(emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.memory().cartridgeSlot(); }), 0);
+            debugger->setMachineView(false);
+        }
+    }
 
     emulator.stop();
     return checkSummary("gui_plus");

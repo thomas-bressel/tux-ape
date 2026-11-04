@@ -278,6 +278,8 @@ public:
     // #0000, 1: #4000, 2: #8000, 3: #0000 with the ASIC's registers at
     // #4000) and which of the cartridge's first eight banks it is.
     void setSecondaryMapping(int lowerRomBase, int cartridgeBank);
+    // And, for a cartridge over 512K, the slot of 32 banks it is in.
+    void setCartridgeSlot(int slot);
     // The Read and Write views again.
     void setMachineView(bool write);
     // What the list of upper ROMs offers: "07 - AMSDOS", "0A - (Empty)",
@@ -335,6 +337,8 @@ private:
     QComboBox* ramBank_;
     QComboBox* romBase_;
     QComboBox* cartridgeBank_;
+    QLabel* slotLabel_ = nullptr;
+    QComboBox* cartridgeSlot_ = nullptr;
     QCheckBox* followPc_;
     QCheckBox* hideOnRun_;
     QCheckBox* realTime_;
@@ -367,6 +371,7 @@ private:
         int count = 16;  // ROM slots: 16, or 32 with the larger board
         std::array<bool, tuxape::Memory::kRomSlots> present = {};
         bool cartridge = false, discRom = false;
+        int cartridgeSlots = 1;  // a cartridge over 512K: its slots of 32 banks
     };
     void showMapping(const Mapping& machine, const Fitted& fitted);
     QByteArray selectedBytes() const;

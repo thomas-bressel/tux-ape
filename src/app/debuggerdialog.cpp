@@ -802,6 +802,15 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     secondaryLayout->addWidget(romBase_, 1);
     secondaryLayout->addWidget(new QLabel(tr("Cartridge Bank:")));
     secondaryLayout->addWidget(cartridgeBank_);
+    // TuxAPE's own: a cartridge over 512K, in slots of 32 banks, one shown
+    // at a time (see Memory::setCartridge). Only there with one.
+    slotLabel_ = new QLabel(tr("Slot:"));
+    cartridgeSlot_ = new QComboBox;
+    cartridgeSlot_->setObjectName("cbSlot");
+    secondaryLayout->addWidget(slotLabel_);
+    secondaryLayout->addWidget(cartridgeSlot_);
+    slotLabel_->hide();
+    cartridgeSlot_->hide();
     for (QGroupBox* box : {romBox_, ramBox_, secondaryBox_}) {
         box->layout()->setContentsMargins(6, 2, 6, 4);
         box->setEnabled(false);
@@ -814,7 +823,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     connect(anyView_, &QRadioButton::toggled, this, &DebuggerDialog::viewChosen);
     connect(anyLower_, &QCheckBox::toggled, this, &DebuggerDialog::viewChosen);
     connect(anyUpper_, &QCheckBox::toggled, this, &DebuggerDialog::viewChosen);
-    for (QComboBox* box : {upperRom_, ramBank_, romBase_, cartridgeBank_})
+    for (QComboBox* box : {upperRom_, ramBank_, romBase_, cartridgeBank_, cartridgeSlot_})
         connect(box, &QComboBox::activated, this, &DebuggerDialog::viewChosen);
 
     // The buttons, with WinAPE's names and hints.
@@ -982,6 +991,7 @@ void DebuggerDialog::refresh()
             fitted.present[static_cast<size_t>(slot)] = slot < fitted.count && memory.hasUpperRom(slot);
         fitted.cartridge = memory.hasCartridge();
         fitted.discRom = memory.cartridgeDiscRom();
+        fitted.cartridgeSlots = memory.cartridgeSlots();
         const Mapping saved = applyView(memory);
         machine = saved;
         for (int address = 0; address < 0x10000; ++address)
@@ -1304,8 +1314,13 @@ DebuggerDialog::Mapping DebuggerDialog::applyView(tuxape::Memory& memory) const
         view.lowerRom = anyLower_->isChecked();
         view.upperRom = anyUpper_->isChecked();
         view.upperSelected = static_cast<uint8_t>(upperRom_->currentData().toUInt());
+        // The upper ROM asked for here is chosen, though the machine has
+        // not chosen one since its reset.
+        view.upperChosen = true;
         if (memory.hasCartridge())
             view.rmr2 = static_cast<uint8_t>(romBase_->currentIndex() << 3 | cartridgeBank_->currentIndex());
+        if (memory.cartridgeSlots() > 1)
+            view.slot = static_cast<uint8_t>(std::max(0, cartridgeSlot_->currentIndex()));
         memory.setMapping(view);
         // The bank as a program would ask for it, which finds the page.
         memory.selectRamBank(static_cast<uint8_t>(ramBank_->currentData().toUInt()), 0x7F);
@@ -1343,6 +1358,21 @@ void DebuggerDialog::viewChosen()
 void DebuggerDialog::showMapping(const Mapping& machine, const Fitted& fitted)
 {
     const tuxape::MachineConfig config = emulator_->machine();
+    const bool any = anyView_->isChecked();
+    // A cartridge over 512K: its slots, and the banks of the one shown
+    // named by their number in the whole cartridge.
+    if (cartridgeSlot_->count() != fitted.cartridgeSlots) {
+        const QSignalBlocker blockSlot(cartridgeSlot_);
+        cartridgeSlot_->clear();
+        for (int slot = 0; slot < fitted.cartridgeSlots; ++slot)
+            cartridgeSlot_->addItem(tr("%1 (banks %2-%3)").arg(slot).arg(slot * 32).arg(slot * 32 + 31));
+    }
+    slotLabel_->setVisible(fitted.cartridgeSlots > 1);
+    cartridgeSlot_->setVisible(fitted.cartridgeSlots > 1);
+    const int shownSlot = fitted.cartridgeSlots > 1 ? (any ? std::max(0, cartridgeSlot_->currentIndex()) : machine.slot) : 0;
+    const int firstBank = shownSlot * 32;
+    for (int bank = 0; bank < cartridgeBank_->count(); ++bank)
+        cartridgeBank_->setItemText(bank, QString::number(firstBank + bank));
     QStringList names;
     QList<int> numbers;
     for (int slot = 0; slot < fitted.count; ++slot) {
@@ -1352,16 +1382,16 @@ void DebuggerDialog::showMapping(const Mapping& machine, const Fitted& fitted)
             if (name.isEmpty())
                 name = tr("ROM");
         } else if (fitted.cartridge && slot == 0) {
-            name = tr("(Cartridge Bank 1)");
+            name = tr("(Cartridge Bank %1)").arg(firstBank + 1);
         } else if (fitted.cartridge && slot == 7 && fitted.discRom) {
-            name = tr("(Cartridge Bank 3)");
+            name = tr("(Cartridge Bank %1)").arg(firstBank + 3);
         }
         names << hex(static_cast<unsigned>(slot), 2) + " - " + name;
         numbers << slot;
     }
     if (fitted.cartridge) {
         for (int bank = 0; bank < 32; ++bank) {
-            names << hex(static_cast<unsigned>(0x80 + bank), 2) + " - " + tr("Cartridge Bank %1").arg(bank);
+            names << hex(static_cast<unsigned>(0x80 + bank), 2) + " - " + tr("Cartridge Bank %1").arg(firstBank + bank);
             numbers << 0x80 + bank;
         }
     }
@@ -1373,7 +1403,6 @@ void DebuggerDialog::showMapping(const Mapping& machine, const Fitted& fitted)
         upperRom_->setCurrentIndex(qMax(0, upperRom_->findData(chosen)));
     }
 
-    const bool any = anyView_->isChecked();
     romBox_->setEnabled(any);
     ramBox_->setEnabled(any);
     secondaryBox_->setEnabled(any && fitted.cartridge);
@@ -1389,6 +1418,7 @@ void DebuggerDialog::showMapping(const Mapping& machine, const Fitted& fitted)
     ramBank_->setCurrentIndex(ramBank_->findData(int(machine.ramConfig)));
     romBase_->setCurrentIndex(machine.rmr2 >> 3 & 3);
     cartridgeBank_->setCurrentIndex(machine.rmr2 & 7);
+    cartridgeSlot_->setCurrentIndex(machine.slot);
 }
 
 QStringList DebuggerDialog::upperRomChoices() const
@@ -1417,6 +1447,12 @@ void DebuggerDialog::setSecondaryMapping(int lowerRomBase, int cartridgeBank)
 {
     romBase_->setCurrentIndex(qBound(0, lowerRomBase, 3));
     cartridgeBank_->setCurrentIndex(qBound(0, cartridgeBank, 7));
+    viewChosen();
+}
+
+void DebuggerDialog::setCartridgeSlot(int slot)
+{
+    cartridgeSlot_->setCurrentIndex(qBound(0, slot, cartridgeSlot_->count() - 1));
     viewChosen();
 }
 

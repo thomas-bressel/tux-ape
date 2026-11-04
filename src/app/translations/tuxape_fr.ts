@@ -932,6 +932,10 @@
         <translation>Banque de cartouche :</translation>
     </message>
     <message>
+        <source>Slot:</source>
+        <translation>Slot :</translation>
+    </message>
+    <message>
         <source>Load Data</source>
         <translation>Charger des données</translation>
     </message>
@@ -1076,16 +1080,16 @@
         <translation>Impossible d&apos;écrire %1.</translation>
     </message>
     <message>
+        <source>%1 (banks %2-%3)</source>
+        <translation>%1 (banques %2-%3)</translation>
+    </message>
+    <message>
         <source>(Empty)</source>
         <translation>(vide)</translation>
     </message>
     <message>
-        <source>(Cartridge Bank 1)</source>
-        <translation>(banque de cartouche 1)</translation>
-    </message>
-    <message>
-        <source>(Cartridge Bank 3)</source>
-        <translation>(banque de cartouche 3)</translation>
+        <source>(Cartridge Bank %1)</source>
+        <translation>(Banque de cartouche %1)</translation>
     </message>
     <message>
         <source>Cartridge Bank %1</source>
