@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=TuxAPE
+GenericName=Amstrad CPC Emulator
+GenericName[fr]=Émulateur Amstrad CPC
+Comment=Amstrad CPC, Plus and GX4000 emulator, modelled on WinAPE
+Comment[fr]=Émulateur Amstrad CPC, Plus et GX4000, sur le modèle de WinAPE
+Exec=tuxape %f
+TryExec=tuxape
+Icon=tuxape
+Terminal=false
+StartupNotify=true
+StartupWMClass=tuxape
+Categories=Game;Emulator;
+Keywords=Amstrad;CPC;GX4000;Plus;emulator;émulateur;WinAPE;Z80;retro;

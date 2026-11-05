@@ -2,6 +2,7 @@
 #include <QCommandLineParser>
 #include <QDir>
 #include <QFile>
+#include <QIcon>
 #include <QMessageBox>
 #include <QProcess>
 #include <QTimer>
@@ -30,6 +31,13 @@ int main(int argc, char* argv[])
     QApplication::setApplicationName("TuxAPE");
     QApplication::setApplicationVersion(tuxape::versionString());
     QApplication::setOrganizationName("TuxAPE");
+    // Its icon, Tux with his CPC, in the window and the task bar; the menu
+    // entry (tools/linux-desktop/tuxape.desktop) is found by its name.
+    QIcon icon;
+    for (const int size : {16, 32, 48, 64, 256})
+        icon.addFile(QStringLiteral(":/icons/tuxape-%1.png").arg(size), QSize(size, size));
+    QApplication::setWindowIcon(icon);
+    QGuiApplication::setDesktopFileName(QStringLiteral("tuxape"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QObject::tr("Amstrad CPC / Plus emulator"));

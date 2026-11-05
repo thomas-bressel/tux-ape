@@ -1,5 +1,10 @@
 <RCC>
     <qresource prefix="/">
         <file alias="welcome.png">resources/welcome.png</file>
+        <file alias="icons/tuxape-256.png">resources/icons/tuxape-256.png</file>
+        <file alias="icons/tuxape-64.png">resources/icons/tuxape-64.png</file>
+        <file alias="icons/tuxape-48.png">resources/icons/tuxape-48.png</file>
+        <file alias="icons/tuxape-32.png">resources/icons/tuxape-32.png</file>
+        <file alias="icons/tuxape-16.png">resources/icons/tuxape-16.png</file>
     </qresource>
 </RCC>
