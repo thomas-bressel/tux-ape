@@ -759,7 +759,10 @@ void testSoundPage(const QString& picture)
     const Settings defaults;
     CHECK(defaults.soundOn && defaults.sound16Bit && defaults.soundStereo);
     CHECK_EQ(defaults.soundRate, 44100);
-    CHECK_EQ(defaults.soundVolume, 15);
+    // The CPC at 7, its noises beside it at 15, all of them heard.
+    CHECK_EQ(defaults.soundVolume, 7);
+    CHECK_EQ(defaults.noiseVolume, 15);
+    CHECK(defaults.tapeSounds && defaults.discSounds && defaults.printerSounds && defaults.keyboardSounds && defaults.amDrum);
 
     Settings settings;
     settings.soundVolume = 9;
@@ -846,7 +849,7 @@ void testSoundPage(const QString& picture)
     // The tape can be heard while it loads.
     {
         const auto* tapeSound = dialog.findChild<QCheckBox*>("ckTapeSound");
-        CHECK(tapeSound && tapeSound->isEnabled() && !tapeSound->isChecked());
+        CHECK(tapeSound && tapeSound->isEnabled() && tapeSound->isChecked());
     }
     // The DMP2000 too, as it leaves the factory; kept with the other sounds,
     // and read where it was kept before, with the DMP2000's settings.
@@ -872,7 +875,7 @@ void testSoundPage(const QString& picture)
             QFile::remove(Settings::file());
         }
     }
-    // The keyboard is not heard unless asked for; the noises have a volume
+    // The keyboard is heard unless told not to be; the noises have a volume
     // of their own, beside the CPC's, which means nothing without the card.
     {
         auto* keyboardSound = dialog.findChild<QCheckBox*>("ckKeyboardSound");
@@ -880,19 +883,19 @@ void testSoundPage(const QString& picture)
         auto* noisesLabel = dialog.findChild<QLabel*>("lNoiseVolume");
         CHECK(keyboardSound && noises && noisesLabel);
         if (keyboardSound && noises && noisesLabel) {
-            CHECK(keyboardSound->isEnabled() && !keyboardSound->isChecked());
-            CHECK_EQ(noises->value(), 10);
-            CHECK(noisesLabel->text() == "10");
+            CHECK(keyboardSound->isEnabled() && keyboardSound->isChecked());
+            CHECK_EQ(noises->value(), 15);
+            CHECK(noisesLabel->text() == "15");
             CHECK_EQ(noises->isEnabled(), card->isChecked());
-            keyboardSound->setChecked(true);
+            keyboardSound->setChecked(false);
             noises->setValue(4);
             CHECK(noisesLabel->text() == "4");
             CHECK(dialog.settings().save());
             Settings read;
             read.load();
-            CHECK(read.keyboardSounds && read.noiseVolume == 4);
-            keyboardSound->setChecked(false);
-            noises->setValue(10);
+            CHECK(!read.keyboardSounds && read.noiseVolume == 4);
+            keyboardSound->setChecked(true);
+            noises->setValue(15);
             QFile::remove(Settings::file());
         }
     }
@@ -1657,7 +1660,7 @@ void testDialog(const QString& picture)
         if (there) {
             CHECK(disabled->isChecked() && hostPrinter->isEnabled() && !file->isEnabled());
             CHECK(hostPrinter->text() == "DMP2000");
-            CHECK(amDrum->isEnabled() && !amDrum->isChecked());
+            CHECK(amDrum->isEnabled() && amDrum->isChecked());
             CHECK_EQ(dialog.settings().printerMode, Settings::PrinterDisabled);
             digiblaster->setChecked(true);
             CHECK_EQ(dialog.settings().printerMode, Settings::PrinterDigiblaster);

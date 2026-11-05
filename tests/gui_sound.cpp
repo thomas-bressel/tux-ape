@@ -192,20 +192,20 @@ int main(int argc, char* argv[])
         drive.mix(sound, 44100, false, 0);
         CHECK(sound == quiet);
 
-        // A setting, with its box on the Sound page; off unless asked for.
+        // A setting, with its box on the Sound page; on unless told not to be.
         Settings settings;
-        CHECK(!settings.discSounds);
+        CHECK(settings.discSounds);
         SetupDialog dialog(settings);
         auto* box = dialog.findChild<QCheckBox*>("ckDiscSound");
-        CHECK(box && box->isEnabled() && !box->isChecked());
+        CHECK(box && box->isEnabled() && box->isChecked());
         if (box)
-            box->setChecked(true);
-        CHECK(dialog.settings().discSounds);
-        settings.discSounds = true;
+            box->setChecked(false);
+        CHECK(!dialog.settings().discSounds);
+        settings.discSounds = false;
         CHECK(settings.save());
         Settings read;
         read.load();
-        CHECK(read.discSounds);
+        CHECK(!read.discSounds);
     }
     return checkSummary("gui_sound");
 }

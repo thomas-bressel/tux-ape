@@ -66,13 +66,13 @@ struct Settings {
     int soundRate = 44100;      // or 22050
     bool sound16Bit = true;
     bool soundStereo = true;
-    int soundVolume = 15;       // 0 to 15
-    bool tapeSounds = false;    // the tape is heard while it loads
-    bool discSounds = false;    // the drives are heard: motor and head
+    int soundVolume = 7;        // 0 to 15
+    bool tapeSounds = true;     // the tape is heard while it loads
+    bool discSounds = true;     // the drives are heard: motor and head
     bool printerSounds = true;  // the DMP2000 is heard: needles, motors, beeper
-    bool keyboardSounds = false;  // the CPC's keys heard as they are typed on
-    int noiseVolume = 10;       // the drives', printer's and keyboard's noises: 0 to 15, 10 as made
-    bool amDrum = false;        // the AmDrum sound converter, on ports &FFxx
+    bool keyboardSounds = true;   // the CPC's keys heard as they are typed on
+    int noiseVolume = 15;       // the drives', printer's and keyboard's noises: 0 to 15, 10 as made
+    bool amDrum = true;         // the AmDrum sound converter, on ports &FFxx
 
     // The Other page: what is on the printer's port.
     enum PrinterMode { PrinterDisabled, PrinterDigiblaster, PrinterHost, PrinterFile, PrinterAssembler };
