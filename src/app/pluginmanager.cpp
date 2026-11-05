@@ -94,7 +94,7 @@ QString PluginManager::folder()
         const QString named = qEnvironmentVariable("TUXAPE_PLUGIN_DIR");
         return named.isEmpty() ? QString() : QDir::cleanPath(named);
     }
-    const QString beside = programFolder() + "/plugins";
+    const QString beside = userFolder() + "/plugins";
     for (const QString& folder : {beside, QStringLiteral(TUXAPE_DEV_PLUGIN_DIR)})
         if (QDir(folder).exists())
             return QDir::cleanPath(folder);

@@ -48,6 +48,12 @@ The folders
 
 The settings are kept in ~/.config/TuxAPE.
 
+Installed by the package (tuxape_*.deb), TuxAPE is in /opt/tuxape, where
+only the system writes: your discs, quick saves, profiles, Library, sources
+and plug-ins are then in the TuxAPE folder of your home, made the first
+time with what TuxAPE comes with. Your own ROMs go in ~/TuxAPE/roms.
+Removing TuxAPE leaves that folder where it is.
+
 
 If TuxAPE does not start
 ------------------------

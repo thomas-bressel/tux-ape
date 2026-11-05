@@ -47,6 +47,12 @@ Les dossiers
 
 Les réglages sont rangés dans ~/.config/TuxAPE.
 
+Installé par le paquet (tuxape_*.deb), TuxAPE est dans /opt/tuxape, où
+seul le système écrit : vos disquettes, sauvegardes, profils, bibliothèque,
+sources et plug-ins sont alors dans le dossier TuxAPE de votre dossier
+personnel, créé au premier lancement avec ce que TuxAPE fournit. Vos
+propres ROM vont dans ~/TuxAPE/roms. Désinstaller TuxAPE le laisse en place.
+
 
 Si TuxAPE ne démarre pas
 ------------------------

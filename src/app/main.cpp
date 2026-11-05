@@ -7,6 +7,8 @@
 #include <QProcess>
 #include <QTimer>
 
+#include <tuple>
+
 #include "audiooutput.h"
 #include "core/version.h"
 #include "emulator.h"
@@ -68,13 +70,16 @@ int main(int argc, char* argv[])
     // say otherwise. Its roms/ holds every ROM, the machines' own in
     // roms/system/, and its profile/ the profiles. A folder made before,
     // with WinAPE's ROM/ and Profile/, is read as it is.
-    const QDir beside(programFolder());
-    for (const auto& [variable, folders] : {std::pair{"TUXAPE_ROM_DIR", QStringList{"ROM", "roms"}},
-                                            std::pair{"TUXAPE_USER_ROM_DIR", QStringList{"roms"}},
-                                            std::pair{"TUXAPE_PROFILE_DIR", QStringList{"profile", "Profile"}}})
+    // Installed by the package, the ROMs and profiles it comes with are
+    // read where it put them, the user's own ROMs in their TuxAPE folder.
+    const QDir beside(programFolder()), own(userFolder());
+    for (const auto& [variable, where, folders] :
+         {std::tuple{"TUXAPE_ROM_DIR", &beside, QStringList{"ROM", "roms"}},
+          std::tuple{"TUXAPE_USER_ROM_DIR", &own, QStringList{"roms"}},
+          std::tuple{"TUXAPE_PROFILE_DIR", &beside, QStringList{"profile", "Profile"}}})
         for (const QString& folder : folders)
-            if (qEnvironmentVariableIsEmpty(variable) && beside.exists(folder))
-                qputenv(variable, QFile::encodeName(beside.filePath(folder)));
+            if (qEnvironmentVariableIsEmpty(variable) && where->exists(folder))
+                qputenv(variable, QFile::encodeName(where->filePath(folder)));
 
     // Filled when TuxAPE is to start again, once everything below is
     // closed and written.

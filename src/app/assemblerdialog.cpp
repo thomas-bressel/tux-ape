@@ -525,10 +525,10 @@ void AssemblerDialog::buildMenus(QMenuBar* bar)
     QMenu* file = bar->addMenu(tr("&File"));
     add(file, tr("&New"), {}, [this] { newFile(); });
     add(file, tr("&Open"), {}, [this] {
-        // With no file open, the "assembly" folder beside the program if
-        // there is one.
+        // With no file open, the "assembly" folder of the user's if there
+        // is one.
         QString folder = currentFile() >= 0 ? QFileInfo(filePath(currentFile())).absolutePath() : QString();
-        if (const QDir beside(programFolder()); folder.isEmpty() && beside.exists("assembly"))
+        if (const QDir beside(userFolder()); folder.isEmpty() && beside.exists("assembly"))
             folder = beside.filePath("assembly");
         for (const QString& path : QFileDialog::getOpenFileNames(this, tr("Open"), folder, tr(kFileFilter)))
             if (!openFile(path))

@@ -483,7 +483,7 @@ QString defaultLibraryFolder()
         const QString named = qEnvironmentVariable("TUXAPE_LIBRARY_DIR");
         return QDir(named).exists() && !named.isEmpty() ? QDir::cleanPath(named) : QString();
     }
-    for (const QString& folder : {programFolder() + "/library", QStringLiteral(TUXAPE_DEV_LIBRARY_DIR)})
+    for (const QString& folder : {userFolder() + "/library", QStringLiteral(TUXAPE_DEV_LIBRARY_DIR)})
         if (QDir(folder).exists())
             return QDir::cleanPath(folder);
     return {};

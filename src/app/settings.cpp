@@ -444,11 +444,12 @@ QString Settings::profileFolder()
     return QString::fromStdString(tuxape::defaultProfileDir().string());
 }
 
-// A folder beside the program, as tools/make-dist.sh makes them, if it is
+// A folder of the user's (see userFolder: beside the program, as
+// tools/make-dist.sh makes them, or ~/TuxAPE once installed), if it is
 // there; else the folder of the settings file.
 static QString besideOrSettings(const QString& folder, const QString& name)
 {
-    const QDir beside(programFolder());
+    const QDir beside(userFolder());
     if (beside.exists(folder))
         return beside.filePath(folder) + "/" + name;
     return QFileInfo(Settings::file()).absolutePath() + "/" + name;
@@ -473,7 +474,7 @@ bool Settings::windowsThroughX11Possible()
 
 QString Settings::userProfileFolder()
 {
-    const QDir beside(programFolder());
+    const QDir beside(userFolder());
     for (const char* folder : {"profile", "Profile"})
         if (beside.exists(folder))
             return beside.filePath(folder);
@@ -507,8 +508,9 @@ QString Settings::xmemFlashFile()
 
 QString Settings::saveStatesFolder()
 {
-    // A folder made by tools/make-dist.sh has its ROMs beside the program.
-    const QDir beside(programFolder());
+    // A folder made by tools/make-dist.sh has its ROMs beside the program;
+    // installed, the user's folder has its savestates.
+    const QDir beside(userFolder());
     if (beside.exists("savestates") || beside.exists("ROM") || beside.exists("roms"))
         return beside.filePath("savestates");
     return QFileInfo(file()).absolutePath() + "/savestates";
