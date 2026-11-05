@@ -44,10 +44,11 @@ mkdir -p "$src"
 rsync -a --exclude build --exclude '*.user' /mnt/project/{CMakeLists.txt,CMakePresets.json,README.md,PLUGINS.md,sdk,src,tests,tools,profile} "$src/"
 # What the archive holds besides the program is dist/'s, as the user has
 # put it there: the ROMs, the profiles, the Library with its programs, the
-# plug-ins' README.
+# assembler sources, the plug-ins' README.
 [ -d /mnt/project/dist/roms ] && [ -d /mnt/project/dist/profile ] && [ -d /mnt/project/dist/library ] \
     || { echo "dist/ of the project lacks roms, profile or library" >&2; exit 1; }
 rsync -a /mnt/project/dist/{roms,library} "$src/"
+[ -d /mnt/project/dist/assembly ] && rsync -a /mnt/project/dist/assembly "$src/"
 mkdir -p "$src/plugins" && cp /mnt/project/dist/plugins/README.md "$src/plugins/" 2>/dev/null || true
 
 # The rest as the user who asked: as root, a file made read-only can be

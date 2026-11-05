@@ -16,7 +16,7 @@
 #   dist/plugins/      no plugin, the folder and what it says of them
 #   dist/library/      the project's library/: the Library window's
 #                      folders and the programs TuxAPE comes with
-#   dist/assembly/     assembler sources
+#   dist/assembly/     assembler sources: the project's assembly/
 #   dist/dsk/          the user's disc images: none to begin with
 #   dist/img/          what the cards keep, blank: an X-MASS disc of no
 #                      sector written yet, and an X-MEM flash all erased
@@ -97,6 +97,7 @@ endfunction()
 
 add_missing("${ROOT}/roms" "${DIST}/roms")
 add_missing("${ROOT}/profile" "${DIST}/profile")
+add_missing("${ROOT}/assembly" "${DIST}/assembly")
 if(EXISTS "${ROOT}/plugins/README.md" AND NOT EXISTS "${DIST}/plugins/README.md")
     file(COPY_FILE "${ROOT}/plugins/README.md" "${DIST}/plugins/README.md")
 endif()
