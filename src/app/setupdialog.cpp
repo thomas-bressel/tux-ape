@@ -350,7 +350,7 @@ QWidget* SetupDialog::createGeneralPage()
                             static_cast<QWidget*>(flyback), static_cast<QWidget*>(disableUpdate),
                             static_cast<QWidget*>(welcome_), static_cast<QWidget*>(throughX11_)})
         optionsLayout->addWidget(widget);
-    throughX11_->setHidden(!Settings::windowsThroughX11Possible());
+    throughX11_->setHidden(!Settings::kWindowsThroughX11Offered || !Settings::windowsThroughX11Possible());
     optionsLayout->addWidget(update, 0, Qt::AlignLeft);
 
     // ---- Timing ----

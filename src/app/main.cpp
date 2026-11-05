@@ -24,8 +24,8 @@ int main(int argc, char* argv[])
     // Under Wayland the system places the windows; through XWayland TuxAPE
     // puts them back where they were, if the user asked for it (Settings,
     // General) and nothing else was asked for.
-    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM") && Settings::windowsThroughX11Possible()
-        && Settings::windowsThroughX11Wanted())
+    if (Settings::kWindowsThroughX11Offered && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")
+        && Settings::windowsThroughX11Possible() && Settings::windowsThroughX11Wanted())
         qputenv("QT_QPA_PLATFORM", "xcb");
     QApplication app(argc, argv);
     // Qt's file windows, for TuxAPE and its plugins (see filedialogs.h).

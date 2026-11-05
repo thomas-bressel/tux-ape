@@ -129,7 +129,8 @@ void testSettingsFile(const QString& path)
 // RAM and ROMs, under the names WinAPE.ini and its profiles give them.
 // Under Wayland with XWayland at hand, the box that has TuxAPE start
 // through XWayland, to put its windows back where they were; it is read
-// before the application is made. Nowhere else.
+// before the application is made. Nowhere else. Withdrawn for now
+// (Settings::kWindowsThroughX11Offered): the box is not shown.
 void testThroughX11()
 {
     const QByteArray wayland = qgetenv("WAYLAND_DISPLAY"), display = qgetenv("DISPLAY");
@@ -137,10 +138,11 @@ void testThroughX11()
     qputenv("DISPLAY", ":99");
     CHECK(Settings::windowsThroughX11Possible());
     Settings settings;
+    CHECK(!settings.windowsThroughX11);
     {
         SetupDialog dialog(settings);
         auto* box = dialog.findChild<QCheckBox*>("ckThroughX11");
-        CHECK(box && !box->isHidden() && !box->isChecked());
+        CHECK(box && box->isHidden() == !Settings::kWindowsThroughX11Offered && !box->isChecked());
         if (box)
             box->setChecked(true);
         CHECK(dialog.settings().windowsThroughX11 && dialog.settings().save());

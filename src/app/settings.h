@@ -158,6 +158,11 @@ struct Settings {
     // Whether the setting means anything here: a Wayland session with
     // XWayland at hand.
     static bool windowsThroughX11Possible();
+    // Whether it is offered at all. Withdrawn for now: on GNOME's Wayland,
+    // TuxAPE drawn through XWayland made every window slow (the Library's
+    // most of all). Its box is not shown and what the settings file says
+    // of it is not followed; the code stays, to be offered again.
+    static constexpr bool kWindowsThroughX11Offered = false;
     // The debugger's own boxes: whether it goes away while the machine
     // runs, and whether it follows the machine as it runs.
     bool debuggerHideOnRun = false;
