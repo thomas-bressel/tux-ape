@@ -731,6 +731,42 @@ void testInterruptPosition()
     }
 }
 
+// How many pictures the monitor shows in a second, the CRTC's VSYNC lasting
+// R3h lines (the frame is 312 lines, 50 a second).
+int picturesInASecond(CrtcType type, int vsyncLines)
+{
+    Cpc cpc;
+    cpc.crtc().setType(type);
+    cpc.memory().setRomEnables(false, false);
+    const uint8_t crtc[] = {63, 40, 46, static_cast<uint8_t>(vsyncLines << 4 | 14), 38, 0, 25, 30, 0, 7};
+    for (uint8_t r = 0; r < sizeof crtc; ++r) {
+        outPort(cpc, 0xBC00, r);
+        outPort(cpc, 0xBD00, crtc[r]);
+    }
+    cpc.run(10 * Cpc::kFrameMicroseconds);
+    const uint64_t first = cpc.monitor().frameNumber();
+    cpc.run(50 * Cpc::kFrameMicroseconds);
+    return static_cast<int>(cpc.monitor().frameNumber() - first);
+}
+
+// The monitor anchors the picture only on a vertical sync pulse of 12
+// microseconds or more (Compendium 16.2.4). A Gate Array times the pulse
+// itself, from the 2nd HSYNC of the VSYNC to the 6th, however short the
+// CRTC's VSYNC; an ASIC stops it with the CRTC's (16.2.4, 16.2.5): with
+// R3h = 2 the pulse lasts from the HSYNC's end on the VSYNC's second line
+// to that line's end, four microseconds here, and with R3h = 1 there is
+// none. The picture then rolls, the tube running free (352 lines).
+void testVerticalSyncLength()
+{
+    for (const CrtcType type : {CrtcType::HD6845S, CrtcType::AsicPlus, CrtcType::PreAsic}) {
+        const bool asic = type != CrtcType::HD6845S;
+        CHECK_EQ(picturesInASecond(type, 8), 50);
+        CHECK_EQ(picturesInASecond(type, 3), 50);
+        CHECK_EQ(picturesInASecond(type, 2), asic ? 45 : 50);
+        CHECK_EQ(picturesInASecond(type, 1), asic ? 45 : 50);
+    }
+}
+
 int main()
 {
     testInterruptPosition();
@@ -746,5 +782,6 @@ int main()
     testVsyncBlack();
     testModeChangePixels();
     testModeChange();
+    testVerticalSyncLength();
     return checkSummary("video_timing");
 }

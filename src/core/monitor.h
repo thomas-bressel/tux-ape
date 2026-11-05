@@ -55,6 +55,8 @@ public:
     {
         if (edgeRow_ >= 0) [[unlikely]]
             placeEdge();
+        if (vsyncAge_ >= 0) [[unlikely]]
+            ageVsync();
         beam_ += kCellWidth << kUnitShift;
         if (beam_ >= limit_)
             lineEvent();
@@ -67,8 +69,15 @@ public:
     // The pulse has ended, `pixels` after it began (64 for the usual four
     // microseconds).
     void hsyncEnded(int pixels);
-    void vsync();  // start of the vertical sync pulse
-    void vsyncEnded() { vertical_ = false; }  // ... and its end
+    // The vertical sync pulse, the Gate Array's C-VSYNC: its start and its
+    // end. The tube only takes a pulse that lasts kMinVsync or more (see
+    // vsync).
+    void vsync();
+    void vsyncEnded()
+    {
+        vertical_ = false;
+        vsyncAge_ = -1;
+    }
 
     // The whole raster, or the part WinAPE shows. What has been drawn is
     // kept, put where it goes in the other.
@@ -123,6 +132,9 @@ private:
     static constexpr int kFreeRunLine = 72;
     static constexpr int kMinFrame = 250;
     static constexpr int kFreeRunFrame = 352;
+    // The shortest vertical sync pulse a CTM anchors the picture on, in
+    // microseconds (Compendium 16.2.4: "greater than 11-12 µseconds").
+    static constexpr int kMinVsync = 12;
     // The beam's place along the line is kept in sixteenths of a pixel.
     static constexpr int kUnitShift = 4;
     static constexpr int kUnit = 1 << kUnitShift;
@@ -180,6 +192,8 @@ private:
     bool locked_ = false;      // the line in progress has had its pulse
     bool coasting_ = false;    // the line in progress has had no pulse: the oscillator keeps its pace
     bool vertical_ = false;    // the vertical sync pulse is on
+    int vsyncAge_ = -1;        // microseconds since it began, while it is yet too short to be taken
+    int vsyncLine_ = 0;        // the line it began on
     bool awaited_ = false;     // the line began on the oscillator's word: its pulse may still come
     bool nextLocked_ = false;  // the pulse of the line to come is already here
     bool pulse_ = false;       // a pulse the oscillator listens to is in progress
@@ -203,6 +217,7 @@ private:
     void strayPulse(int pixels);
     void lineEvent();
     void countLine();
+    void ageVsync();
     uint32_t* edgeCell(int row, int px);
     // The whole raster goes round: what comes before its left or top edge
     // is at its right or bottom.

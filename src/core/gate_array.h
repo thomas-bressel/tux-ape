@@ -173,7 +173,7 @@ private:
 
     void drawPlus(uint32_t* out, const uint8_t* left, const uint8_t* right, int split);
     void drawModeSwitch(uint32_t* out, uint32_t* before, int was, int blackFrom, int blackTo, int change);
-    void countHsync(Monitor& monitor);
+    void countHsync(Monitor& monitor, bool asic);
     void rasterInterrupt(const Crtc& crtc, bool hsync);
 
     // Last in the class: nothing here is used every microsecond.

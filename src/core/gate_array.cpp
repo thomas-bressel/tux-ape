@@ -284,7 +284,7 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         monitor.vsyncEnded();
     }
     if (countsDue_ & 1)
-        countHsync(monitor);
+        countHsync(monitor, asic);
     vsyncDue_ >>= 1;
     countsDue_ >>= 1;
 
@@ -311,6 +311,13 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
             vsyncDue_ |= 1u << (interruptDelay_ - 1);
         }
     }
+
+    // The ASICs send the monitor its vertical sync only while the CRTC's
+    // own VSYNC lasts (Compendium 16.2.4, 16.2.5): with R3h = 2 it ends as
+    // C0 comes back to 0 after the second HSYNC, a few microseconds, too
+    // short for the monitor; with R3h = 1 it never starts (countHsync).
+    if (asic && !vsync && prevVsync_ && vsyncSequence_ && vsyncLines_ >= 2 && vsyncLines_ < 6) [[unlikely]]
+        monitor.vsyncEnded();
 
     if (plus_) [[unlikely]]
         rasterInterrupt(crtc, hsync);
@@ -380,7 +387,7 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
         // The end of every HSYNC, however short, advances the interrupt
         // counter.
         if (interruptDelay_ == 0)
-            countHsync(monitor);
+            countHsync(monitor, asic);
         else
             countsDue_ |= 1u << (interruptDelay_ - 1);
         // The black of the vertical sync is the picture's affair and ends
@@ -397,7 +404,7 @@ void GateArray::sync(const Crtc& crtc, Monitor& monitor)
     hsync_ = hsync;
 }
 
-void GateArray::countHsync(Monitor& monitor)
+void GateArray::countHsync(Monitor& monitor, bool asic)
 {
     // With a line set for the Plus's raster interrupt, the counter goes on
     // counting but interrupts no more.
@@ -413,10 +420,12 @@ void GateArray::countHsync(Monitor& monitor)
     if (vsyncSequence_) {
         ++vsyncLines_;
         if (vsyncLines_ == 2) {
-            // The monitor's vertical sync starts here. The interrupt
-            // counter is brought into step with the frame, with an
-            // interrupt if the previous one is far enough away.
-            monitor.vsync();
+            // The monitor's vertical sync starts here (on an ASIC, if the
+            // CRTC's VSYNC is still on). The interrupt counter is brought
+            // into step with the frame, with an interrupt if the previous
+            // one is far enough away.
+            if (prevVsync_ || !asic)
+                monitor.vsync();
             if (r52_ >= 32 && ownInterrupts) {
                 interrupt_ = true;
                 if (interruptWatch_) [[unlikely]]

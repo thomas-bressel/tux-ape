@@ -23,6 +23,7 @@ void Monitor::reset()
     beam_ = y_ = 0;
     limit_ = period_ = kFreeRun;
     locked_ = nextLocked_ = awaited_ = coasting_ = vertical_ = pulse_ = stray_ = strayLine_ = false;
+    vsyncAge_ = -1;
     strayMark_ = 0;
     owed_ = lastLack_ = sincePulse_ = lastInterval_ = 0;
     pace_ = kLine;
@@ -211,11 +212,31 @@ void Monitor::strayPulse(int pixels)
     strayLine_ = true;
 }
 
+// The tube's vertical sync is an integrator: a pulse has to last for it to
+// fire. According to measurements made on several CTMs (Compendium
+// 16.2.4), a pulse of less than 11 or 12 microseconds no longer anchors the
+// picture whatever the V-Hold, and it rolls: the Shaker's "VSYNC Gate Array"
+// J2, four lines of two microseconds during the vertical sync ("monitor sync
+// must be wrong, scrolling images"), or an ASIC whose CRTC's VSYNC is too
+// short (16.2.4). A pulse long enough starts the frame where it began.
 void Monitor::vsync()
 {
     vertical_ = true;
-    if (y_ >= kMinFrame)
-        newFrame();
+    if (y_ >= kMinFrame) {
+        vsyncAge_ = 0;
+        vsyncLine_ = y_;
+    }
+}
+
+void Monitor::ageVsync()
+{
+    if (++vsyncAge_ < kMinVsync)
+        return;
+    // (What has been drawn since the pulse began is the Gate Array's black
+    // and stays in the frame that ends.)
+    const int lines = y_ - vsyncLine_;
+    newFrame();
+    y_ = lines;
 }
 
 void Monitor::newLine()
@@ -283,6 +304,7 @@ void Monitor::placeEdge()
 void Monitor::newFrame()
 {
     y_ = 0;
+    vsyncAge_ = -1;
     std::swap(back_, front_);
     std::fill(back_, back_ + width_ * height_, kBlack);
     ++frameNumber_;
