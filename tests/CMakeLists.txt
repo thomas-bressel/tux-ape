@@ -182,12 +182,12 @@ add_test(NAME psg_sound COMMAND psg_sound)
 
 add_executable(inifile inifile.cpp)
 target_link_libraries(inifile PRIVATE tuxape_core)
-target_compile_definitions(inifile PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")
+target_compile_definitions(inifile PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/reference/WinAPE20B2")
 add_test(NAME inifile COMMAND inifile)
 
 add_executable(keymap keymap.cpp)
 target_link_libraries(keymap PRIVATE tuxape_core)
-target_compile_definitions(keymap PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2")
+target_compile_definitions(keymap PRIVATE TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/reference/WinAPE20B2")
 add_test(NAME keymap COMMAND keymap)
 
 add_executable(z80_sst z80_sst.cpp)
@@ -214,7 +214,7 @@ if(TUXAPE_BUILD_APP)
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config/${test}")
     endforeach()
     target_compile_definitions(gui_setup PRIVATE
-        TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/WinAPE20B2"
+        TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/reference/WinAPE20B2"
         TUXAPE_PROFILES_DIR="${PROJECT_SOURCE_DIR}/profile")
 
     # The model plugin of sdk/template, built and tested as an author builds
