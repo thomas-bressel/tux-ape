@@ -27,6 +27,7 @@
 #include <QToolButton>
 
 #include "check.h"
+#include "test_profiles.h"
 #include "core/cpc.h"
 #include "core/screen_text.h"
 #include "core/setup.h"
@@ -79,6 +80,7 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
     QTemporaryDir folder;
     Settings::setFile(folder.filePath("TuxAPE.ini"));
+    useTestProfiles(folder.path());
     using tuxape::CpcModel;
 
     const QString systemCartridge =

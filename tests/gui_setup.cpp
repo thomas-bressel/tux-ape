@@ -43,6 +43,7 @@
 #include <QWheelEvent>
 
 #include "check.h"
+#include "test_profiles.h"
 #include "contrast.h"
 #include "core/inifile.h"
 #include "core/screen_text.h"
@@ -479,7 +480,7 @@ void testKeyboards(const QString& prefix)
 void testProfiles(const QString& folder, const QString& picture)
 {
     using tuxape::CpcModel;
-    const QString profiles = QStringLiteral(TUXAPE_PROFILES_DIR);
+    const QString profiles = folder + "/test profiles";
     CHECK(Settings::profileFolder() == profiles);
     CHECK(Settings::profileUsable(profiles + "/CPC6128.tpf"));
     CHECK(Settings::profileUsable(profiles + "/6128 Plus.tpf"));
@@ -499,22 +500,22 @@ void testProfiles(const QString& folder, const QString& picture)
     if (!combo)
         return;
 
-    // The list: the current settings, TuxAPE's eight profiles in
+    // The list: the current settings, the profiles of the folder in
     // alphabetical order, a file to choose.
-    CHECK_EQ(combo->count(), 10);
+    CHECK_EQ(combo->count(), 7);
     CHECK(combo->itemText(0) == "(Current Settings)");
     CHECK(combo->itemText(1) == "464 Plus");
-    CHECK(combo->itemText(5) == "CPC464");
-    CHECK(combo->itemText(8) == "CPC6128 with ParaDOS");
-    CHECK(combo->itemText(9) == "Select File...");
+    CHECK(combo->itemText(3) == "CPC464");
+    CHECK(combo->itemText(5) == "CPC6128 with ParaDOS");
+    CHECK(combo->itemText(6) == "Select File...");
     CHECK_EQ(combo->currentIndex(), 0);
     const auto* model = qobject_cast<QStandardItemModel*>(combo->model());
     CHECK(model != nullptr);
     if (model) {
         CHECK(model->item(1)->isEnabled());
-        CHECK(model->item(4)->isEnabled());
+        CHECK(model->item(3)->isEnabled());
         CHECK(model->item(5)->isEnabled());
-        CHECK(model->item(9)->isEnabled());
+        CHECK(model->item(6)->isEnabled());
     }
 
     // Choosing one changes what it holds and nothing else.
@@ -608,12 +609,12 @@ void testProfiles(const QString& folder, const QString& picture)
     {
         SetupDialog later((Settings()));
         auto* list = later.findChild<QComboBox*>("cbProfile");
-        CHECK(list && list->count() == 11);
-        if (list && list->count() == 11) {
-            CHECK(list->itemText(5) == "Big machine");  // after "6128 Plus with ParaDOS", before "CPC464"
-            CHECK(list->itemText(6) == "CPC464");
-            list->setCurrentIndex(5);
-            emit list->activated(5);
+        CHECK(list && list->count() == 8);
+        if (list && list->count() == 8) {
+            CHECK(list->itemText(3) == "Big machine");  // after "6128 Plus", before "CPC464"
+            CHECK(list->itemText(4) == "CPC464");
+            list->setCurrentIndex(3);
+            emit list->activated(3);
             CHECK(later.settings() == dialog.settings());
         }
     }
@@ -1807,6 +1808,7 @@ int main(int argc, char* argv[])
     const QString path = folder.filePath("sub/TuxAPE.ini");
     Settings::setFile(path);
     CHECK(Settings::file() == path);
+    useTestProfiles(folder.path());
 
     const QString prefix = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString();
     testSettingsFile(path);

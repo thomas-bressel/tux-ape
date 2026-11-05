@@ -214,8 +214,7 @@ if(TUXAPE_BUILD_APP)
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/config/${test}")
     endforeach()
     target_compile_definitions(gui_setup PRIVATE
-        TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/reference/WinAPE20B2"
-        TUXAPE_PROFILES_DIR="${PROJECT_SOURCE_DIR}/profile")
+        TUXAPE_WINAPE_DIR="${PROJECT_SOURCE_DIR}/reference/WinAPE20B2")
 
     # The model plugin of sdk/template, built and tested as an author builds
     # it, against this sdk/: the example given to others stays a right one.
