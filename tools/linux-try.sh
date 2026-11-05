@@ -7,7 +7,7 @@
 #
 #   tools/linux-try.sh ARCHIVE IMAGE PICTURE
 #
-# IMAGE: ubuntu:22.04, debian:12, ubuntu:24.04, ubuntu:26.04... (apt-get ones)
+# IMAGE: ubuntu:22.04, debian:12, ubuntu:24.04, fedora:42... (apt-get or dnf ones)
 set -euo pipefail
 
 if [ "${1:-}" != --inside ]; then
@@ -20,11 +20,17 @@ if [ "${1:-}" != --inside ]; then
         "$2" bash /tmp/try.sh --inside
 fi
 
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq >/dev/null
-apt-get install -y -qq --no-install-recommends xvfb xauth libgl1 libegl1 fonts-dejavu-core libdbus-1-3 \
-    libgtk-3-0 >/dev/null 2>&1 || apt-get install -y -qq --no-install-recommends xvfb xauth libgl1 libegl1 \
-    fonts-dejavu-core libdbus-1-3 libgtk-3-0t64 >/dev/null
+if command -v apt-get >/dev/null; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq >/dev/null
+    apt-get install -y -qq --no-install-recommends xvfb xauth libgl1 libegl1 fonts-dejavu-core libdbus-1-3 \
+        libgtk-3-0 >/dev/null 2>&1 || apt-get install -y -qq --no-install-recommends xvfb xauth libgl1 libegl1 \
+        fonts-dejavu-core libdbus-1-3 libgtk-3-0t64 >/dev/null
+else
+    # Fedora and its kind.
+    dnf install -y -q --setopt=install_weak_deps=False tar gzip util-linux xorg-x11-server-Xvfb xauth mesa-libGL \
+        mesa-libEGL dejavu-sans-fonts dbus-libs gtk3 >/dev/null
+fi
 . /etc/os-release
 echo "== $PRETTY_NAME, glibc $(ldd --version | head -1 | awk '{print $NF}')"
 mkdir -p /opt/try && tar -xzf /tmp/tuxape.tar.gz -C /opt/try
