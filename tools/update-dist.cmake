@@ -106,18 +106,18 @@ if(EXISTS "${ROOT}/plugins/README.md" AND NOT EXISTS "${DIST}/plugins/README.md"
 endif()
 
 # The Library's folders: its categories, for the programs to go into.
-if(IS_DIRECTORY "${ROOT}/library")
-    file(GLOB_RECURSE folders LIST_DIRECTORIES true RELATIVE "${ROOT}/library" "${ROOT}/library/*")
+if(IS_DIRECTORY "${ROOT}/reference/library")
+    file(GLOB_RECURSE folders LIST_DIRECTORIES true RELATIVE "${ROOT}/reference/library" "${ROOT}/reference/library/*")
     foreach(folder IN LISTS folders)
-        if(IS_DIRECTORY "${ROOT}/library/${folder}")
+        if(IS_DIRECTORY "${ROOT}/reference/library/${folder}")
             file(MAKE_DIRECTORY "${DIST}/library/${folder}")
         endif()
     endforeach()
 endif()
 
 foreach(program IN LISTS kLibrary)
-    if(EXISTS "${ROOT}/library/${program}" AND NOT EXISTS "${DIST}/library/${program}")
-        file(COPY_FILE "${ROOT}/library/${program}" "${DIST}/library/${program}")
+    if(EXISTS "${ROOT}/reference/library/${program}" AND NOT EXISTS "${DIST}/library/${program}")
+        file(COPY_FILE "${ROOT}/reference/library/${program}" "${DIST}/library/${program}")
     endif()
 endforeach()
 

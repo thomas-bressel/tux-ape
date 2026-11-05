@@ -88,7 +88,7 @@ target_include_directories(tuxape_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${PROJE
 target_compile_definitions(tuxape_app PRIVATE
     # The Library's own folder, when TUXAPE_LIBRARY_DIR is not set and there
     # is none beside the program.
-    TUXAPE_DEV_LIBRARY_DIR="${PROJECT_SOURCE_DIR}/library"
+    TUXAPE_DEV_LIBRARY_DIR="${PROJECT_SOURCE_DIR}/reference/library"
     # The plugins folder, when TUXAPE_PLUGIN_DIR is not set and there is
     # none beside the program.
     TUXAPE_DEV_PLUGIN_DIR="${PROJECT_SOURCE_DIR}/plugins"
