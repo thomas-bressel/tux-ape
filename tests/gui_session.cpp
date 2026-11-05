@@ -113,6 +113,39 @@ int main(int argc, char* argv[])
     emulator.stopPlayback();
     CHECK(!emulator.playingSession());
 
+    // Played faster or slower, a session goes on frame by frame on the
+    // machine it brought: the speed entries change the speed and nothing
+    // else (they used to put back the settings' CRTC and machine, and the
+    // playback went astray). As if the recording's snapshot had another
+    // CRTC than the settings:
+    CHECK(window.playSessionFile(coldPath));
+    emulator.setCrtcType(tuxape::CrtcType::UM6845R);
+    const tuxape::MachineConfig played = emulator.machine();
+    QAction* fast = actionNamed(window, "High Speed (1000%)");
+    QAction* normal = actionNamed(window, "Normal Speed (100%)");
+    CHECK(fast && normal);
+    if (fast && normal) {
+        fast->trigger();
+        CHECK(emulator.playingSession());
+        CHECK(emulator.crtcType() == tuxape::CrtcType::UM6845R);
+        CHECK(emulator.machine() == played);
+        normal->trigger();
+        CHECK(emulator.playingSession() && emulator.crtcType() == tuxape::CrtcType::UM6845R);
+        fast->trigger();
+    }
+    // A reset ends it, as in WinAPE: the keyboard is the user's again.
+    QAction* reset = actionNamed(window, "Reset");
+    CHECK(reset != nullptr);
+    if (reset) {
+        reset->trigger();
+        CHECK(!emulator.playingSession());
+        CHECK(QTest::qWaitFor([&] { return !play->isChecked(); }, 2000));
+        CHECK(shows("Ready"));
+        emulator.autoType(QStringLiteral("PRINT 9*9~RETURN~"));
+        CHECK(shows(" 81"));
+    }
+    emulator.setCrtcType(tuxape::CrtcType::HD6845S);
+
     // A file that is no session: a word to the user, and nothing played.
     const QString notOne = folder.filePath("plain.snr");
     {

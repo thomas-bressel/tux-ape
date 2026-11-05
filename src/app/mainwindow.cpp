@@ -319,7 +319,8 @@ MainWindow::MainWindow(Emulator* emulator, QWidget* parent)
     , emulator_(emulator)
     , discs_(new DiscManager(emulator, this))
 {
-    setWindowTitle(tr("TuxAPE"));
+    // The version is in the title bar, not on the welcome picture.
+    setWindowTitle(QStringLiteral("TuxAPE %1").arg(QString::fromLatin1(tuxape::versionString())));
     setAcceptDrops(true);
     // The other windows' Help buttons come here.
     setHelpHandler([self = QPointer<MainWindow>(this)] {
@@ -1457,13 +1458,16 @@ void MainWindow::showSetup(int page)
 }
 
 // The two speeds of the Settings menu: they set the speed of the Setup
-// window and leave its "Display Every" mode.
+// window and leave its "Display Every" mode, and change nothing else. The
+// machine may not be the settings' one: a session played, a snapshot
+// loaded bring their own CRTC and RAM, which a playback must keep to stay
+// in step with its recording; it goes on at the new speed, frame by frame.
 void MainWindow::setSpeed(int percent)
 {
-    Settings settings = settings_;
-    settings.speedPercent = percent;
-    settings.displayEvery = false;
-    applySettings(settings);
+    settings_.speedPercent = percent;
+    settings_.displayEvery = false;
+    emulator_->setSpeedPercent(percent);
+    emulator_->setDisplayEvery(0);
     settings_.save();
 }
 

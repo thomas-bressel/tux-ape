@@ -1105,14 +1105,27 @@ bool Emulator::hasMultiface()
 
 void Emulator::reset(bool cold)
 {
+    bool stopped = false;
     withMachine([&](Cpc& cpc) {
         // What was still to be typed was for the machine as it was.
         autoType_.cancel();
+        // A session played is over: what follows is not in the recording,
+        // and the keyboard is the user's again (as in WinAPE).
+        if (sessionPlayer_.active() || winApePlayer_.active()) {
+            sessionPlayer_.stop();
+            winApePlayer_.stop();
+            tuxape::endWinApeSession(cpc);
+            playingSession_ = false;
+            cpc.keyboard().releaseAll();
+            stopped = true;
+        }
         if (cold)
             cpc.coldReset();
         else
             cpc.reset();
     });
+    if (stopped)
+        emit playbackFinished();
 }
 
 bool Emulator::autoTyping()
