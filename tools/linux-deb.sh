@@ -64,7 +64,7 @@ cat >"$pkg/DEBIAN/control" <<EOF
 Package: tuxape
 Version: $version
 Architecture: amd64
-Maintainer: Thomas Bressel <contact.thomasbressel@gmail.com>
+Maintainer: Thomas Bressel
 Installed-Size: $size
 Section: games
 Priority: optional
