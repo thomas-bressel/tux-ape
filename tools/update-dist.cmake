@@ -14,9 +14,8 @@
 #                      own in system/, the others in folders of their kind
 #   dist/profile/      TuxAPE's profiles (.tpf), the project's profile/
 #   dist/plugins/      no plugin, the folder and what it says of them
-#   dist/library/      the Library window's folders, without their programs
-#                      but the discs that install the cards' software and
-#                      the utilities in ROM, in Utilities/ (see kLibrary)
+#   dist/library/      the project's library/: the Library window's
+#                      folders and the programs TuxAPE comes with
 #   dist/assembly/     assembler sources
 #   dist/dsk/          the user's disc images: none to begin with
 #   dist/img/          what the cards keep, blank: an X-MASS disc of no
@@ -33,9 +32,6 @@ endforeach()
 if(NOT DEFINED DIST)
     set(DIST "${ROOT}/dist")
 endif()
-
-# The programs of the project's Library that dist/library/ starts with.
-include("${CMAKE_CURRENT_LIST_DIR}/dist-library.cmake")
 
 foreach(folder lib roms profile plugins library assembly dsk img savestates)
     file(MAKE_DIRECTORY "${DIST}/${folder}")
@@ -105,21 +101,17 @@ if(EXISTS "${ROOT}/plugins/README.md" AND NOT EXISTS "${DIST}/plugins/README.md"
     file(COPY_FILE "${ROOT}/plugins/README.md" "${DIST}/plugins/README.md")
 endif()
 
-# The Library's folders: its categories, for the programs to go into.
-if(IS_DIRECTORY "${ROOT}/reference/library")
-    file(GLOB_RECURSE folders LIST_DIRECTORIES true RELATIVE "${ROOT}/reference/library" "${ROOT}/reference/library/*")
+# The Library TuxAPE comes with: the project's library/, its folders and
+# what is in them, as the user has put them there.
+add_missing("${ROOT}/library" "${DIST}/library")
+if(IS_DIRECTORY "${ROOT}/library")
+    file(GLOB_RECURSE folders LIST_DIRECTORIES true RELATIVE "${ROOT}/library" "${ROOT}/library/*")
     foreach(folder IN LISTS folders)
-        if(IS_DIRECTORY "${ROOT}/reference/library/${folder}")
+        if(IS_DIRECTORY "${ROOT}/library/${folder}")
             file(MAKE_DIRECTORY "${DIST}/library/${folder}")
         endif()
     endforeach()
 endif()
-
-foreach(program IN LISTS kLibrary)
-    if(EXISTS "${ROOT}/reference/library/${program}" AND NOT EXISTS "${DIST}/library/${program}")
-        file(COPY_FILE "${ROOT}/reference/library/${program}" "${DIST}/library/${program}")
-    endif()
-endforeach()
 
 # The cards' files, blank. An X-MASS disc is as long as what has been
 # written on it: empty, every sector reads as zeros. An erased flash is all

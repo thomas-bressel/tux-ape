@@ -1,8 +1,8 @@
 # Makes the folder of TuxAPE for Linux, ready to be packed and given:
 # the program with all of Qt it needs, and the folders beside it, as dist/
-# has them: the ROMs of the sources' roms/, the Library's folders and the
-# discs that install the cards' software (tools/dist-library.cmake). Sources
-# without them (GitHub's builds) leave roms/ and library/ empty. Run by
+# has them: the ROMs of the sources' roms/, their library/ with its folders
+# and programs. Sources without them (GitHub's builds) leave roms/ and
+# library/ empty. Run by
 # tools/linux-release.sh and by the builds of .github/workflows/build.yml:
 #
 #   cmake -DPROGRAM=<the built tuxape>
@@ -122,22 +122,12 @@ if(IS_DIRECTORY "${ROOT}/library")
             file(MAKE_DIRECTORY "${OUT}/library/${folder}")
         endif()
     endforeach()
-    if(ALL_LIBRARY)
-        # The Library as it is in ROOT: all of its programs.
-        file(GLOB_RECURSE programs LIST_DIRECTORIES false RELATIVE "${ROOT}/library" "${ROOT}/library/*")
-        foreach(program IN LISTS programs)
-            get_filename_component(where "${OUT}/library/${program}" DIRECTORY)
-            file(MAKE_DIRECTORY "${where}")
-            file(COPY_FILE "${ROOT}/library/${program}" "${OUT}/library/${program}")
-        endforeach()
-    else()
-        include("${CMAKE_CURRENT_LIST_DIR}/dist-library.cmake")
-        foreach(program IN LISTS kLibrary)
-            if(EXISTS "${ROOT}/library/${program}")
-                file(COPY_FILE "${ROOT}/library/${program}" "${OUT}/library/${program}")
-            endif()
-        endforeach()
-    endif()
+    file(GLOB_RECURSE programs LIST_DIRECTORIES false RELATIVE "${ROOT}/library" "${ROOT}/library/*")
+    foreach(program IN LISTS programs)
+        get_filename_component(where "${OUT}/library/${program}" DIRECTORY)
+        file(MAKE_DIRECTORY "${where}")
+        file(COPY_FILE "${ROOT}/library/${program}" "${OUT}/library/${program}")
+    endforeach()
 endif()
 file(GLOB profiles "${ROOT}/profile/*.tpf")
 if(profiles)

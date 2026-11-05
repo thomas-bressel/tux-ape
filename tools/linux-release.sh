@@ -80,7 +80,7 @@ sed -i -E '/^(X-MEM Flash|X-MASS Disc)=/d' "$src"/profile/*.tpf
 version=$(sed -n 's/^ *VERSION \([0-9.]*\)$/\1/p' "$src/CMakeLists.txt" | head -1)
 name="tuxape-$version-linux-x86_64"
 rm -rf "/out/$name" "/out/$name.tar.gz"
-cmake -DPROGRAM=/tmp/build/src/app/tuxape -DQT="$qt" -DROOT="$src" -DOUT="/out/$name" -DSTRIP=strip -DALL_LIBRARY=ON \
+cmake -DPROGRAM=/tmp/build/src/app/tuxape -DQT="$qt" -DROOT="$src" -DOUT="/out/$name" -DSTRIP=strip \
     -P "$src/tools/package.cmake"
 tar -C /out --owner=0 --group=0 --numeric-owner -czf "/out/$name.tar.gz" "$name"
 echo "/out/$name.tar.gz: $(du -h "/out/$name.tar.gz" | cut -f1)"
