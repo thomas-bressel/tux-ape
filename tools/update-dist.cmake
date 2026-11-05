@@ -34,16 +34,8 @@ if(NOT DEFINED DIST)
     set(DIST "${ROOT}/dist")
 endif()
 
-# The programs of the project's Library that dist/library/ starts with:
-# the discs that put ROMs in the X-MEM, as on a real CPC.
-set(kLibrary
-    Utilities/iMPsuite_230807.hfe
-    Utilities/orgams230517.hfe
-    Utilities/xmass_xmem-install.hfe
-    Utilities/xmem_side-A.hfe
-    Utilities/xmem_side-B.hfe
-    Utilities/utilitaires.hfe
-    Utilities/utile-gos.hfe)
+# The programs of the project's Library that dist/library/ starts with.
+include("${CMAKE_CURRENT_LIST_DIR}/dist-library.cmake")
 
 foreach(folder lib roms profile plugins library assembly dsk img savestates)
     file(MAKE_DIRECTORY "${DIST}/${folder}")

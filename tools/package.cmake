@@ -1,18 +1,20 @@
 # Makes the folder of TuxAPE for Linux, ready to be packed and given:
 # the program with all of Qt it needs, and the folders beside it, as dist/
-# has them, but empty of what is not the project's to give (ROMs, the
-# Library's programs). Run by the builds of .github/workflows/build.yml:
+# has them: the ROMs of the sources' roms/, the Library's folders and the
+# discs that install the cards' software (tools/dist-library.cmake). Sources
+# without them (GitHub's builds) leave roms/ and library/ empty. Run by
+# tools/linux-release.sh and by the builds of .github/workflows/build.yml:
 #
 #   cmake -DPROGRAM=<the built tuxape>
 #         -DQT=<Qt's folder, with bin/ lib/ plugins/> -DROOT=<the sources>
 #         -DOUT=<the folder to make> [-DSTRIP=strip] -P tools/package.cmake
 #
-#   tuxape, and qt/ with Qt in its own layout: lib/ (its libraries, and
-#   SDL2's), plugins/, translations/; qt.conf beside the program says so
+#   tuxape, and qt/ with Qt in its own layout: lib/, plugins/,
+#   translations/; qt.conf beside the program says so
 #
-# and, beside the program: profile/ (TuxAPE's profiles),
-# roms/, plugins/, library/, assembly/, dsk/, savestates/, and img/ with
-# the cards' files blank.
+# and, beside the program: LISEZMOI.txt and README.txt, profile/ (TuxAPE's
+# profiles), roms/, plugins/, library/, assembly/, dsk/, savestates/, and
+# img/ with the cards' files blank.
 
 cmake_minimum_required(VERSION 3.21)
 
@@ -42,24 +44,34 @@ endif()
 # Qt's plugins TuxAPE needs, in Qt's own layout: each finds Qt's
 # libraries two folders up, in qt/lib/. Not in plugins/: that folder is
 # for TuxAPE's own.
+# The windows on X11 or Wayland, or on none (offscreen); not straight on
+# the screen without a desktop (eglfs, linuxfb, vkkhrdisplay), nor through
+# VNC.
 foreach(kind platforms wayland-decoration-client wayland-graphics-integration-client wayland-shell-integration
-             xcbglintegrations egldeviceintegrations imageformats iconengines platforminputcontexts generic)
+             xcbglintegrations imageformats iconengines platforminputcontexts generic)
     if(IS_DIRECTORY "${QT}/plugins/${kind}")
         file(COPY "${QT}/plugins/${kind}" DESTINATION "${OUT}/qt/plugins")
     endif()
 endforeach()
-file(REMOVE "${OUT}/qt/plugins/platforms/libqvnc.so" "${OUT}/qt/plugins/platforms/libqlinuxfb.so"
-            "${OUT}/qt/plugins/platforms/libqvkkhrdisplay.so")
+foreach(platform vnc linuxfb vkkhrdisplay eglfs minimal minimalegl)
+    file(REMOVE "${OUT}/qt/plugins/platforms/libq${platform}.so")
+endforeach()
 file(WRITE "${OUT}/qt.conf" "[Paths]\nPrefix = qt\nLibraries = lib\nPlugins = plugins\nTranslations = translations\n")
 file(GLOB translations "${QT}/translations/qtbase_*.qm")
 if(translations)
     file(COPY ${translations} DESTINATION "${OUT}/qt/translations")
 endif()
 # The libraries the program and its plugins use: Qt's from Qt's
-# folder; SDL2 and xcb-cursor (which the X11 plugin needs and some
-# systems lack) from the system. The rest is every Linux's own.
+# folder; from the system, what the X11 plugin needs that only Qt's
+# programs do (the xcb utilities, the shape extension, the X11 keyboard of
+# xkbcommon), which a desktop without them lacks. xkbcommon goes with its
+# X11 part: one of 2022 beside a system's newer xkbcommon crashes.
+# SDL2 is in the program (tools/build-sdl2.sh). The rest every desktop
+# has (GTK's needs).
 file(GLOB_RECURSE plugins "${OUT}/qt/plugins/*.so")
-set(wanted "${QT}/lib/" "libSDL2-2.0.so" "libxcb-cursor.so")
+set(wanted "${QT}/lib/" "libxcb-cursor.so" "libxcb-icccm.so" "libxcb-image.so" "libxcb-keysyms.so"
+           "libxcb-render-util.so" "libxcb-util.so" "libxcb-shape.so" "libxcb-xkb.so" "libxkbcommon-x11.so"
+           "libxkbcommon.so")
 file(MAKE_DIRECTORY "${OUT}/qt/lib")
 foreach(file "${OUT}/tuxape" ${plugins})
     execute_process(COMMAND "${CMAKE_COMMAND}" -E env "LD_LIBRARY_PATH=${QT}/lib" ldd "${file}" OUTPUT_VARIABLE linked)
@@ -84,10 +96,49 @@ foreach(file "${OUT}/tuxape" ${plugins})
     endforeach()
 endforeach()
 
+# Qt's licence, the LGPL version 3, and the GPL it is written against.
+foreach(licence LGPL-3 GPL-3)
+    if(EXISTS "/usr/share/common-licenses/${licence}")
+        file(COPY "/usr/share/common-licenses/${licence}" DESTINATION "${OUT}/qt/LICENSES")
+    endif()
+endforeach()
+
 # ---- The folders beside it ----
 foreach(folder profile roms plugins library assembly dsk img savestates)
     file(MAKE_DIRECTORY "${OUT}/${folder}")
 endforeach()
+foreach(readme LISEZMOI.txt README.txt LICENCE.txt)
+    if(EXISTS "${ROOT}/tools/linux-archive/${readme}")
+        file(COPY "${ROOT}/tools/linux-archive/${readme}" DESTINATION "${OUT}")
+    endif()
+endforeach()
+if(IS_DIRECTORY "${ROOT}/roms")
+    file(COPY "${ROOT}/roms/" DESTINATION "${OUT}/roms")
+endif()
+if(IS_DIRECTORY "${ROOT}/library")
+    file(GLOB_RECURSE folders LIST_DIRECTORIES true RELATIVE "${ROOT}/library" "${ROOT}/library/*")
+    foreach(folder IN LISTS folders)
+        if(IS_DIRECTORY "${ROOT}/library/${folder}")
+            file(MAKE_DIRECTORY "${OUT}/library/${folder}")
+        endif()
+    endforeach()
+    if(ALL_LIBRARY)
+        # The Library as it is in ROOT: all of its programs.
+        file(GLOB_RECURSE programs LIST_DIRECTORIES false RELATIVE "${ROOT}/library" "${ROOT}/library/*")
+        foreach(program IN LISTS programs)
+            get_filename_component(where "${OUT}/library/${program}" DIRECTORY)
+            file(MAKE_DIRECTORY "${where}")
+            file(COPY_FILE "${ROOT}/library/${program}" "${OUT}/library/${program}")
+        endforeach()
+    else()
+        include("${CMAKE_CURRENT_LIST_DIR}/dist-library.cmake")
+        foreach(program IN LISTS kLibrary)
+            if(EXISTS "${ROOT}/library/${program}")
+                file(COPY_FILE "${ROOT}/library/${program}" "${OUT}/library/${program}")
+            endif()
+        endforeach()
+    endif()
+endif()
 file(GLOB profiles "${ROOT}/profile/*.tpf")
 if(profiles)
     file(COPY ${profiles} DESTINATION "${OUT}/profile")

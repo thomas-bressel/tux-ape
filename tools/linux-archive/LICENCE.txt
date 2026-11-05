@@ -1,0 +1,93 @@
+TuxAPE 1.1 - Licence d'utilisation / Licence of use
+====================================================
+
+Copyright (c) 2026 Thomas Bressel. Tous droits réservés, sauf ce que cette
+licence accorde.
+
+
+FRANÇAIS
+--------
+
+1. L'auteur. Thomas Bressel est l'auteur de TuxAPE et le seul auteur de sa
+   version officielle. Le nom « TuxAPE », et le titre de « version
+   officielle », lui appartiennent.
+
+2. Ce que vous pouvez faire. Vous pouvez, gratuitement, sans demander
+   d'autorisation et sans limite de durée :
+   - utiliser TuxAPE chez vous, à l'école, dans votre travail, pour jouer,
+     programmer, enseigner, ou pour montrer l'Amstrad CPC (captures,
+     vidéos, flux en direct compris) ;
+   - copier TuxAPE et le donner à d'autres, à condition de donner l'archive
+     complète, telle quelle, avec ce fichier, et gratuitement.
+
+3. Ce que vous ne pouvez pas faire sans l'accord écrit de l'auteur :
+   - vendre TuxAPE, ou le faire payer sous quelque forme que ce soit
+     (le coût d'un support ou d'un hébergement n'en est pas un) ;
+   - en diffuser une version modifiée, ou une version dont on a retiré ou
+     changé des fichiers, sous le nom de TuxAPE ou de façon à la faire
+     passer pour la version officielle, ou pour l'œuvre de l'auteur ;
+   - retirer le nom de l'auteur ou cette licence ;
+   - décompiler le programme ou en extraire le code, sauf ce que la loi
+     permet malgré tout, et sauf ce que la licence de Qt permet (point 5).
+
+4. Plug-ins. Les plug-ins écrits par d'autres, qui s'installent par
+   Settings > Plugins, restent leurs œuvres, sous leurs licences à eux.
+
+5. Ce que TuxAPE contient d'autre.
+   - Qt 6 (licence LGPL version 3), dans le dossier qt : vous pouvez le
+     remplacer par une autre version de Qt 6, les textes de licence sont
+     dans qt/LICENSES, les sources sont sur https://download.qt.io ;
+   - SDL 2 (licence zlib) et les bibliothèques xcb-util (licence MIT) ;
+   - les ROM et les disquettes du dossier roms et du dossier library sont
+     du domaine public ; elles ne sont pas couvertes par cette licence.
+   Les jeux et les programmes que vous chargez vous-même dans TuxAPE
+   appartiennent à leurs auteurs.
+
+6. Garantie. TuxAPE est fourni tel quel, sans garantie d'aucune sorte,
+   notamment de bon fonctionnement ou d'adaptation à un usage. L'auteur ne
+   répond d'aucun dommage né de son utilisation, y compris de la perte de
+   fichiers : faites des copies de vos disquettes et de vos programmes.
+
+
+ENGLISH
+-------
+
+1. The author. Thomas Bressel is the author of TuxAPE and the only author of
+   its official version. The name "TuxAPE", and the title of "official
+   version", are his.
+
+2. What you may do. You may, free of charge, without asking and without
+   limit of time:
+   - use TuxAPE at home, at school, at work, to play, to program, to teach,
+     or to show the Amstrad CPC (screenshots, videos and live streams
+     included);
+   - copy TuxAPE and give it to others, provided you give the complete
+     archive, as it is, with this file, and free of charge.
+
+3. What you may not do without the author's written agreement:
+   - sell TuxAPE, or make anyone pay for it in any form (the cost of a
+     medium or of hosting is not one);
+   - distribute a modified version of it, or one with files removed or
+     changed, under the name TuxAPE or in a way that makes it pass for the
+     official version, or for the author's work;
+   - remove the author's name or this licence;
+   - decompile the program or take its code out, except what the law allows
+     all the same, and what Qt's licence allows (point 5).
+
+4. Plug-ins. Plug-ins written by others, installed through
+   Settings > Plugins, remain their works, under their own licences.
+
+5. What else TuxAPE contains.
+   - Qt 6 (LGPL version 3), in the qt folder: you may replace it with
+     another version of Qt 6; the licence texts are in qt/LICENSES, the
+     sources are at https://download.qt.io;
+   - SDL 2 (zlib licence) and the xcb-util libraries (MIT licence);
+   - the ROMs and discs in the roms and library folders are in the public
+     domain; this licence does not cover them.
+   The games and programs you load into TuxAPE yourself belong to their
+   authors.
+
+6. Warranty. TuxAPE is provided as it is, without warranty of any kind,
+   including that it works or suits a purpose. The author is liable for no
+   damage arising from its use, including the loss of files: keep copies of
+   your discs and programs.

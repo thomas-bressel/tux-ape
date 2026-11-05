@@ -41,10 +41,14 @@ jobs:
       - name: Libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev zlib1g-dev libgl-dev libegl-dev libxkbcommon-dev libxcb-cursor0 ninja-build
+          sudo apt-get install -y zlib1g-dev libgl-dev libegl-dev libxkbcommon-dev libxcb-cursor0 ninja-build \
+              libpipewire-0.3-dev libpulse-dev libasound2-dev libudev-dev
+          tools/build-sdl2.sh "$RUNNER_TEMP/sdl2"
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTUXAPE_UPDATE_DIST=OFF 2>&1 | tee configure.log; exit ${PIPESTATUS[0]}
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DTUXAPE_UPDATE_DIST=OFF \
+                -DSDL2_DIR="$RUNNER_TEMP/sdl2/lib/cmake/SDL2" 2>&1 | tee configure.log; exit ${PIPESTATUS[0]}
 
       - name: Build
         run: cmake --build build --parallel 2>&1 | tee build.log; exit ${PIPESTATUS[0]}

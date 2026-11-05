@@ -1,0 +1,76 @@
+TuxAPE
+======
+
+Émulateur Amstrad CPC et Plus pour Linux, sur le modèle de WinAPE 2.0 Beta 2.
+
+
+Ce qu'il faut
+-------------
+
+Un Linux 64 bits pour PC (x86-64), de 2022 ou plus récent : Ubuntu 22.04,
+Linux Mint 21, Debian 12, Fedora 36, ou leurs successeurs. Rien à installer :
+Qt, la bibliothèque des fenêtres de TuxAPE, est dans le dossier qt. Le son
+passe par PipeWire, PulseAudio ou ALSA, que tout Linux de bureau a.
+
+
+Lancer
+------
+
+    ./tuxape
+    ./tuxape jeu.dsk        la disquette va dans le lecteur A:
+
+ou un double clic sur le fichier tuxape.
+
+L'aide est dans le programme : menu Help, ou la touche F1. Les fenêtres
+existent aussi en français : Settings > Language.
+
+
+Les dossiers
+------------
+
+    roms         les ROM. Celles des machines dans system, le système en
+                 d'autres langues dans firmware, ParaDOS dans dos, la
+                 Multiface II dans tools, les polices de l'imprimante DMP2000
+                 dans printer. Vos propres ROM vont où vous voulez dans ce
+                 dossier : TuxAPE les trouve par leur nom.
+    profile      les profils (.tpf), du CPC 464 au 6128 Plus
+    library      vos jeux et vos programmes, pour la fenêtre Library (F4).
+                 Dans Utilities, les disquettes qui installent les logiciels
+                 des cartes X-MEM et X-MASS, l'iMPsuite et Orgams.
+    img          la mémoire flash de la X-MEM et le disque de la X-MASS,
+                 vierges, à installer comme sur un vrai CPC
+    dsk          vos disquettes
+    assembly     vos sources pour l'assembleur
+    savestates   les sauvegardes rapides (F5 sauve, F6 reprend)
+    plugins      les plug-ins, installés par Settings > Plugins
+    qt           Qt
+
+Les réglages sont rangés dans ~/.config/TuxAPE.
+
+
+Si TuxAPE ne démarre pas
+------------------------
+
+Lancez-le depuis un terminal : il dit ce qui lui manque. Pour le détail du
+chargement des fenêtres :
+
+    QT_DEBUG_PLUGINS=1 ./tuxape
+
+
+Crédits
+-------
+
+TuxAPE © Thomas Bressel 2026. Version 1.1. Licence d'utilisation : LICENCE.txt.
+
+WinAPE, le modèle de cet émulateur, est l'œuvre de Richard Wilson. TuxAPE en
+reprend le fonctionnement et les formats de fichiers, pas le code.
+
+Informations techniques tirées du « Amstrad CPC CRTC Compendium » de
+Longshot / Logon System (CC BY-NC-ND). Tests sur vraies machines de Kevin
+Thacker (les « acid tests ») et de Longshot (le Shaker).
+
+TuxAPE contient Qt 6.10 (licence LGPL version 3, dont le texte est dans
+qt/LICENSES ; ses sources sont sur https://download.qt.io), SDL 2 (licence
+zlib) et les bibliothèques xcb-util (licence MIT). Il utilise la zlib de
+votre système (licence zlib). Les bibliothèques de Qt sont dans qt/lib :
+on peut les remplacer par d'autres versions de Qt 6.
