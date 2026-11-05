@@ -52,5 +52,7 @@ CMakeUserPresets.json
 # and that folder zipped.
 /dist/
 /dist.zip
+# The public archives (tools/linux-release.sh release), and their build.
+/release/
 # What was in dist/ before it was cleaned, for the user to sort.
 /dist-ancien/

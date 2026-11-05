@@ -6,9 +6,12 @@
 # tools/package.cmake, with what the project's dist/ folder holds: its ROMs,
 # profiles and Library programs, as they are there.
 #
-#   tools/linux-release.sh OUT
+#   tools/linux-release.sh [OUT]
 #
-# leaves OUT/tuxape-<version>-linux-x86_64.tar.gz, and the folder it holds.
+# leaves OUT/tuxape-<version>-linux-x86_64.tar.gz, and the folder it holds;
+# OUT is the project's release/ folder if not given. There, the build is
+# kept from one run to the next (release/.build), unless TUXAPE_BUILD_CACHE
+# names another folder.
 # Needs Docker, usable without sudo.
 set -euo pipefail
 
@@ -18,9 +21,10 @@ src=/usr/local/share/tuxape
 qt=/opt/qt/current
 
 if [ "${1:-}" != --inside ] && [ "${1:-}" != --build ]; then
-    [ $# -eq 1 ] || { echo "usage: $0 OUT" >&2; exit 2; }
+    [ $# -le 1 ] || { echo "usage: $0 [OUT]" >&2; exit 2; }
     root=$(cd "$(dirname "$0")/.." && pwd)
-    out=$(realpath -m "$1")
+    out=$(realpath -m "${1:-$root/release}")
+    [ $# -eq 0 ] && : "${TUXAPE_BUILD_CACHE:=$root/release/.build}"
     mkdir -p "$out"
     docker build --quiet -t "$image" -f "$root/tools/linux-build.Dockerfile" "$root/tools" >/dev/null
     # TUXAPE_BUILD_CACHE, a folder, keeps the build from one run to the next.
