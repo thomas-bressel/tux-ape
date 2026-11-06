@@ -14,13 +14,13 @@ struct Binding {
 };
 
 // Keys that mean the same whatever the state of Num Lock. The layout is
-// positional: a PC key maps to the CPC key in the same place. But COPY,
-// which WinAPE has on Alt: that key is left to the interface, for its
-// menus, and COPY is on Insert.
+// positional: a PC key maps to the CPC key in the same place. COPY is on
+// the left Alt, as in WinAPE (Alt Gr is the CPC's "["): the menus are
+// then reached with the mouse or the function keys.
 constexpr Binding kCommon[] = {
     {CpcKey::CursorUp, {PcUp}},          {CpcKey::CursorRight, {PcRight}},
     {CpcKey::CursorDown, {PcDown}},      {CpcKey::CursorLeft, {PcLeft}},
-    {CpcKey::Enter, {PcNumEnter}},       {CpcKey::Copy, {PcInsert}},
+    {CpcKey::Enter, {PcNumEnter}},       {CpcKey::Copy, {PcLeftAlt}},
     {CpcKey::F0, {PcNum0}},              {CpcKey::Clr, {PcBackslash}},
     {CpcKey::LeftBracket, {PcRightAlt}}, {CpcKey::Return, {PcReturn}},
     {CpcKey::RightBracket, {PcRightBracket}},
