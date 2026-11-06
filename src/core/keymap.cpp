@@ -14,13 +14,14 @@ struct Binding {
 };
 
 // Keys that mean the same whatever the state of Num Lock. The layout is
-// positional: a PC key maps to the CPC key in the same place. COPY is on
-// the left Alt, as in WinAPE (Alt Gr is the CPC's "["): the menus are
-// then reached with the mouse or the function keys.
+// positional: a PC key maps to the CPC key in the same place. But COPY,
+// which WinAPE has on Alt: that key is left to the interface, for its
+// menus, and COPY is on the key right of the left Shift ("<>" on a French
+// or German keyboard, left of W or Z).
 constexpr Binding kCommon[] = {
     {CpcKey::CursorUp, {PcUp}},          {CpcKey::CursorRight, {PcRight}},
     {CpcKey::CursorDown, {PcDown}},      {CpcKey::CursorLeft, {PcLeft}},
-    {CpcKey::Enter, {PcNumEnter}},       {CpcKey::Copy, {PcLeftAlt}},
+    {CpcKey::Enter, {PcNumEnter}},       {CpcKey::Copy, {PcOem102}},
     {CpcKey::F0, {PcNum0}},              {CpcKey::Clr, {PcBackslash}},
     {CpcKey::LeftBracket, {PcRightAlt}}, {CpcKey::Return, {PcReturn}},
     {CpcKey::RightBracket, {PcRightBracket}},
@@ -87,7 +88,7 @@ constexpr PcKeyName kPcKeyNames[] = {
     {PcGrave, "` (left of 1)"}, {PcMinus, "- (right of 0)"}, {PcEquals, "= (left of Backspace)"},
     {PcLeftBracket, "[ (right of P)"}, {PcRightBracket, "] (left of Return)"},
     {PcSemicolon, "; (right of L)"}, {PcApostrophe, "' (two right of L)"}, {PcBackslash, "# or \\ (by Return)"},
-    {PcOem102, "\\ (right of left Shift)"}, {PcComma, ", (right of M)"}, {PcPeriod, ". (two right of M)"},
+    {PcOem102, "< > (right of left Shift)"}, {PcComma, ", (right of M)"}, {PcPeriod, ". (two right of M)"},
     {PcSlash, "/ (left of right Shift)"},
     {PcEscape, "Escape"}, {PcTab, "Tab"}, {PcCapsLock, "Caps Lock"}, {PcBackspace, "Backspace"},
     {PcReturn, "Return"}, {PcSpace, "Space"},

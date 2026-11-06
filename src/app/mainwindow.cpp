@@ -25,7 +25,6 @@
 #include <QScreen>
 #include <QMimeData>
 #include <QPointer>
-#include <QProxyStyle>
 #include <QTimer>
 #include <QToolButton>
 #include <QToolTip>
@@ -64,21 +63,6 @@
 #include "core/winape_session.h"
 
 namespace {
-
-// The menu bar of a style that lets go of Alt to reach the menus (KDE's
-// Breeze does): Alt is the CPC's COPY, and letting go of it must leave the
-// keyboard to the CPC. The menus are reached with the mouse and the
-// function keys.
-class NoAltMenuStyle : public QProxyStyle {
-public:
-    int styleHint(StyleHint hint, const QStyleOption* option, const QWidget* widget,
-                  QStyleHintReturn* returned) const override
-    {
-        if (hint == SH_MenuBar_AltKeyNavigation)
-            return 0;
-        return QProxyStyle::styleHint(hint, option, widget, returned);
-    }
-};
 
 constexpr int kPanelHeight = 30;
 constexpr int kButtonSize = 26;
@@ -652,10 +636,6 @@ void MainWindow::createMenus()
 {
     using Qt::CTRL;
     using Qt::SHIFT;
-
-    auto* menuStyle = new NoAltMenuStyle;
-    menuStyle->setParent(menuBar());
-    menuBar()->setStyle(menuStyle);
 
     // ---- File ----
     QMenu* file = menuBar()->addMenu(tr("&File"));

@@ -10,7 +10,6 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QPointer>
-#include <QProxyStyle>
 #include <QSplashScreen>
 #include <QTemporaryDir>
 #include <QTest>
@@ -58,15 +57,21 @@ int main(int argc, char* argv[])
     CHECK_EQ(window.screen()->width(), 768);
     CHECK_EQ(window.screen()->height(), 540);
 
-    // The left Alt is the CPC's COPY key: the screen takes it, and leaves
-    // Insert, which is nothing on the CPC, to the interface.
+    // Alt is left to the interface, for its menus: the screen does not
+    // take it, as it takes the key right of the left Shift ("<>", Linux's
+    // KEY_102ND, X11 code 94), the CPC's COPY key. Insert is nothing on the
+    // CPC.
     for (const bool pressed : {true, false}) {
         const QEvent::Type type = pressed ? QEvent::KeyPress : QEvent::KeyRelease;
         QKeyEvent alt(type, Qt::Key_Alt, pressed ? Qt::AltModifier : Qt::NoModifier);
-        QKeyEvent insert(type, Qt::Key_Insert, Qt::NoModifier);
+        QKeyEvent less(type, Qt::Key_Less, Qt::NoModifier, 94, 0, 0, QStringLiteral("<"));
+        QKeyEvent insert(type, Qt::Key_Insert, Qt::NoModifier, 118, 0, 0);
         QApplication::sendEvent(window.screen(), &alt);
+        QApplication::sendEvent(window.screen(), &less);
         QApplication::sendEvent(window.screen(), &insert);
-        CHECK(alt.isAccepted() && !insert.isAccepted());
+        CHECK(!alt.isAccepted() && less.isAccepted() && !insert.isAccepted());
+        if (pressed)
+            CHECK(QTest::qWaitFor([&] { return emulator.withMachine([](tuxape::Cpc& cpc) { return cpc.keyboard().pressed(tuxape::CpcKey::Copy); }); }, 2000));
     }
 
     // Synthetic key events carry no scan code, which exercises the fallback
@@ -128,32 +133,10 @@ int main(int argc, char* argv[])
         CHECK(QTest::qWaitFor([&] { return !down(CpcKey::Control) && !down(CpcKey::Escape); }, 2000));
         QTest::keyClick(screen, Qt::Key_F10, Qt::ControlModifier | Qt::ShiftModifier);
         CHECK_EQ(function, 1);
-        // Alt is the CPC's COPY: with a letter, both go to the CPC, and a
-        // window's Alt+letter shortcut is not taken.
-        QTest::keyPress(screen, Qt::Key_Alt, Qt::AltModifier);
-        QTest::keyPress(screen, Qt::Key_L, Qt::AltModifier);
-        CHECK(QTest::qWaitFor([&] { return down(CpcKey::Copy) && down(CpcKey::L); }, 2000));
-        QTest::keyRelease(screen, Qt::Key_L, Qt::AltModifier);
-        QTest::keyRelease(screen, Qt::Key_Alt);
-        CHECK(QTest::qWaitFor([&] { return !down(CpcKey::Copy) && !down(CpcKey::L); }, 2000));
-        CHECK_EQ(menu, 0);
+        QTest::keyClick(screen, Qt::Key_L, Qt::AltModifier);
+        CHECK_EQ(menu, 1);
+        CHECK(!down(CpcKey::L));
         CHECK_EQ(letters, 0);
-        // Alt alone, pressed and let go as COPY is: the screen keeps the
-        // keyboard, the menu bar does not take it, even with a style that
-        // reaches the menus that way (KDE's Breeze).
-        struct AltStyle : QProxyStyle {
-            int styleHint(StyleHint hint, const QStyleOption* o, const QWidget* w, QStyleHintReturn* r) const override
-            {
-                return hint == SH_MenuBar_AltKeyNavigation ? 1 : QProxyStyle::styleHint(hint, o, w, r);
-            }
-        };
-        QApplication::setStyle(new AltStyle);
-        CHECK_EQ(QApplication::style()->styleHint(QStyle::SH_MenuBar_AltKeyNavigation), 1);
-        CHECK_EQ(window.menuBar()->style()->styleHint(QStyle::SH_MenuBar_AltKeyNavigation, nullptr, window.menuBar()), 0);
-        QTest::keyClick(screen, Qt::Key_Alt);
-        QTest::qWait(50);
-        CHECK(QApplication::focusWidget() == screen);
-        CHECK(window.menuBar()->activeAction() == nullptr);
         for (QAction* action : {onLetters, onFunction, onAlt}) {
             window.removeAction(action);
             delete action;
