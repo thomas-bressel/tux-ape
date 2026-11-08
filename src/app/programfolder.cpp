@@ -6,6 +6,8 @@
 #include <QFile>
 #include <QFileInfo>
 
+#include "core/version.h"
+
 QString programFolder()
 {
     const QString program = QCoreApplication::applicationDirPath();
@@ -21,9 +23,11 @@ QString programFolder()
 
 namespace {
 
-// What the user's folder starts with, from the program's: each file it
-// does not have yet, nothing replaced.
-void addMissing(const QString& from, const QString& to)
+// What the user's folder gets from the program's: each file it does not
+// have yet, nothing replaced; and, the first time only, the folders, empty
+// ones included (the Library's categories). After that the folders are the
+// user's: renamed or removed, they are not made again.
+void addMissing(const QString& from, const QString& to, bool folders)
 {
     QDir().mkpath(to);
     QDirIterator files(from, QDir::Files, QDirIterator::Subdirectories);
@@ -37,10 +41,11 @@ void addMissing(const QString& from, const QString& to)
         // Copied from where only the system writes, it is the user's now.
         QFile::setPermissions(target, QFile::permissions(target) | QFile::WriteOwner | QFile::WriteUser);
     }
-    // The folders too, empty ones included (the Library's categories).
-    QDirIterator folders(from, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
-    while (folders.hasNext())
-        QDir().mkpath(to + '/' + QDir(from).relativeFilePath(folders.next()));
+    if (!folders)
+        return;
+    QDirIterator all(from, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (all.hasNext())
+        QDir().mkpath(to + '/' + QDir(from).relativeFilePath(all.next()));
 }
 
 QString makeUserFolder()
@@ -49,18 +54,34 @@ QString makeUserFolder()
     if (QFileInfo(program).isWritable())
         return program;
     const QString home = QDir::homePath() + "/TuxAPE";
-    for (const char* folder : {"library", "assembly", "img"})
-        if (QDir(program).exists(folder))
-            addMissing(program + '/' + folder, home + '/' + folder);
-    for (const char* folder : {"dsk", "savestates", "profile", "roms", "plugins"})
-        QDir().mkpath(home + '/' + folder);
-    if (const QString readme = program + "/plugins/README.md"; QFileInfo::exists(readme))
-        if (!QFileInfo::exists(home + "/plugins/README.md"))
-            QFile::copy(readme, home + "/plugins/README.md");
+    fillUserFolder(program, home, QString::fromLatin1(tuxape::versionString()));
     return home;
 }
 
 }  // namespace
+
+void fillUserFolder(const QString& program, const QString& home, const QString& version)
+{
+    // Done when TuxAPE is installed: the first time it runs, and once more
+    // with each new version (the files it brings), not at every start.
+    const QString mark = home + "/.tuxape-version";
+    const bool first = !QFileInfo::exists(home);
+    QFile done(mark);
+    if (!first && done.open(QIODevice::ReadOnly) && QString::fromUtf8(done.readAll()).trimmed() == version)
+        return;
+    done.close();
+    for (const char* folder : {"library", "assembly", "img"})
+        if (QDir(program).exists(folder))
+            addMissing(program + '/' + folder, home + '/' + folder, first);
+    if (first)
+        for (const char* folder : {"dsk", "savestates", "profile", "roms", "plugins"})
+            QDir().mkpath(home + '/' + folder);
+    if (const QString readme = program + "/plugins/README.md"; QFileInfo::exists(readme))
+        if (QDir(home + "/plugins").exists() && !QFileInfo::exists(home + "/plugins/README.md"))
+            QFile::copy(readme, home + "/plugins/README.md");
+    if (done.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        done.write(version.toUtf8() + '\n');
+}
 
 QString userFolder()
 {

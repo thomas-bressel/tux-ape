@@ -16,3 +16,10 @@ QString programFolder();
 // time with the folders and the files TuxAPE comes with. Never a hidden
 // folder: what the user makes is to be found, and backed up.
 QString userFolder();
+
+// What userFolder() does to `home` from `program`'s folders: the first time
+// (no `home` yet), its folders and the files TuxAPE comes with; at the first
+// start of another `version`, the files it does not have yet, no folder
+// made again; otherwise nothing. The version done is kept in
+// home/.tuxape-version.
+void fillUserFolder(const QString& program, const QString& home, const QString& version);
