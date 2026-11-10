@@ -284,6 +284,11 @@ public:
     // WinAPE's "Tape Loading Sounds": what the tape plays is heard while
     // a program listens to it.
     void setTapeSound(bool on) { tapeSound_ = on; }
+    // Whether the machine has a floppy disc controller: not the 464 Plus,
+    // whose board has the 6128 Plus's places for it left empty. Without
+    // one, its ports read the empty bus (&FF) and writes go nowhere.
+    void setDiscInterface(bool fitted) { discInterface_ = fitted; }
+    bool discInterface() const { return discInterface_; }
     bool tapeSound() const { return tapeSound_; }
     // Sound output. Set its sample rate to start receiving samples.
     AudioMixer& audio() { return audio_; }
@@ -522,6 +527,7 @@ private:
     unsigned turboLeft_ = 4;  // T-states the instruction in hand may still take
     bool plusPpi_ = false;
     bool tapeSound_ = false;
+    bool discInterface_ = true;
     bool tapeHeard_ = false;  // the tape's level when it was last listened to
     bool breakInstructionHit_ = false;
     std::vector<uint8_t> watched_;  // one flag per address; empty when nothing is watched

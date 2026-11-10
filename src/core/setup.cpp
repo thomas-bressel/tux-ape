@@ -263,7 +263,14 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
         if (!cartridge)
             missing += (missing.empty() ? "" : ", ") + (file.empty() ? config.cartridge : file.string());
     }
-    cpc.setCartridge(cartridge ? &*cartridge : nullptr, config.ram != RamExpansion::None, config.largeCartridges);
+    // On both Plus machines the ASIC shows the cartridge's AMSDOS as ROM 7:
+    // the system cartridge's own code, its menu and Burnin' Rubber's start,
+    // is called there (&C072), on the 464 Plus too. That machine has no disc
+    // controller (CPCWiki: its board is the 6128 Plus's, with the
+    // components left out); a disc interface plugged into it uses that
+    // AMSDOS.
+    cpc.setCartridge(cartridge ? &*cartridge : nullptr, true, config.largeCartridges);
+    cpc.setDiscInterface(!(config.isPlus() && config.ram == RamExpansion::None));
 
     if (missing.empty())
         return true;

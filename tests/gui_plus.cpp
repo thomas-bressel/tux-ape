@@ -27,6 +27,10 @@
 #include <QToolButton>
 
 #include "check.h"
+#include "core/autotype.h"
+#include "core/cpc.h"
+#include "core/screen_text.h"
+#include "core/setup.h"
 #include "test_profiles.h"
 #include "core/cpc.h"
 #include "core/screen_text.h"
@@ -88,6 +92,34 @@ int main(int argc, char* argv[])
     if (systemCartridge.isEmpty()) {
         std::printf("the system cartridge was not found; skipping\n");
         return 77;
+    }
+
+    // Both Plus machines start on the system cartridge's menu, whose code
+    // the firmware calls in ROM 7 (&C072): the ASIC shows the cartridge's
+    // AMSDOS there on the 464 Plus too. F1 gives BASIC 1.1. The 464 Plus
+    // has no disc controller: AMSDOS finds none and CAT goes to the tape;
+    // the 6128 Plus asks for a disc.
+    for (const CpcModel model : {CpcModel::Plus464, CpcModel::Plus6128}) {
+        tuxape::Cpc cpc;
+        std::string error;
+        CHECK(tuxape::setupStockMachine(cpc, model, tuxape::defaultRomDir(), &error));
+        CHECK_EQ(cpc.discInterface(), model == CpcModel::Plus6128);
+        for (int f = 0; f < 300; ++f)
+            cpc.runFrame();
+        const std::string menu = tuxape::readScreenText(cpc);
+        CHECK(menu.find("f1 Amstrad BASIC") != std::string::npos);
+        CHECK(menu.find("f2 Burnin' Rubber") != std::string::npos);
+        tuxape::AutoType type(cpc.keyboard());
+        type.type("~F1~~PAUSE 100~CAT\n");
+        while (type.active()) {
+            type.frame();
+            cpc.runFrame();
+        }
+        for (int f = 0; f < 200; ++f)
+            cpc.runFrame();
+        const std::string basic = tuxape::readScreenText(cpc);
+        CHECK(basic.find("BASIC 1.1") != std::string::npos);
+        CHECK(basic.find(model == CpcModel::Plus464 ? "Press PLAY then any key" : "disc missing") != std::string::npos);
     }
 
     // The settings: WinAPE's keys, and its profiles.

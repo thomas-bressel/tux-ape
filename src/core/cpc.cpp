@@ -261,7 +261,7 @@ void Cpc::ioWrite(uint16_t port, uint8_t value)
         tape_.write(ppi_.outputC() & 0x20, microseconds());
     }
     // Disc interface: &FA7E is the motor latch, &FB7F the FDC's data port.
-    if (!(port & 0x0480)) {
+    if (!(port & 0x0480) && discInterface_) {
         if (!(port & 0x0100))
             fdc_.writeMotor(value, microseconds());
         else if (port & 1)
@@ -359,7 +359,7 @@ uint8_t Cpc::ioRead(uint16_t port)
     // When an address selects the PPI as well, it is the PPI that is read:
     // on a real 6128 port B reads the same at every address that selects
     // it, the disc interface's included.
-    if (!(port & 0x0480) && (port & 0x0100) && (port & 0x0800))
+    if (!(port & 0x0480) && (port & 0x0100) && (port & 0x0800) && discInterface_)
         value &= (port & 1) ? fdc_.readData(microseconds()) : fdc_.readStatus(microseconds());
     if (ide_ && (port & 0xFFF0) == 0xFD00) {
         if (port & 8)

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 project(TuxAPE
-    VERSION 1.1.3
+    VERSION 1.1.4
     DESCRIPTION "Cross-platform Amstrad CPC / Plus emulator modelled on WinAPE"
     LANGUAGES C CXX)
 
