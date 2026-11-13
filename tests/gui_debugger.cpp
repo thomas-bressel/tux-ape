@@ -153,6 +153,27 @@ int main(int argc, char* argv[])
         CHECK(lines[8].instruction == "INC B" && lines[8].address == 0x8010);
     }
 
+    // A breakpoint set by a click in the margin, the view away from the
+    // program counter and Follow PC on: the view stays where it is, the
+    // selection too.
+    {
+        auto* follow = debugger->findChild<QCheckBox*>("ckFollowPC");
+        CHECK(follow != nullptr);
+        if (follow)
+            follow->setChecked(true);
+        code->setTop(0x8008);
+        code->select(0x8008);
+        const auto shown = code->lines(2);
+        QTest::mouseClick(code->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(4, code->fontMetrics().height() / 2 + 1));
+        QApplication::processEvents();
+        CHECK(emulator.breakpoints() == std::set<uint16_t>{0x8008});
+        CHECK_EQ(code->top(), 0x8008);
+        CHECK_EQ(code->selected(), 0x8008);
+        QTest::mouseClick(code->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(4, code->fontMetrics().height() / 2 + 1));
+        CHECK(emulator.breakpoints().empty());
+        CHECK_EQ(code->top(), 0x8008);
+    }
+
     // ---- The program's symbols, loaded from a file ----
     {
         QFile file(folder.filePath("prog.sym"));

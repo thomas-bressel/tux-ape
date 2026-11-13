@@ -99,6 +99,12 @@ void DisassemblyView::setState(uint16_t pc, const std::set<uint16_t>& breakpoint
     viewport()->update();
 }
 
+void DisassemblyView::setBreakpoints(const std::set<uint16_t>& breakpoints)
+{
+    breakpoints_ = breakpoints;
+    viewport()->update();
+}
+
 void DisassemblyView::setTop(uint16_t address)
 {
     top_ = address;
@@ -1160,7 +1166,9 @@ void DebuggerDialog::toggleBreakpoint(uint16_t address)
     if (!breakpoints.erase(address))
         breakpoints.insert(address);
     emulator_->setBreakpoints(breakpoints);
-    refresh();
+    // Only the mark changes: a whole refresh would bring the view back to
+    // the program counter (Follow PC) while the line clicked is elsewhere.
+    disassembly_->setBreakpoints(breakpoints);
 }
 
 void DebuggerDialog::run()

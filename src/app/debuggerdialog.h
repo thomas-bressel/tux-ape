@@ -45,6 +45,8 @@ public:
 
     void setMemory(const DebugMemory* memory) { memory_ = memory; }
     void setState(uint16_t pc, const std::set<uint16_t>& breakpoints);
+    // The breakpoints' marks alone: nothing else moves.
+    void setBreakpoints(const std::set<uint16_t>& breakpoints);
     // The address of the first line, and of the line chosen.
     uint16_t top() const { return top_; }
     void setTop(uint16_t address);
