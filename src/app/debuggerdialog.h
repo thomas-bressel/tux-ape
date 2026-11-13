@@ -345,6 +345,8 @@ private:
     QGroupBox* dandanatorBox_ = nullptr;
     QLabel* dandanatorZones_ = nullptr;
     QLabel* dandanatorRegisters_ = nullptr;
+    QComboBox* dandanatorView_ = nullptr;     // with Any: what of the cartridge the panes show
+    QComboBox* dandanatorQuarter_ = nullptr;  // and where
     QCheckBox* followPc_;
     QCheckBox* hideOnRun_;
     QCheckBox* realTime_;

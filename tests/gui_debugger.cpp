@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QGroupBox>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDir>
 #include <QFile>
 #include <QFontMetrics>
@@ -531,6 +532,45 @@ int main(int argc, char* argv[])
             CHECK(zones->text().contains("Zone 0: slot 0 at &0000"));
             CHECK(zones->text().contains("Zone 1: slot 7 at &4000"));
             CHECK(registers->text().contains("Commands: enabled") && registers->text().contains("Waiting for RET: no"));
+            // With Any, any slot of its flash looked at where one likes, and
+            // changed there: the flash is, not the RAM beneath.
+            auto* look = debugger->findChild<QComboBox*>("cbDandanatorView");
+            auto* at = debugger->findChild<QComboBox*>("cbDandanatorAt");
+            CHECK(look && at);
+            if (look && at) {
+                emulator.withMachine([](tuxape::Cpc& cpc) {
+                    std::vector<uint8_t> flash(6 * 16384, 0xFF);
+                    flash[5 * 16384] = 0x3E;  // LD A,#42
+                    flash[5 * 16384 + 1] = 0x42;
+                    cpc.dandanator()->setFlash(flash);
+                    cpc.memory().write(0x4000, 0x00);
+                });
+                CHECK(!look->isEnabled());
+                debugger->setAnyView(true, false, 0, 0xC0);
+                CHECK(look->isEnabled() && !at->isEnabled());
+                look->setCurrentIndex(2 + 5);
+                emit look->activated(2 + 5);
+                at->setCurrentIndex(1);
+                emit at->activated(1);
+                CHECK(at->isEnabled());
+                code->setTop(0x4000);
+                CHECK(code->lines(1).front().instruction == "LD A,#42");
+                debugger->selectBlock(0x4000, 0x4000);
+                debugger->fillSelection(QByteArray(1, '\x3C'));
+                emulator.withMachine([](tuxape::Cpc& cpc) {
+                    CHECK_EQ(cpc.dandanator()->flash()[5 * 16384], 0x3C);
+                    CHECK(cpc.dandanator()->changed());
+                    CHECK_EQ(cpc.memory().readRam(0x4000), 0x00);
+                    // The machine's own view is left as it was: zone 1 shows
+                    // slot 7 there, erased.
+                    CHECK_EQ(cpc.memory().read(0x4000), 0xFF);
+                });
+                code->setTop(0x4000);
+                CHECK(code->lines(1).front().instruction == "INC A");
+                look->setCurrentIndex(0);
+                emit look->activated(0);
+                debugger->findChild<QRadioButton*>("rbWrite")->setChecked(true);
+            }
             emulator.withMachine([](tuxape::Cpc& cpc) { cpc.fitDandanator(false); });
             debugger->refresh();
             CHECK(box->isHidden());

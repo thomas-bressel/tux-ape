@@ -54,6 +54,12 @@ public:
     // Whether the machine has written to the flash since it was set.
     bool changed() const { return changed_; }
     void clearChanged() { changed_ = false; }
+    // A byte of the flash changed from outside the machine (the debugger).
+    void poke(uint32_t offset, uint8_t value)
+    {
+        flash_[offset % kSize] = value;
+        changed_ = true;
+    }
 
     Boot boot() const { return boot_; }
     void setBoot(Boot boot) { boot_ = boot; }

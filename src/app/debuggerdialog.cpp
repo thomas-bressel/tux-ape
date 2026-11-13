@@ -838,6 +838,28 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     dandanatorLayout->setSpacing(0);
     dandanatorLayout->addWidget(dandanatorZones_);
     dandanatorLayout->addWidget(dandanatorRegisters_);
+    // With Any, its flash looked through: any slot, at any of the four
+    // places, in front of the rest; or none of it, for what is beneath.
+    dandanatorView_ = new QComboBox;
+    dandanatorView_->setObjectName("cbDandanatorView");
+    dandanatorView_->addItem(tr("As the cartridge shows"));
+    dandanatorView_->addItem(tr("None of it"));
+    for (int slot = 0; slot < tuxape::Dandanator::kSlots; ++slot)
+        dandanatorView_->addItem(tr("Slot %1").arg(slot));
+    dandanatorQuarter_ = new QComboBox;
+    dandanatorQuarter_->setObjectName("cbDandanatorAt");
+    dandanatorQuarter_->addItems({"&0000", "&4000", "&8000", "&C000"});
+    auto* lookLayout = new QHBoxLayout;
+    lookLayout->addWidget(new QLabel(tr("Show (Any):")));
+    lookLayout->addWidget(dandanatorView_);
+    lookLayout->addWidget(new QLabel(tr("at")));
+    lookLayout->addWidget(dandanatorQuarter_);
+    lookLayout->addStretch(1);
+    dandanatorLayout->addLayout(lookLayout);
+    for (QComboBox* box : {dandanatorView_, dandanatorQuarter_}) {
+        box->setEnabled(false);
+        connect(box, &QComboBox::activated, this, &DebuggerDialog::viewChosen);
+    }
     dandanatorBox_->hide();
 
     connect(writeViewButton_, &QRadioButton::toggled, this, [this](bool write) {
@@ -1326,8 +1348,17 @@ void DebuggerDialog::writeBytes(int start, const QByteArray& bytes)
 {
     emulator_->withMachine([&](tuxape::Cpc& cpc) {
         const Mapping saved = applyView(cpc.memory());
-        for (qsizetype n = 0; n < bytes.size() && start + n < 0x10000; ++n)
-            cpc.memory().write(static_cast<uint16_t>(start + n), static_cast<uint8_t>(bytes[n]));
+        // In a slot of a Dandanator looked at with Any, the flash itself:
+        // it is kept in the cartridge's file, as the machine's writes are.
+        const int look = anyView_->isChecked() && cpc.dandanator() ? dandanatorView_->currentIndex() - 2 : -1;
+        for (qsizetype n = 0; n < bytes.size() && start + n < 0x10000; ++n) {
+            const auto address = static_cast<uint16_t>(start + n);
+            if (look >= 0 && address >> 14 == dandanatorQuarter_->currentIndex())
+                cpc.dandanator()->poke(static_cast<uint32_t>(look) * tuxape::Dandanator::kSlotSize + (address & 0x3FFF),
+                                       static_cast<uint8_t>(bytes[n]));
+            else
+                cpc.memory().write(address, static_cast<uint8_t>(bytes[n]));
+        }
         restoreView(cpc.memory(), saved);
     });
     viewChosen();
@@ -1350,6 +1381,9 @@ DebuggerDialog::Mapping DebuggerDialog::applyView(tuxape::Memory& memory) const
             view.rmr2 = static_cast<uint8_t>(romBase_->currentIndex() << 3 | cartridgeBank_->currentIndex());
         if (memory.cartridgeSlots() > 1)
             view.slot = static_cast<uint8_t>(std::max(0, cartridgeSlot_->currentIndex()));
+        const int look = dandanatorView_->currentIndex();
+        view.dandanatorSlot = static_cast<int8_t>(look <= 0 ? -1 : look == 1 ? -2 : look - 2);
+        view.dandanatorQuarter = static_cast<uint8_t>(std::max(0, dandanatorQuarter_->currentIndex()));
         memory.setMapping(view);
         // The bank as a program would ask for it, which finds the page.
         memory.selectRamBank(static_cast<uint8_t>(ramBank_->currentData().toUInt()), 0x7F);
@@ -1458,6 +1492,8 @@ void DebuggerDialog::showMapping(const Mapping& machine, const Fitted& fitted)
     }
 
     showDandanator(fitted.dandanator);
+    dandanatorView_->setEnabled(any);
+    dandanatorQuarter_->setEnabled(any && dandanatorView_->currentIndex() >= 2);
     romBox_->setEnabled(any);
     ramBox_->setEnabled(any);
     secondaryBox_->setEnabled(any && fitted.cartridge);

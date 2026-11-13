@@ -940,6 +940,26 @@
         <translation>Dandanator</translation>
     </message>
     <message>
+        <source>As the cartridge shows</source>
+        <translation>Comme la cartouche le montre</translation>
+    </message>
+    <message>
+        <source>None of it</source>
+        <translation>Rien de la cartouche</translation>
+    </message>
+    <message>
+        <source>Slot %1</source>
+        <translation>Slot %1</translation>
+    </message>
+    <message>
+        <source>Show (Any):</source>
+        <translation>Voir (Toute) :</translation>
+    </message>
+    <message>
+        <source>at</source>
+        <translation>en</translation>
+    </message>
+    <message>
         <source>Load Data</source>
         <translation>Charger des données</translation>
     </message>

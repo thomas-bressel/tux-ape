@@ -170,10 +170,15 @@ public:
         uint8_t rmr2 = 0;
         bool upperChosen = true;  // a cartridge's upper ROM, once one has been chosen
         uint8_t slot = 0;         // a large cartridge's slot
+        // The debugger's look at a Dandanator: -1 for what the cartridge
+        // shows, -2 for none of it, else that slot in that quarter.
+        int8_t dandanatorSlot = -1;
+        uint8_t dandanatorQuarter = 0;
     };
     Mapping mapping() const
     {
-        return {lowerEnabled_, upperEnabled_, upperSelected_, ramConfig_, ramPage_, rmr2_, upperChosen_, static_cast<uint8_t>(slot_)};
+        return {lowerEnabled_,  upperEnabled_, upperSelected_, ramConfig_,         ramPage_,
+                rmr2_,          upperChosen_,  static_cast<uint8_t>(slot_), dandanatorView_, dandanatorQuarter_};
     }
     void setMapping(const Mapping& mapping);
 
@@ -214,6 +219,8 @@ private:
     static constexpr int kSlotPages = 32;
     int slots_ = 1;
     int slot_ = 0;
+    int8_t dandanatorView_ = -1;  // see Mapping
+    uint8_t dandanatorQuarter_ = 0;
 
     void remap();
     void remapMachine();

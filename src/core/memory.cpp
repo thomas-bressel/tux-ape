@@ -277,6 +277,8 @@ void Memory::setMapping(const Mapping& mapping)
     ramPage_ = mapping.ramPage < pageOffset_.size() ? mapping.ramPage : 0;
     rmr2_ = mapping.rmr2 & 0x1F;
     slot_ = mapping.slot < slots_ ? mapping.slot : 0;
+    dandanatorView_ = mapping.dandanatorSlot;
+    dandanatorQuarter_ = mapping.dandanatorQuarter & 3;
     remap();
 }
 
@@ -285,10 +287,13 @@ void Memory::remap()
     remapMachine();
     // A Dandanator's slots are read in front of the machine's ROM and RAM,
     // the RAM still written.
-    if (dandanator_)
+    if (dandanator_ && dandanatorView_ == -1) [[likely]] {
         for (int quarter = 0; quarter < 4; ++quarter)
             if (const int slot = dandanator_->shownSlot(quarter, lowerEnabled_, upperEnabled_); slot >= 0)
                 readMap_[quarter] = dandanator_->slot(slot);
+    } else if (dandanator_ && dandanatorView_ >= 0) {
+        readMap_[dandanatorQuarter_] = dandanator_->slot(dandanatorView_);
+    }
     // The Multiface, paged in, is in front of everything in the first 16K.
     if (multifacePaged_)
         readMap_[0] = multiface_.data();
