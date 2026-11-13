@@ -2653,6 +2653,14 @@ qui est introuvable. La session est rejouée sans, et peut se dérouler autremen
         <translation>Cette cartouche fait %1 Ko : seuls ses 512 premiers Ko sont utilisés. « Cartouches de plus de 512 Ko », dans la page Mémoire des réglages, donne le reste.</translation>
     </message>
     <message>
+        <source>%1 is not there.</source>
+        <translation>%1 n&apos;existe pas.</translation>
+    </message>
+    <message>
+        <source>The four places of the expansion port are taken: take a card out in Settings &gt; Expansions.</source>
+        <translation>Les quatre emplacements du port d&apos;extension sont pris : retirez une carte dans Réglages &gt; Extensions.</translation>
+    </message>
+    <message>
         <source>Load Cartridge</source>
         <translation>Charger une cartouche</translation>
     </message>

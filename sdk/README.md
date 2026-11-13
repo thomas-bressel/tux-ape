@@ -27,7 +27,8 @@ d'une version à l'autre, `plugin.h` non.
   boutons dans le panneau du bas, les disquettes et les instantanés, le clavier
   du CPC, sa mémoire et son écran, l'assembleur, les tuiles choisies dans
   **Find Graphics**, les fichiers des disquettes des lecteurs, les autres
-  plugins chargés, et la langue des fenêtres de TuxAPE.
+  plugins chargés, la langue des fenêtres de TuxAPE, la machine enregistrée en
+  instantané et une cartouche Dandanator à brancher.
 
 Ce que TuxAPE a ajouté pour un plugin (entrées de menu, boutons) disparaît
 quand il est arrêté.

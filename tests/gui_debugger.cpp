@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QGroupBox>
 #include <QCheckBox>
+#include <QDir>
 #include <QFile>
 #include <QFontMetrics>
 #include <QFontMetricsF>
@@ -550,6 +551,27 @@ int main(int argc, char* argv[])
     debugger->findChild<QCheckBox*>("ckHideOnRun")->setChecked(false);
     run->trigger();
     CHECK(debugger->isVisible());
+
+    // What a plugin asks for (PluginHost::insertDandanator): a cartridge
+    // put in from its file, in a free place, and the machine started on it.
+    {
+        const QString path = folder.filePath("menu.des");
+        QFile cart(path);
+        QByteArray image(16384, '\0');
+        image[0] = char(0xF3);
+        image[1] = char(0x18);  // JR $
+        image[2] = char(0xFE);
+        CHECK(cart.open(QIODevice::WriteOnly) && cart.write(image) == image.size());
+        cart.close();
+        CHECK(!window.insertDandanatorFile(folder.filePath("none.des")).isEmpty());
+        CHECK(window.insertDandanatorFile(path).isEmpty());
+        CHECK(emulator.machine().hasCard(tuxape::Card::Dandanator));
+        CHECK(emulator.machine().dandanatorFile == QDir::toNativeSeparators(path).toStdString());
+        emulator.withMachine([](tuxape::Cpc& cpc) {
+            CHECK(cpc.dandanator() != nullptr);
+            CHECK_EQ(cpc.memory().read(0x0000), 0xF3);
+        });
+    }
 
     emulator.stop();
     return checkSummary("gui_debugger");

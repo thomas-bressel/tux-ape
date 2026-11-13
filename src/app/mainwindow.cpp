@@ -307,6 +307,9 @@ public:
 
     QString language() override { return currentLanguage(); }
 
+    bool saveSnapshot(const QString& path) override { return window_->saveSnapshotFile(path); }
+    QString insertDandanator(const QString& path) override { return window_->insertDandanatorFile(path); }
+
 private:
     MainWindow* window_;
     QString id_;
@@ -1885,6 +1888,30 @@ bool MainWindow::insertCartridgeFile(const QString& path)
     if (!settings_.save())
         report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
     return error.isEmpty();
+}
+
+QString MainWindow::insertDandanatorFile(const QString& path)
+{
+    using tuxape::Card;
+    if (!QFileInfo(path).isFile())
+        return tr("%1 is not there.").arg(QDir::toNativeSeparators(path));
+    Settings settings = settings_;
+    settings.machine = emulator_->machine();
+    if (!settings.machine.hasCard(Card::Dandanator)) {
+        const auto free = std::find(settings.machine.cards.begin(), settings.machine.cards.end(), Card::None);
+        if (free == settings.machine.cards.end())
+            return tr("The four places of the expansion port are taken: take a card out in Settings > Expansions.");
+        *free = Card::Dandanator;
+    }
+    settings.machine.dandanatorFile = QDir::toNativeSeparators(path).toStdString();
+    settings.machine.dandanatorBoot = tuxape::Dandanator::Boot::Cartridge;
+    const QString error = emulator_->setupMachine(settings.machine, true);
+    if (!error.isEmpty())
+        return error;
+    settings_ = settings;
+    if (!settings_.save())
+        report(tr("Cannot save the settings to %1.").arg(QDir::toNativeSeparators(Settings::file())));
+    return {};
 }
 
 void MainWindow::chooseCartridge()

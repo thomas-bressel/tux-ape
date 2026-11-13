@@ -43,7 +43,7 @@ L'archive à distribuer est alors dans `dist/`.
 |---|---|---|
 | Identifiant | `^[a-z0-9][a-z0-9_-]{0,31}$` : minuscules, chiffres, `-`, `_`, 32 au plus | à la compilation et au chargement |
 | Dossier | porte exactement l'identifiant | au chargement |
-| `api` du `plugin.json` | entre `kOldestPluginApi` et `kPluginApi` de `sdk/plugin.h` (aujourd'hui 1 à 4) | à la compilation et au chargement |
+| `api` du `plugin.json` | entre `kOldestPluginApi` et `kPluginApi` de `sdk/plugin.h` (aujourd'hui 1 à 5) | à la compilation et au chargement |
 | Bibliothèque | une pour l'ordinateur de l'utilisateur, dans le dossier du plugin | au chargement |
 | Interface | la bibliothèque déclare `org.tuxape.Plugin/1` | au chargement |
 | Qt | celui de TuxAPE (6.10) ou un Qt 6 plus ancien, jamais plus récent | à la compilation (Qt refuse sinon) |
@@ -166,6 +166,7 @@ faits pour une plus récente.
 | 2 | une entrée dans le menu des tuiles de Find Graphics, et les tuiles choisies |
 | 3 | les fichiers des disquettes des lecteurs, et ceux qu'on y pose ; les autres plugins chargés |
 | 4 | la langue des fenêtres de TuxAPE (`language()`), pour que le plugin parle la même |
+| 5 | la machine enregistrée en instantané (`saveSnapshot()`) ; une cartouche Dandanator branchée, la machine démarrée dessus (`insertDandanator()`) |
 
 Les règles :
 

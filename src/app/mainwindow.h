@@ -110,6 +110,10 @@ public:
     // was not one, and starts afresh, as one does when its cartridge is
     // changed.
     bool insertCartridgeFile(const QString& path);
+    // Puts a Dandanator cartridge (a .des or .rom file) in the expansion
+    // port, in a free place if it has none there, and starts the machine on
+    // it. An empty string if done; else why not.
+    QString insertDandanatorFile(const QString& path);
     // The file of the program in the machine: of the discs in the drives,
     // the tape in the deck and the cartridge of a Plus, the one put in
     // last; if that one has gone, a disc before a tape, a tape before a

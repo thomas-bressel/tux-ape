@@ -32,7 +32,8 @@ namespace tuxape {
 //   3   the discs in the drives: their files, and files put on them; the
 //       other plugins loaded, for what they offer one another
 //   4   the language of TuxAPE's windows, for a plugin to speak it too
-constexpr int kPluginApi = 4;
+//   5   the machine saved as a snapshot; a Dandanator cartridge put in
+constexpr int kPluginApi = 5;
 constexpr int kOldestPluginApi = 1;
 
 // The structures that follow go between TuxAPE and a plugin as they are,
@@ -180,6 +181,25 @@ public:
     // and takes it away in stop(). The language does not change while a
     // plugin is loaded: TuxAPE starts again to change it.
     virtual QString language() { return QStringLiteral("en"); }
+
+    // ---- Since version 5 ----
+
+    // Writes the machine as it is now to a snapshot file (version 3, of the
+    // model it is). False if it could not: the user is told why.
+    virtual bool saveSnapshot(const QString& path)
+    {
+        Q_UNUSED(path);
+        return false;
+    }
+    // Puts a Dandanator cartridge in the expansion port, its flash read from
+    // a file (512K, or less and the rest erased), and starts the machine on
+    // its slot 0, as Settings > Expansions would; the settings keep it. An
+    // empty string if it is done; else why not, for the plugin to tell.
+    virtual QString insertDandanator(const QString& path)
+    {
+        Q_UNUSED(path);
+        return QStringLiteral("This version of TuxAPE has no Dandanator.");
+    }
 
 protected:
     ~PluginHost() = default;
