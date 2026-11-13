@@ -22,6 +22,7 @@
 #include "core/psg.h"
 #include "core/tape.h"
 #include "core/xmem.h"
+#include "core/dandanator.h"
 #include "core/z80.h"
 
 namespace tuxape {
@@ -218,6 +219,11 @@ public:
     void fitXmem(bool fitted, const std::string& file = {});
     Xmem* xmem() { return xmem_.get(); }
     const std::string& xmemFile() const { return xmemFile_; }
+    // A Dandanator cartridge (see dandanator.h): put in, its flash erased,
+    // or taken out. Null without one. `file` is where its flash is kept.
+    void fitDandanator(bool fitted, const std::string& file = {});
+    Dandanator* dandanator() { return dandanator_.get(); }
+    const std::string& dandanatorFile() const { return dandanatorFile_; }
     // An X-MASS card (see ide.h): an IDE disc that is a file, put in or,
     // without a file's name, taken out. Null without one.
     void fitIde(const std::string& file);
@@ -301,6 +307,10 @@ public:
         waitForGateArray();
         advance(1);
         const uint8_t v = memory_.read(addr);
+        // A Dandanator listens to every opcode fetched.
+        if (dandanator_) [[unlikely]]
+            if (dandanator_->fetched(v))
+                memory_.dandanatorChanged();
         advance(2);
         return v;
     }
@@ -491,6 +501,8 @@ private:
     TapeDeck tape_;
     Asic asic_;
     std::unique_ptr<Xmem> xmem_;
+    std::unique_ptr<Dandanator> dandanator_;
+    std::string dandanatorFile_;
     std::string xmemFile_;
     std::unique_ptr<IdeDisc> ide_;
     bool plus_ = false;

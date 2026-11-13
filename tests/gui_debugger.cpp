@@ -9,6 +9,8 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QLabel>
+#include <QGroupBox>
 #include <QCheckBox>
 #include <QFile>
 #include <QFontMetrics>
@@ -285,7 +287,9 @@ int main(int argc, char* argv[])
     // ... and over it: the machine runs to the instruction after.
     overButton->click();
     CHECK(stopsAt(0x8005));
-    CHECK(debugger->registerText("BC").startsWith("12"));
+    // The window hears of the pause by a queued signal: on a busy machine,
+    // a moment later.
+    CHECK(QTest::qWaitFor([&] { return debugger->registerText("BC").startsWith("12"); }, 5000));
     CHECK(debugger->isVisible());
     // An instruction that is not a call is stepped over as it is stepped.
     debugger->stepOver();
@@ -504,6 +508,33 @@ int main(int argc, char* argv[])
     debugger->findChild<QRadioButton*>("rbWrite")->setChecked(true);
     code->setTop(0x0100);
     CHECK(code->lines(1).front().instruction == "INC A");
+
+    // A Dandanator: its box, there only with one, says where its zones are
+    // and what its CPLD holds.
+    {
+        auto* box = debugger->findChild<QGroupBox*>("grpDandanator");
+        auto* zones = debugger->findChild<QLabel*>("lDandanatorZones");
+        auto* registers = debugger->findChild<QLabel*>("lDandanatorRegisters");
+        CHECK(box && zones && registers);
+        if (box && zones && registers) {
+            CHECK(box->isHidden());
+            emulator.withMachine([](tuxape::Cpc& cpc) {
+                cpc.fitDandanator(true);
+                cpc.dandanator()->reset();
+                for (uint8_t opcode : {0xFD, 0xFD, 0xFD, 0x71})
+                    cpc.dandanator()->fetched(opcode);
+                cpc.dandanator()->written(0x8000, 0x07);
+            });
+            debugger->refresh();
+            CHECK(!box->isHidden());
+            CHECK(zones->text().contains("Zone 0: slot 0 at &0000"));
+            CHECK(zones->text().contains("Zone 1: slot 7 at &4000"));
+            CHECK(registers->text().contains("Commands: enabled") && registers->text().contains("Waiting for RET: no"));
+            emulator.withMachine([](tuxape::Cpc& cpc) { cpc.fitDandanator(false); });
+            debugger->refresh();
+            CHECK(box->isHidden());
+        }
+    }
 
     // Run from the debugger's own key hides it, if it is set to; pausing
     // leaves it hidden, and F7's entry brings it back.

@@ -228,6 +228,20 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
     if (xmem)
         cpc.xmem()->setSwitches(config.xmem);
     const uint8_t cardBanks = xmem ? cpc.xmem()->ramBanks() : 0;
+    // The Dandanator the same way: its flash read from its file when it is
+    // put in or given another, kept in the one it had before.
+    const bool dandanator = config.hasCard(Card::Dandanator);
+    if (cpc.dandanator() && (!dandanator || cpc.dandanatorFile() != config.dandanatorFile))
+        saveCards(cpc);
+    if (dandanator && (!cpc.dandanator() || cpc.dandanatorFile() != config.dandanatorFile)) {
+        cpc.fitDandanator(true, config.dandanatorFile);
+        const auto flash = config.dandanatorFile.empty() ? std::nullopt : readFile(config.dandanatorFile);
+        cpc.dandanator()->setFlash(flash ? std::span<const uint8_t>(*flash) : std::span<const uint8_t>());
+    } else if (!dandanator) {
+        cpc.fitDandanator(false);
+    }
+    if (dandanator)
+        cpc.dandanator()->setBoot(config.dandanatorBoot);
     cpc.fitIde(config.hasCard(Card::Xmass) ? config.xmassDisc : std::string());
 
     Memory& memory = cpc.memory();
@@ -281,17 +295,28 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
 
 bool saveCards(Cpc& cpc)
 {
-    Xmem* xmem = cpc.xmem();
-    if (!xmem || !xmem->changed() || cpc.xmemFile().empty())
-        return true;
-    std::error_code ignored;
-    const std::filesystem::path file(cpc.xmemFile());
-    if (file.has_parent_path())
-        std::filesystem::create_directories(file.parent_path(), ignored);
-    if (!writeFile(file, xmem->flash()))
-        return false;
-    xmem->clearChanged();
-    return true;
+    const auto keep = [](const std::string& name, std::span<const uint8_t> flash) {
+        std::error_code ignored;
+        const std::filesystem::path file(name);
+        if (file.has_parent_path())
+            std::filesystem::create_directories(file.parent_path(), ignored);
+        return writeFile(file, flash);
+    };
+    bool ok = true;
+    if (Xmem* xmem = cpc.xmem(); xmem && xmem->changed() && !cpc.xmemFile().empty()) {
+        if (keep(cpc.xmemFile(), xmem->flash()))
+            xmem->clearChanged();
+        else
+            ok = false;
+    }
+    // A Dandanator's flash written by the machine (a romset's own writer).
+    if (Dandanator* cart = cpc.dandanator(); cart && cart->changed() && !cpc.dandanatorFile().empty()) {
+        if (keep(cpc.dandanatorFile(), cart->flash()))
+            cart->clearChanged();
+        else
+            ok = false;
+    }
+    return ok;
 }
 
 bool setupStockMachine(Cpc& cpc, CpcModel model, const std::filesystem::path& romDir, std::string* error)

@@ -12,6 +12,7 @@
 #include <QDialog>
 #include <QStringList>
 
+#include "core/dandanator.h"
 #include "core/disasm.h"
 #include "core/memory.h"
 #include "core/symbols.h"
@@ -341,6 +342,9 @@ private:
     QComboBox* cartridgeBank_;
     QLabel* slotLabel_ = nullptr;
     QComboBox* cartridgeSlot_ = nullptr;
+    QGroupBox* dandanatorBox_ = nullptr;
+    QLabel* dandanatorZones_ = nullptr;
+    QLabel* dandanatorRegisters_ = nullptr;
     QCheckBox* followPc_;
     QCheckBox* hideOnRun_;
     QCheckBox* realTime_;
@@ -374,8 +378,10 @@ private:
         std::array<bool, tuxape::Memory::kRomSlots> present = {};
         bool cartridge = false, discRom = false;
         int cartridgeSlots = 1;  // a cartridge over 512K: its slots of 32 banks
+        std::optional<tuxape::Dandanator::State> dandanator;
     };
     void showMapping(const Mapping& machine, const Fitted& fitted);
+    void showDandanator(const std::optional<tuxape::Dandanator::State>& state);
     QByteArray selectedBytes() const;
     void writeBytes(int start, const QByteArray& bytes);
 };

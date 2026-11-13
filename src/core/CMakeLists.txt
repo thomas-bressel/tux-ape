@@ -32,6 +32,7 @@ add_library(tuxape_core STATIC
     version.cpp
     winape_session.cpp
     xmem.cpp
+    dandanator.cpp
     zip.cpp
 )
 

@@ -2,6 +2,7 @@
 
 #include "core/asic.h"
 #include "core/xmem.h"
+#include "core/dandanator.h"
 
 #include <algorithm>
 
@@ -167,6 +168,18 @@ void Memory::setXmem(Xmem* xmem)
     remap();
 }
 
+void Memory::setDandanator(Dandanator* dandanator)
+{
+    dandanator_ = dandanator;
+    remap();
+}
+
+void Memory::writeDandanator(uint16_t addr, uint8_t value)
+{
+    if (dandanator_->written(addr, value))
+        remap();
+}
+
 void Memory::writeFlash(uint16_t addr, uint8_t value)
 {
     if (xmem_->write(upperSelected_, addr & 0x3FFF, value))
@@ -270,6 +283,12 @@ void Memory::setMapping(const Mapping& mapping)
 void Memory::remap()
 {
     remapMachine();
+    // A Dandanator's slots are read in front of the machine's ROM and RAM,
+    // the RAM still written.
+    if (dandanator_)
+        for (int quarter = 0; quarter < 4; ++quarter)
+            if (const int slot = dandanator_->shownSlot(quarter, lowerEnabled_, upperEnabled_); slot >= 0)
+                readMap_[quarter] = dandanator_->slot(slot);
     // The Multiface, paged in, is in front of everything in the first 16K.
     if (multifacePaged_)
         readMap_[0] = multiface_.data();

@@ -124,6 +124,14 @@ public:
     // The file that is the X-MASS's disc.
     QString xmassDisc() const { return xmassDisc_; }
     void setXmassDisc(const QString& file);
+    // The Dandanator's cartridge (a .des or .rom file), and what the machine
+    // starts on, as its two buttons say.
+    QString dandanatorFile() const { return dandanatorFile_; }
+    void setDandanatorFile(const QString& file);
+    tuxape::Dandanator::Boot dandanatorBoot() const;
+    void setDandanatorBoot(tuxape::Dandanator::Boot boot);
+    // A line for each of its 32 slots: empty, a ROM's name, or in use.
+    QStringList dandanatorSlots() const;
 
     // The Plugins page: the plugins of the plugins folder, each with a box
     // to tick for it to be loaded, and the buttons that install one from
@@ -313,6 +321,12 @@ private:
     QGroupBox* xmassBox_ = nullptr;
     QLabel* xmassFile_ = nullptr;
     QString xmassDisc_;
+    void chooseDandanatorFile();
+    void showDandanatorSlots();
+    QGroupBox* dandanatorBox_ = nullptr;
+    QLabel* dandanatorLabel_ = nullptr;
+    QString dandanatorFile_;
+    QRadioButton* dandanatorBoot_[3] = {};
 };
 
 // The DMP2000's settings (Settings, Other, Printer, "DMP2000..."): its

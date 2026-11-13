@@ -821,6 +821,24 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
         box->layout()->setContentsMargins(6, 2, 6, 4);
         box->setEnabled(false);
     }
+    // A Dandanator cartridge (see dandanator.h): its two zones, the slot
+    // each shows and where, and what its CPLD holds besides. Only there with
+    // one; what it shows is read in the memory above as the machine reads it.
+    dandanatorBox_ = new QGroupBox(tr("Dandanator"));
+    dandanatorBox_->setObjectName("grpDandanator");
+    dandanatorZones_ = new QLabel;
+    dandanatorZones_->setObjectName("lDandanatorZones");
+    dandanatorRegisters_ = new QLabel;
+    dandanatorRegisters_->setObjectName("lDandanatorRegisters");
+    for (QLabel* label : {dandanatorZones_, dandanatorRegisters_})
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    dandanatorRegisters_->setWordWrap(true);  // not to widen the window
+    auto* dandanatorLayout = new QVBoxLayout(dandanatorBox_);
+    dandanatorLayout->setContentsMargins(6, 2, 6, 4);
+    dandanatorLayout->setSpacing(0);
+    dandanatorLayout->addWidget(dandanatorZones_);
+    dandanatorLayout->addWidget(dandanatorRegisters_);
+    dandanatorBox_->hide();
 
     connect(writeViewButton_, &QRadioButton::toggled, this, [this](bool write) {
         writeView_ = write;
@@ -902,6 +920,7 @@ DebuggerDialog::DebuggerDialog(Emulator* emulator, QWidget* parent)
     selection->addWidget(romBox_, 0, 1);
     selection->addWidget(ramBox_, 0, 2);
     selection->addWidget(secondaryBox_, 1, 1, 1, 2);
+    selection->addWidget(dandanatorBox_, 2, 0, 1, 3);
     auto* files = new QVBoxLayout;
     files->setSpacing(0);
     for (QToolButton* made : {load, save, goTo})
@@ -998,6 +1017,8 @@ void DebuggerDialog::refresh()
         fitted.cartridge = memory.hasCartridge();
         fitted.discRom = memory.cartridgeDiscRom();
         fitted.cartridgeSlots = memory.cartridgeSlots();
+        if (const tuxape::Dandanator* dandanator = cpc.dandanator())
+            fitted.dandanator = dandanator->state();
         const Mapping saved = applyView(memory);
         machine = saved;
         for (int address = 0; address < 0x10000; ++address)
@@ -1360,6 +1381,31 @@ void DebuggerDialog::viewChosen()
     emit memoryViewChanged();
 }
 
+// The Dandanator's two zones and its registers, as ACE-DL shows them.
+void DebuggerDialog::showDandanator(const std::optional<tuxape::Dandanator::State>& state)
+{
+    dandanatorBox_->setVisible(state.has_value());
+    if (!state)
+        return;
+    const auto zone = [&](int number) {
+        const int base = (number + (state->high[number] ? 2 : 0)) * 0x4000;
+        QString text = tr("Zone %1: slot %2 at %3").arg(number).arg(state->slot[number]).arg("&" + hex(static_cast<unsigned>(base), 4));
+        if (!state->shown[number])
+            text = tr("Zone %1: hidden (slot %2 at %3)").arg(number).arg(state->slot[number]).arg("&" + hex(static_cast<unsigned>(base), 4));
+        return text;
+    };
+    const auto onOff = [this](bool on) { return on ? tr("on") : tr("off"); };
+    dandanatorZones_->setText(zone(0) + "   " + zone(1));
+    QStringList registers;
+    registers << tr("Commands: %1").arg(state->commandsOff ? tr("disabled") : tr("enabled"));
+    registers << tr("Follow ROM: %1 (slot %2)").arg(onOff(state->followRom)).arg(state->followSlot);
+    registers << tr("Waiting for RET: %1").arg(state->waitingRet ? tr("yes") : tr("no"));
+    registers << tr("Flash writes: %1").arg(onOff(state->flashWrites));
+    registers << tr("Serial in: %1").arg(state->serialIn ? 1 : 0);
+    registers << tr("USB out: %1").arg(state->serialOut ? 1 : 0);
+    dandanatorRegisters_->setText(registers.join("   "));
+}
+
 // The three boxes: the machine's own mapping while its memory is shown as
 // it reads or writes it, and the user's to choose with Any. The list of
 // upper ROMs follows what is fitted.
@@ -1411,6 +1457,7 @@ void DebuggerDialog::showMapping(const Mapping& machine, const Fitted& fitted)
         upperRom_->setCurrentIndex(qMax(0, upperRom_->findData(chosen)));
     }
 
+    showDandanator(fitted.dandanator);
     romBox_->setEnabled(any);
     ramBox_->setEnabled(any);
     secondaryBox_->setEnabled(any && fitted.cartridge);

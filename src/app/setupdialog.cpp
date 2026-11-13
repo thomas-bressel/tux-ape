@@ -1802,6 +1802,8 @@ void SetupDialog::setSettings(const Settings& settings)
     setXmemSwitches(machine.xmem);
     setXmemFlash(QString::fromStdString(machine.xmemFlash));
     setXmassDisc(QString::fromStdString(machine.xmassDisc));
+    setDandanatorFile(QString::fromStdString(machine.dandanatorFile));
+    setDandanatorBoot(machine.dandanatorBoot);
     updateCards();
     updateTotalRam();
     updateRomRows();
@@ -2091,6 +2093,8 @@ Settings SetupDialog::settings() const
     machine.xmem = xmemSwitches();
     machine.xmemFlash = xmemFlash_.toStdString();
     machine.xmassDisc = xmassDisc_.toStdString();
+    machine.dandanatorFile = dandanatorFile_.toStdString();
+    machine.dandanatorBoot = dandanatorBoot();
 
     settings.monitorType = chosenMonitor();
     settings.verticalHold = verticalHold_->value();
@@ -2171,6 +2175,8 @@ QWidget* SetupDialog::createExpansionsPage()
         box->addItem(tr("(Empty)"), static_cast<int>(tuxape::Card::None));
         box->addItem(tr("X-MEM - 512K RAM, 32 ROMs in flash memory"), static_cast<int>(tuxape::Card::Xmem));
         box->addItem(tr("X-MASS - IDE interface, disc of 512 MB"), static_cast<int>(tuxape::Card::Xmass));
+        box->addItem(tr("Dandanator - cartridge of 512K, 32 slots in flash memory"),
+                     static_cast<int>(tuxape::Card::Dandanator));
         cards_[place] = box;
         places->addWidget(new QLabel(tr("Slot %1:").arg(place + 1)), place, 0);
         places->addWidget(box, place, 1);
@@ -2275,10 +2281,52 @@ QWidget* SetupDialog::createExpansionsPage()
     xmassLayout->addLayout(disc);
     xmassLayout->addWidget(aboutDisc);
 
+    // The Dandanator: its cartridge is a file, and its two buttons, held as
+    // the machine starts, are a choice of three.
+    dandanatorBox_ = new QGroupBox(tr("Dandanator"));
+    dandanatorBox_->setObjectName("gbDandanator");
+    dandanatorLabel_ = new QLabel;
+    dandanatorLabel_->setObjectName("lDandanatorFile");
+    dandanatorLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    auto* chooseCartridge = new QPushButton(tr("Select File..."));
+    chooseCartridge->setObjectName("bDandanatorFile");
+    connect(chooseCartridge, &QPushButton::clicked, this, &SetupDialog::chooseDandanatorFile);
+    auto* showSlots = new QPushButton(tr("Slots..."));
+    showSlots->setObjectName("bDandanatorSlots");
+    showSlots->setToolTip(tr("What the cartridge's flash memory holds"));
+    connect(showSlots, &QPushButton::clicked, this, &SetupDialog::showDandanatorSlots);
+    auto* cartridge = new QHBoxLayout;
+    cartridge->addWidget(new QLabel(tr("Cartridge:")));
+    cartridge->addWidget(dandanatorLabel_, 1);
+    cartridge->addWidget(showSlots);
+    cartridge->addWidget(chooseCartridge);
+    auto* boots = new QHBoxLayout;
+    boots->addWidget(new QLabel(tr("Start on:")));
+    const char* bootNames[3] = {"rbDandanatorSlot0", "rbDandanatorSlot31", "rbDandanatorMachine"};
+    const QString bootTexts[3] = {tr("Slot 0"), tr("Slot 31 (left button)"), tr("The machine's ROMs (middle button)")};
+    for (int i = 0; i < 3; ++i) {
+        dandanatorBoot_[i] = new QRadioButton(bootTexts[i]);
+        dandanatorBoot_[i]->setObjectName(bootNames[i]);
+        boots->addWidget(dandanatorBoot_[i]);
+    }
+    dandanatorBoot_[0]->setChecked(true);
+    boots->addStretch(1);
+    auto* aboutCartridge = new QLabel(
+        tr("A cartridge of 512K of flash memory in 32 slots of 16K, a .des or .rom file. Its slots are shown in "
+           "place of the machine's memory when a program asks, by Z80 instructions the cartridge watches for; the "
+           "machine's ROM numbers are not used. The machine starts on its slot 0, or on its slot 31 or its own "
+           "ROMs with a button held. What the machine writes to the flash is kept in the file."));
+    aboutCartridge->setWordWrap(true);
+    auto* dandanatorLayout = new QVBoxLayout(dandanatorBox_);
+    dandanatorLayout->addLayout(cartridge);
+    dandanatorLayout->addLayout(boots);
+    dandanatorLayout->addWidget(aboutCartridge);
+
     auto* layout = new QVBoxLayout(page);
     layout->addWidget(board);
     layout->addWidget(xmemBox_);
     layout->addWidget(xmassBox_);
+    layout->addWidget(dandanatorBox_);
     layout->addStretch(1);
     return page;
 }
@@ -2511,6 +2559,83 @@ void SetupDialog::showXmemRoms()
     window.exec();
 }
 
+void SetupDialog::setDandanatorFile(const QString& file)
+{
+    dandanatorFile_ = file;
+    dandanatorLabel_->setText(file.isEmpty() ? tr("(no cartridge)") : QDir::toNativeSeparators(file));
+    dandanatorLabel_->setToolTip(QDir::toNativeSeparators(file));
+}
+
+tuxape::Dandanator::Boot SetupDialog::dandanatorBoot() const
+{
+    if (dandanatorBoot_[1]->isChecked())
+        return tuxape::Dandanator::Boot::Slot31;
+    if (dandanatorBoot_[2]->isChecked())
+        return tuxape::Dandanator::Boot::Machine;
+    return tuxape::Dandanator::Boot::Cartridge;
+}
+
+void SetupDialog::setDandanatorBoot(tuxape::Dandanator::Boot boot)
+{
+    dandanatorBoot_[static_cast<int>(boot)]->setChecked(true);
+}
+
+QStringList SetupDialog::dandanatorSlots() const
+{
+    std::vector<uint8_t> flash(tuxape::Dandanator::kSize, 0xFF);
+    if (const auto file = tuxape::readFile(dandanatorFile_.toStdString()))
+        std::copy_n(file->begin(), std::min(file->size(), flash.size()), flash.begin());
+    QStringList lines;
+    for (int slot = 0; slot < tuxape::Dandanator::kSlots; ++slot) {
+        const std::span<const uint8_t> page = std::span<const uint8_t>(flash).subspan(
+            static_cast<size_t>(slot) * tuxape::Dandanator::kSlotSize, tuxape::Dandanator::kSlotSize);
+        QString what;
+        if (std::all_of(page.begin(), page.end(), [](uint8_t b) { return b == 0xFF; })) {
+            what = tr("(empty)");
+        } else {
+            // A ROM's header, when the slot holds one; else its first bytes
+            // are a program or data only the cartridge's own code knows.
+            const tuxape::Xmem::RomInfo info = tuxape::Xmem::romInfo(page);
+            what = info.present && !info.firmware && !info.name.empty()
+                       ? tr("ROM %1").arg(QString::fromStdString(info.name).trimmed())
+                       : tr("in use");
+        }
+        lines << tr("Slot %1: %2").arg(slot, 2).arg(what);
+    }
+    return lines;
+}
+
+void SetupDialog::chooseDandanatorFile()
+{
+    const QString file = QFileDialog::getOpenFileName(this, tr("Dandanator Cartridge"),
+                                                      dandanatorFile_.isEmpty() ? QString() : QFileInfo(dandanatorFile_).absolutePath(),
+                                                      tr("Dandanator cartridges (*.des *.rom *.bin);;All files (*)"));
+    if (!file.isEmpty())
+        setDandanatorFile(file);
+}
+
+void SetupDialog::showDandanatorSlots()
+{
+    QDialog window(this);
+    window.setObjectName("DandanatorSlots");
+    window.setWindowTitle(tr("Dandanator Slots"));
+    auto* list = new QListWidget;
+    list->setObjectName("lbDandanatorSlots");
+    list->addItems(dandanatorSlots());
+    auto* about = new QLabel(tr("The 32 slots of 16K of the cartridge's flash memory. The machine sees one in place of "
+                                "its memory when a program asks for it, in one of two zones: zone 0 at &0000 or "
+                                "&8000, zone 1 at &4000 or &C000. The debugger shows which are in place."));
+    about->setWordWrap(true);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(buttons, &QDialogButtonBox::rejected, &window, &QDialog::reject);
+    auto* layout = new QVBoxLayout(&window);
+    layout->addWidget(about);
+    layout->addWidget(list, 1);
+    layout->addWidget(buttons);
+    window.resize(420, 560);
+    window.exec();
+}
+
 void SetupDialog::setXmassDisc(const QString& file)
 {
     xmassDisc_ = file;
@@ -2546,6 +2671,10 @@ void SetupDialog::updateCards()
         setXmemFlash(Settings::xmemFlashFile());
     // And an X-MASS its disc.
     xmassBox_->setEnabled(xmass);
+    bool dandanator = false;
+    for (int place = 0; place < tuxape::kCardPlaces; ++place)
+        dandanator = dandanator || card(place) == tuxape::Card::Dandanator;
+    dandanatorBox_->setEnabled(dandanator);
     if (xmass && xmassDisc_.isEmpty())
         setXmassDisc(Settings::xmassDiscFile());
     updateTotalRam();

@@ -11,6 +11,7 @@
 
 #include "core/keytables.h"
 #include "core/memory.h"
+#include "core/dandanator.h"
 #include "core/xmem.h"
 
 namespace tuxape {
@@ -26,6 +27,7 @@ enum class Card : uint8_t {
     None,
     Xmem,   // ACME's X-MEM: 512K of RAM and 32 ROMs in flash memory (see xmem.h)
     Xmass,  // ACME's X-MASS: an IDE disc of 512 MB (see ide.h)
+    Dandanator,  // the CPC Dandanator mini: 512K of flash in 32 slots (see dandanator.h)
 };
 constexpr int kCardPlaces = 4;
 
@@ -69,6 +71,10 @@ struct MachineConfig {
     // The file that is the X-MASS's disc. Without a name the card has no
     // disc, and is as good as out.
     std::string xmassDisc;
+    // The file the Dandanator's flash is kept in (.des, .rom: 512K as in the
+    // chip), and what the machine starts on, as its two buttons say.
+    std::string dandanatorFile;
+    Dandanator::Boot dandanatorBoot = Dandanator::Boot::Cartridge;
 
     bool operator==(const MachineConfig&) const = default;
 };

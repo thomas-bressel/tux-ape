@@ -936,6 +936,10 @@
         <translation>Slot :</translation>
     </message>
     <message>
+        <source>Dandanator</source>
+        <translation>Dandanator</translation>
+    </message>
+    <message>
         <source>Load Data</source>
         <translation>Charger des données</translation>
     </message>
@@ -1078,6 +1082,62 @@
     <message>
         <source>Cannot write %1.</source>
         <translation>Impossible d&apos;écrire %1.</translation>
+    </message>
+    <message>
+        <source>Zone %1: slot %2 at %3</source>
+        <translation>Zone %1 : slot %2 en %3</translation>
+    </message>
+    <message>
+        <source>Zone %1: hidden (slot %2 at %3)</source>
+        <translation>Zone %1 : cachée (slot %2 en %3)</translation>
+    </message>
+    <message>
+        <source>on</source>
+        <translation>oui</translation>
+    </message>
+    <message>
+        <source>off</source>
+        <translation>non</translation>
+    </message>
+    <message>
+        <source>Commands: %1</source>
+        <translation>Commandes : %1</translation>
+    </message>
+    <message>
+        <source>disabled</source>
+        <translation>désactivées</translation>
+    </message>
+    <message>
+        <source>enabled</source>
+        <translation>actives</translation>
+    </message>
+    <message>
+        <source>Follow ROM: %1 (slot %2)</source>
+        <translation>Suit la ROM : %1 (slot %2)</translation>
+    </message>
+    <message>
+        <source>Waiting for RET: %1</source>
+        <translation>Attend un RET : %1</translation>
+    </message>
+    <message>
+        <source>yes</source>
+        <translation>oui</translation>
+    </message>
+    <message>
+        <source>no</source>
+        <translation>non</translation>
+    </message>
+    <message>
+        <source>Flash writes: %1</source>
+        <translation>Écriture flash : %1</translation>
+    </message>
+    <message>
+        <source>Serial in: %1</source>
+        <translation>Entrée série : %1</translation>
+    </message>
+    <message>
+        <source>USB out: %1</source>
+        <translation>Sortie USB : %1</translation>
     </message>
     <message>
         <source>%1 (banks %2-%3)</source>
@@ -2045,10 +2105,6 @@
     <message>
         <source>There is no room for %1 on the disc in drive %2:.</source>
         <translation>Il n&apos;y a pas de place pour %1 sur la disquette du lecteur %2:.</translation>
-    </message>
-    <message>
-        <source>TuxAPE</source>
-        <translation>TuxAPE</translation>
     </message>
     <message>
         <source>Cannot save the settings to %1.</source>
@@ -4015,6 +4071,10 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>X-MASS - interface IDE, disque de 512 Mo</translation>
     </message>
     <message>
+        <source>Dandanator - cartridge of 512K, 32 slots in flash memory</source>
+        <translation>Dandanator - cartouche de 512K, 32 slots en mémoire flash</translation>
+    </message>
+    <message>
         <source>Slot %1:</source>
         <translation>Emplacement %1 :</translation>
     </message>
@@ -4111,6 +4171,42 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Un disque IDE aux adresses de la SYMBiFACE II (&amp;FD06-&amp;FD0F). Le fichier grandit à mesure que le disque est écrit ; il devient un volume FAT depuis la machine, par le FORMAT de la disquette de la X-MASS, et se lit ensuite sur un PC. La machine a besoin d&apos;un DOS qui connaît un tel disque, en ROM : CubeMDOS, JarvisOS ou UniDOS, dans la X-MEM ou dans la page Mémoire.</translation>
     </message>
     <message>
+        <source>Dandanator</source>
+        <translation>Dandanator</translation>
+    </message>
+    <message>
+        <source>Slots...</source>
+        <translation>Slots...</translation>
+    </message>
+    <message>
+        <source>What the cartridge&apos;s flash memory holds</source>
+        <translation>Ce que contient la mémoire flash de la cartouche</translation>
+    </message>
+    <message>
+        <source>Cartridge:</source>
+        <translation>Cartouche :</translation>
+    </message>
+    <message>
+        <source>Start on:</source>
+        <translation>Démarrer sur :</translation>
+    </message>
+    <message>
+        <source>Slot 0</source>
+        <translation>Slot 0</translation>
+    </message>
+    <message>
+        <source>Slot 31 (left button)</source>
+        <translation>Slot 31 (bouton gauche)</translation>
+    </message>
+    <message>
+        <source>The machine&apos;s ROMs (middle button)</source>
+        <translation>Les ROM de la machine (bouton du milieu)</translation>
+    </message>
+    <message>
+        <source>A cartridge of 512K of flash memory in 32 slots of 16K, a .des or .rom file. Its slots are shown in place of the machine&apos;s memory when a program asks, by Z80 instructions the cartridge watches for; the machine&apos;s ROM numbers are not used. The machine starts on its slot 0, or on its slot 31 or its own ROMs with a button held. What the machine writes to the flash is kept in the file.</source>
+        <translation>Une cartouche de 512K de mémoire flash en 32 slots de 16K, un fichier .des ou .rom. Ses slots prennent la place de la mémoire de la machine quand un programme le demande, par des instructions Z80 que la cartouche guette ; les numéros de ROM de la machine ne servent pas. La machine démarre sur son slot 0, ou sur son slot 31 ou ses propres ROM avec un bouton tenu. Ce que la machine écrit dans la flash est gardé dans le fichier.</translation>
+    </message>
+    <message>
         <source>(empty)</source>
         <translation>(vide)</translation>
     </message>
@@ -4177,6 +4273,38 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
     <message>
         <source>Cannot read %1.</source>
         <translation>Impossible de lire %1.</translation>
+    </message>
+    <message>
+        <source>(no cartridge)</source>
+        <translation>(pas de cartouche)</translation>
+    </message>
+    <message>
+        <source>ROM %1</source>
+        <translation>ROM %1</translation>
+    </message>
+    <message>
+        <source>in use</source>
+        <translation>occupé</translation>
+    </message>
+    <message>
+        <source>Slot %1: %2</source>
+        <translation>Slot %1 : %2</translation>
+    </message>
+    <message>
+        <source>Dandanator Cartridge</source>
+        <translation>Cartouche Dandanator</translation>
+    </message>
+    <message>
+        <source>Dandanator cartridges (*.des *.rom *.bin);;All files (*)</source>
+        <translation>Cartouches Dandanator (*.des *.rom *.bin);;Tous les fichiers (*)</translation>
+    </message>
+    <message>
+        <source>Dandanator Slots</source>
+        <translation>Slots du Dandanator</translation>
+    </message>
+    <message>
+        <source>The 32 slots of 16K of the cartridge&apos;s flash memory. The machine sees one in place of its memory when a program asks for it, in one of two zones: zone 0 at &amp;0000 or &amp;8000, zone 1 at &amp;4000 or &amp;C000. The debugger shows which are in place.</source>
+        <translation>Les 32 slots de 16K de la mémoire flash de la cartouche. La machine en voit un à la place de sa mémoire quand un programme le demande, dans l&apos;une de deux zones : la zone 0 en &amp;0000 ou &amp;8000, la zone 1 en &amp;4000 ou &amp;C000. Le débogueur montre lesquels sont en place.</translation>
     </message>
     <message>
         <source>X-MEM Flash Memory</source>

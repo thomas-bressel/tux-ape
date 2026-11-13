@@ -41,6 +41,11 @@ void Cpc::reset()
     asic_.reset();
     if (ide_)
         ide_->reset();
+    // The cartridge's CPLD has the machine's reset line.
+    if (dandanator_) {
+        dandanator_->reset();
+        memory_.dandanatorChanged();
+    }
 }
 
 void Cpc::coldReset()
@@ -170,6 +175,16 @@ void Cpc::fitXmem(bool fitted, const std::string& file)
         xmem_ = std::make_unique<Xmem>();
     xmemFile_ = fitted ? file : std::string();
     memory_.setXmem(xmem_.get());
+}
+
+void Cpc::fitDandanator(bool fitted, const std::string& file)
+{
+    if (!fitted)
+        dandanator_.reset();
+    else if (!dandanator_)
+        dandanator_ = std::make_unique<Dandanator>();
+    dandanatorFile_ = fitted ? file : std::string();
+    memory_.setDandanator(dandanator_.get());
 }
 
 void Cpc::fitIde(const std::string& file)

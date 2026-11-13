@@ -1005,6 +1005,83 @@ void testRomFile(const QString& folder)
         qputenv("TUXAPE_USER_ROM_DIR", ownBefore);
 }
 
+// The Dandanator's frame on the Expansions page: its cartridge's file and
+// the button held at a reset, kept in the settings file; its slots listed;
+// and in the machine, the cartridge read from that file.
+void testDandanatorFrame(const QString& folder)
+{
+    using tuxape::Card;
+    Settings settings;
+    SetupDialog dialog(settings);
+    dialog.showPage(SetupDialog::Expansions);
+    auto* box = dialog.findChild<QGroupBox*>("gbDandanator");
+    auto* file = dialog.findChild<QLabel*>("lDandanatorFile");
+    auto* place = dialog.findChild<QComboBox*>("cbCard2");
+    const bool found = box && file && place && dialog.findChild<QRadioButton*>("rbDandanatorSlot31")
+                       && dialog.findChild<QPushButton*>("bDandanatorFile")
+                       && dialog.findChild<QPushButton*>("bDandanatorSlots");
+    CHECK(found);
+    if (!found)
+        return;
+    CHECK(!box->isEnabled() && file->text() == "(no cartridge)");
+    const int item = place->findData(static_cast<int>(Card::Dandanator));
+    CHECK(item > 0 && place->itemText(item).startsWith("Dandanator"));
+    place->setCurrentIndex(item);
+    emit place->activated(item);
+    CHECK(dialog.card(1) == Card::Dandanator && box->isEnabled());
+
+    // A cartridge of two slots: a program in slot 0, a ROM in slot 1.
+    QByteArray image(2 * 16384, '\0');
+    image[0] = char(0xF3);
+    image.replace(16384, 6, QByteArray::fromHex("01010400" "06C0"));
+    image.replace(16384 + 6, 4, QByteArray("TES") + '\xD4');
+    const QString cartridge = folder + "/game.des";
+    QFile out(cartridge);
+    CHECK(out.open(QIODevice::WriteOnly) && out.write(image) == image.size());
+    out.close();
+    dialog.setDandanatorFile(cartridge);
+    dialog.setDandanatorBoot(tuxape::Dandanator::Boot::Slot31);
+    CHECK(file->text() == QDir::toNativeSeparators(cartridge));
+    const QStringList cartSlots = dialog.dandanatorSlots();
+    CHECK_EQ(cartSlots.size(), 32);
+    CHECK(cartSlots.value(0) == "Slot  0: in use");
+    CHECK(cartSlots.value(1) == "Slot  1: ROM TEST");
+    CHECK(cartSlots.value(2) == "Slot  2: (empty)");
+
+    Settings shown = dialog.settings();
+    CHECK(shown.machine.hasCard(Card::Dandanator));
+    CHECK(shown.machine.dandanatorFile == cartridge.toStdString());
+    CHECK(shown.machine.dandanatorBoot == tuxape::Dandanator::Boot::Slot31);
+    CHECK(shown.save());
+    QFile ini(Settings::file());
+    CHECK(ini.open(QIODevice::ReadOnly));
+    const QByteArray text = ini.readAll();
+    ini.close();
+    CHECK(text.contains("\r\nCard2=Dandanator\r\n"));
+    CHECK(text.contains(QByteArray("\r\nDandanator File=") + cartridge.toUtf8() + "\r\n"));
+    CHECK(text.contains("\r\nDandanator Boot=Slot 31\r\n"));
+    Settings loaded;
+    loaded.load();
+    CHECK(loaded.machine == shown.machine);
+    SetupDialog again(loaded);
+    CHECK(again.card(1) == Card::Dandanator && again.dandanatorFile() == cartridge);
+    CHECK(again.dandanatorBoot() == tuxape::Dandanator::Boot::Slot31);
+    QFile::remove(Settings::file());
+
+    // In the machine, started on slot 0.
+    Emulator emulator;
+    tuxape::MachineConfig machine = shown.machine;
+    machine.dandanatorBoot = tuxape::Dandanator::Boot::Cartridge;
+    emulator.setupMachine(machine, true);
+    emulator.withMachine([&](tuxape::Cpc& cpc) {
+        CHECK(cpc.dandanator() != nullptr);
+        if (cpc.dandanator()) {
+            CHECK_EQ(cpc.dandanator()->flash()[16384 + 6], 'T');
+            CHECK_EQ(cpc.memory().read(0x0000), 0xF3);
+        }
+    });
+}
+
 // The Expansions page, TuxAPE's own: the four places of a MotherX4 board,
 // the X-MEM and its switches; what of it is kept in the settings file, and
 // what reaches the machine.
@@ -1821,6 +1898,7 @@ int main(int argc, char* argv[])
     testMemoryPage(prefix.isEmpty() ? QString() : prefix + "memory.png");
     testRomFile(folder.path());
     testExpansionsPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "expansions.png");
+    testDandanatorFrame(folder.path());
     testCardProfiles(folder.path());
     testInputPage(folder.path(), prefix.isEmpty() ? QString() : prefix + "input.png");
     testKeyboards(prefix);

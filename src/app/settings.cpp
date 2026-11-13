@@ -145,6 +145,17 @@ void Settings::read(const tuxape::IniFile& ini)
         machine.xmemFlash = ini.get(kExpansions, "X-MEM Flash");
     if (ini.has(kExpansions, "X-MASS Disc"))
         machine.xmassDisc = ini.get(kExpansions, "X-MASS Disc");
+    // The Dandanator: its cartridge's file, and the button held as the
+    // machine starts (none, the left one for slot 31, the middle one for
+    // the machine's own ROMs).
+    if (ini.has(kExpansions, "Dandanator File"))
+        machine.dandanatorFile = ini.get(kExpansions, "Dandanator File");
+    if (ini.has(kExpansions, "Dandanator Boot")) {
+        const std::string boot = ini.get(kExpansions, "Dandanator Boot");
+        machine.dandanatorBoot = boot == "Slot 31"   ? tuxape::Dandanator::Boot::Slot31
+                                 : boot == "Machine" ? tuxape::Dandanator::Boot::Machine
+                                                     : tuxape::Dandanator::Boot::Cartridge;
+    }
 
     monitorType = std::clamp(ini.getInt(kConfiguration, "Monitor Type", monitorType), 0, 2);
     brightness = std::clamp(ini.getInt(kConfiguration, "Monitor Brightness", brightness), -100, 100);
@@ -311,6 +322,11 @@ void Settings::write(tuxape::IniFile& ini, unsigned parts) const
         ini.set(kExpansions, "X-MEM READ ROM", machine.xmem.readRom ? "YES" : "NO");
         ini.set(kExpansions, "X-MEM Flash", machine.xmemFlash);
         ini.set(kExpansions, "X-MASS Disc", machine.xmassDisc);
+        ini.set(kExpansions, "Dandanator File", machine.dandanatorFile);
+        ini.set(kExpansions, "Dandanator Boot",
+                machine.dandanatorBoot == tuxape::Dandanator::Boot::Slot31    ? "Slot 31"
+                : machine.dandanatorBoot == tuxape::Dandanator::Boot::Machine ? "Machine"
+                                                                              : "Cartridge");
     }
     if (parts & MonitorPart) {
         ini.setInt(kConfiguration, "Monitor Type", monitorType);
@@ -486,6 +502,7 @@ QString Settings::cardName(tuxape::Card card)
     switch (card) {
     case tuxape::Card::Xmem: return QStringLiteral("X-MEM");
     case tuxape::Card::Xmass: return QStringLiteral("X-MASS");
+    case tuxape::Card::Dandanator: return QStringLiteral("Dandanator");
     case tuxape::Card::None: break;
     }
     return QString();
@@ -493,7 +510,7 @@ QString Settings::cardName(tuxape::Card card)
 
 tuxape::Card Settings::cardNamed(const QString& name)
 {
-    for (const tuxape::Card card : {tuxape::Card::Xmem, tuxape::Card::Xmass})
+    for (const tuxape::Card card : {tuxape::Card::Xmem, tuxape::Card::Xmass, tuxape::Card::Dandanator})
         if (name.compare(cardName(card), Qt::CaseInsensitive) == 0)
             return card;
     return tuxape::Card::None;

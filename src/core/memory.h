@@ -8,6 +8,7 @@ namespace tuxape {
 
 class Asic;
 class Xmem;
+class Dandanator;
 
 // RAM fitted beyond the first 64K, as offered by WinAPE's memory settings.
 enum class RamExpansion : uint8_t {
@@ -51,6 +52,11 @@ public:
     // place of the ROMs wherever the card answers, before anything fitted
     // above, and gets what is written in the upper ROM's 16K.
     void setXmem(Xmem* xmem);
+    // A Dandanator cartridge (see dandanator.h): the slots it shows are read
+    // in place of the memory under them. Null without one.
+    void setDandanator(Dandanator* dandanator);
+    // What it now shows has changed: the memory is mapped again.
+    void dandanatorChanged() { remap(); }
     bool hasXmem() const { return xmem_ != nullptr; }
 
     // The Plus: a cartridge takes the place of the ROMs. Its page 0 is the
@@ -116,6 +122,8 @@ public:
     uint8_t read(uint16_t addr) const { return readMap_[addr >> 14][addr & 0x3FFF]; }
     void write(uint16_t addr, uint8_t value)
     {
+        if (dandanator_) [[unlikely]]
+            writeDandanator(addr, value);
         if (xmem_ && addr >= 0xC000)
             writeFlash(addr, value);
         if (registersMapped_ && (addr & 0xC000) == 0x4000)
@@ -197,6 +205,7 @@ private:
     Asic* asic_ = nullptr;
     bool registersMapped_ = false;
     Xmem* xmem_ = nullptr;
+    Dandanator* dandanator_ = nullptr;
 
     std::vector<uint8_t> multiface_;  // its ROM, then its RAM: 16K, or none
     bool multifacePaged_ = false;
@@ -210,6 +219,7 @@ private:
     void remapMachine();
     void writeRegister(uint16_t addr, uint8_t value);
     void writeFlash(uint16_t addr, uint8_t value);
+    void writeDandanator(uint16_t addr, uint8_t value);
 };
 
 }  // namespace tuxape

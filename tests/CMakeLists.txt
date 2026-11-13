@@ -164,6 +164,11 @@ add_executable(disc_hfe disc_hfe.cpp)
 target_link_libraries(disc_hfe PRIVATE tuxape_core)
 add_test(NAME disc_hfe COMMAND disc_hfe ${TUXAPE_TEST_ROMS})
 
+# The Dandanator mini cartridge.
+add_executable(dandanator dandanator.cpp)
+target_link_libraries(dandanator PRIVATE tuxape_core)
+add_test(NAME dandanator COMMAND dandanator)
+
 add_executable(xmem xmem.cpp)
 target_link_libraries(xmem PRIVATE tuxape_core)
 add_test(NAME xmem COMMAND xmem ${TUXAPE_TEST_ROMS})
