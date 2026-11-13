@@ -39,6 +39,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QWheelEvent>
 
@@ -1023,12 +1024,23 @@ void testDandanatorFrame(const QString& folder)
     CHECK(found);
     if (!found)
         return;
-    CHECK(!box->isEnabled() && file->text() == "(no cartridge)");
+    CHECK(!box->isEnabled() && file->text() == "(no cartridge: the machine starts on its own ROMs)");
     const int item = place->findData(static_cast<int>(Card::Dandanator));
     CHECK(item > 0 && place->itemText(item).startsWith("Dandanator"));
     place->setCurrentIndex(item);
     emit place->activated(item);
     CHECK(dialog.card(1) == Card::Dandanator && box->isEnabled());
+    // Its frame opens as it is put in, and folds and unfolds at its title.
+    auto* fold = dialog.findChild<QToolButton*>("tbFoldDandanator");
+    CHECK(fold && fold->arrowType() == Qt::DownArrow && !box->isHidden());
+    if (fold) {
+        fold->click();
+        CHECK(fold->arrowType() == Qt::RightArrow && box->isHidden());
+        fold->click();
+        CHECK(fold->arrowType() == Qt::DownArrow && !box->isHidden());
+    }
+    auto* xmemFold = dialog.findChild<QToolButton*>("tbFoldXMEM");
+    CHECK(xmemFold && xmemFold->arrowType() == Qt::RightArrow);
 
     // A cartridge of two slots: a program in slot 0, a ROM in slot 1.
     QByteArray image(2 * 16384, '\0');
@@ -1079,6 +1091,14 @@ void testDandanatorFrame(const QString& folder)
             CHECK_EQ(cpc.dandanator()->flash()[16384 + 6], 'T');
             CHECK_EQ(cpc.memory().read(0x0000), 0xF3);
         }
+    });
+    // With no cartridge chosen, on the machine's own firmware (LD BC,&7F89),
+    // not on a blank flash.
+    machine.dandanatorFile.clear();
+    emulator.setupMachine(machine, true);
+    emulator.withMachine([&](tuxape::Cpc& cpc) {
+        CHECK(cpc.dandanator() != nullptr);
+        CHECK_EQ(cpc.memory().read(0x0000), 0x01);
     });
 }
 

@@ -240,8 +240,10 @@ bool applyMachine(Cpc& cpc, const MachineConfig& config, const std::filesystem::
     } else if (!dandanator) {
         cpc.fitDandanator(false);
     }
+    // With no cartridge chosen, its flash is blank: the machine would loop
+    // on RST &38 for ever. It starts on its own ROMs instead.
     if (dandanator)
-        cpc.dandanator()->setBoot(config.dandanatorBoot);
+        cpc.dandanator()->setBoot(config.dandanatorFile.empty() ? Dandanator::Boot::Machine : config.dandanatorBoot);
     cpc.fitIde(config.hasCard(Card::Xmass) ? config.xmassDisc : std::string());
 
     Memory& memory = cpc.memory();

@@ -3715,6 +3715,10 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Joystick</translation>
     </message>
     <message>
+        <source>(no cartridge: the machine starts on its own ROMs)</source>
+        <translation>(pas de cartouche : la machine démarre sur ses propres ROM)</translation>
+    </message>
+    <message>
         <source>Load Layout...</source>
         <translation>Charger une disposition...</translation>
     </message>
@@ -4207,6 +4211,10 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
         <translation>Une cartouche de 512K de mémoire flash en 32 slots de 16K, un fichier .des ou .rom. Ses slots prennent la place de la mémoire de la machine quand un programme le demande, par des instructions Z80 que la cartouche guette ; les numéros de ROM de la machine ne servent pas. La machine démarre sur son slot 0, ou sur son slot 31 ou ses propres ROM avec un bouton tenu. Ce que la machine écrit dans la flash est gardé dans le fichier.</translation>
     </message>
     <message>
+        <source>Fold or unfold</source>
+        <translation>Plier ou déplier</translation>
+    </message>
+    <message>
         <source>(empty)</source>
         <translation>(vide)</translation>
     </message>
@@ -4273,10 +4281,6 @@ Choisissez d&apos;autres images de ROM dans Réglages &gt; Mémoire.</translatio
     <message>
         <source>Cannot read %1.</source>
         <translation>Impossible de lire %1.</translation>
-    </message>
-    <message>
-        <source>(no cartridge)</source>
-        <translation>(pas de cartouche)</translation>
     </message>
     <message>
         <source>ROM %1</source>

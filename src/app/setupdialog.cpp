@@ -27,6 +27,7 @@
 #include <QMimeData>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -2324,11 +2325,44 @@ QWidget* SetupDialog::createExpansionsPage()
 
     auto* layout = new QVBoxLayout(page);
     layout->addWidget(board);
-    layout->addWidget(xmemBox_);
-    layout->addWidget(xmassBox_);
-    layout->addWidget(dandanatorBox_);
+    QGroupBox* bodies[3] = {xmemBox_, xmassBox_, dandanatorBox_};
+    const char* foldNames[3] = {"tbFoldXMEM", "tbFoldXMASS", "tbFoldDandanator"};
+    for (int which = 0; which < 3; ++which) {
+        auto* fold = new QToolButton;
+        fold->setObjectName(foldNames[which]);
+        fold->setText(bodies[which]->title());
+        fold->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        fold->setAutoRaise(true);
+        fold->setToolTip(tr("Fold or unfold"));
+        QFont bold = fold->font();
+        bold.setBold(true);
+        fold->setFont(bold);
+        bodies[which]->setTitle(QString());
+        folds_[which] = fold;
+        connect(fold, &QToolButton::clicked, this,
+                [this, which] { setUnfolded(which, folds_[which]->arrowType() != Qt::DownArrow); });
+        layout->addWidget(fold);
+        layout->addWidget(bodies[which]);
+        setUnfolded(which, false);
+    }
     layout->addStretch(1);
-    return page;
+
+    // However many frames are open, the page scrolls rather than squeeze them.
+    auto* scroll = new QScrollArea;
+    scroll->setObjectName("saExpansions");
+    scroll->setWidget(page);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->viewport()->setAutoFillBackground(false);
+    page->setAutoFillBackground(false);
+    return scroll;
+}
+
+void SetupDialog::setUnfolded(int which, bool open)
+{
+    QGroupBox* bodies[3] = {xmemBox_, xmassBox_, dandanatorBox_};
+    folds_[which]->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    bodies[which]->setVisible(open);
 }
 
 tuxape::Card SetupDialog::card(int place) const
@@ -2562,7 +2596,7 @@ void SetupDialog::showXmemRoms()
 void SetupDialog::setDandanatorFile(const QString& file)
 {
     dandanatorFile_ = file;
-    dandanatorLabel_->setText(file.isEmpty() ? tr("(no cartridge)") : QDir::toNativeSeparators(file));
+    dandanatorLabel_->setText(file.isEmpty() ? tr("(no cartridge: the machine starts on its own ROMs)") : QDir::toNativeSeparators(file));
     dandanatorLabel_->setToolTip(QDir::toNativeSeparators(file));
 }
 
@@ -2675,6 +2709,13 @@ void SetupDialog::updateCards()
     for (int place = 0; place < tuxape::kCardPlaces; ++place)
         dandanator = dandanator || card(place) == tuxape::Card::Dandanator;
     dandanatorBox_->setEnabled(dandanator);
+    // A card put in opens its frame, one taken out closes it.
+    const bool fitted[3] = {xmem, xmass, dandanator};
+    for (int which = 0; which < 3; ++which) {
+        if (foldFitted_[which] != static_cast<int>(fitted[which]))
+            setUnfolded(which, fitted[which]);
+        foldFitted_[which] = fitted[which];
+    }
     if (xmass && xmassDisc_.isEmpty())
         setXmassDisc(Settings::xmassDiscFile());
     updateTotalRam();

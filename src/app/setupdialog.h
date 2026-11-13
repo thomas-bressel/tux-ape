@@ -19,6 +19,7 @@ struct PluginInfo;
 class QAbstractButton;
 class QCheckBox;
 class QGroupBox;
+class QToolButton;
 class QLineEdit;
 class QComboBox;
 class QPushButton;
@@ -327,6 +328,11 @@ private:
     QLabel* dandanatorLabel_ = nullptr;
     QString dandanatorFile_;
     QRadioButton* dandanatorBoot_[3] = {};
+    // Each card's frame folds under a title of its own: open while the card
+    // is in a place, closed when it is taken out, and as the user likes.
+    QToolButton* folds_[3] = {};
+    int foldFitted_[3] = {-1, -1, -1};
+    void setUnfolded(int which, bool open);
 };
 
 // The DMP2000's settings (Settings, Other, Printer, "DMP2000..."): its
